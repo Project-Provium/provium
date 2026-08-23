@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/Project-Provium/provium/compare/provium-v0.7.0...provium-v0.8.0) (2026-08-22)
+
+
+### Features
+
+* Add graph command ([1f765c2](https://github.com/Project-Provium/provium/commit/1f765c2ba09e0d64744568eb326f5b895d4dd1ae))
+
 ## [0.7.0](https://github.com/Project-Provium/provium/compare/provium-v0.6.0...provium-v0.7.0) (2026-08-21)
 
 
