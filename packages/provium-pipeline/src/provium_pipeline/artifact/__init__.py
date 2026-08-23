@@ -19,6 +19,19 @@ from .index import (
     ArtifactIndexNotFoundError,
     InMemoryArtifactIndex,
 )
+from .plugins import (
+    ARTIFACT_INDEX_ENTRY_POINT_GROUP,
+    ARTIFACT_STORE_ENTRY_POINT_GROUP,
+    ArtifactFactoryCatalog,
+    ArtifactIndexFactory,
+    ArtifactPluginDiagnostic,
+    ArtifactPluginDiscoveryResult,
+    ArtifactStoreFactory,
+    discover_artifact_index_factories,
+    discover_artifact_store_factories,
+    filesystem_artifact_store_factory,
+    sqlite_artifact_index_factory,
+)
 from .service import ArtifactImportService
 from .sqlite_index import SQLiteArtifactIndex
 
@@ -174,6 +187,10 @@ class ArtifactStore(Protocol):
 
 
 __all__ = [
+    "ARTIFACT_INDEX_ENTRY_POINT_GROUP",
+    "ARTIFACT_STORE_ENTRY_POINT_GROUP",
+    "ArtifactFactoryCatalog",
+    "ArtifactIndexFactory",
     "ArtifactLocation",
     "ArtifactIdentityCollisionError",
     "ArtifactIndex",
@@ -182,6 +199,8 @@ __all__ = [
     "ArtifactIndexNotFoundError",
     "ArtifactLocationState",
     "ArtifactObjectMetadata",
+    "ArtifactPluginDiagnostic",
+    "ArtifactPluginDiscoveryResult",
     "ArtifactStore",
     "ArtifactStoreConflictError",
     "ArtifactStoreCorruptionError",
@@ -189,6 +208,7 @@ __all__ = [
     "ArtifactStoreNotFoundError",
     "ArtifactStorePermissionError",
     "ArtifactStoreTransientError",
+    "ArtifactStoreFactory",
     "FilesystemArtifactStore",
     "InMemoryArtifactIndex",
     "InvalidArtifactLocatorError",
@@ -199,4 +219,8 @@ __all__ = [
     "SQLiteArtifactIndex",
     "StagedArtifactFile",
     "describe_finalized_artifact",
+    "discover_artifact_index_factories",
+    "discover_artifact_store_factories",
+    "filesystem_artifact_store_factory",
+    "sqlite_artifact_index_factory",
 ]
