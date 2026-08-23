@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from types import MappingProxyType
@@ -9,9 +10,13 @@ from uuid import UUID
 
 import pytest
 
+from provium import JsonValue
+from provium_pipeline.compiler.models import CompiledBindingPlan, ConfigurationSnapshot
 from provium_pipeline.execution_codec import (
+    ExecutionDecodingError,
     ExecutionEncodingError,
     pipeline_task_document,
+    pipeline_task_from_json,
     pipeline_task_json,
     to_json_value,
 )
@@ -41,9 +46,7 @@ def _task() -> PipelineTask:
         setup_bindings=(),
         input_bindings=(),
         expected_output_fields=("required", "optional"),
-        dependencies=(
-            TaskId(UUID("00000000-0000-0000-0000-000000000003")),
-        ),
+        dependencies=(TaskId(UUID("00000000-0000-0000-0000-000000000003")),),
         state=TaskState.READY,
     )
 
@@ -52,9 +55,7 @@ def test_json_domain_encoder_handles_nested_immutable_runtime_values() -> None:
     value = {
         "nested": _Nested("example", (1, 2)),
         "mapping": MappingProxyType({"enabled": True}),
-        "identifier": TaskId(
-            UUID("00000000-0000-0000-0000-000000000004")
-        ),
+        "identifier": TaskId(UUID("00000000-0000-0000-0000-000000000004")),
         "time": datetime(2026, 8, 23, tzinfo=UTC),
         "state": _State.READY,
         "target": _Nested,
@@ -104,3 +105,106 @@ def test_pipeline_task_json_is_canonical_and_roundtrippable_json() -> None:
 
     assert json.loads(encoded) == document
     assert encoded == pipeline_task_json(_task())
+
+
+def test_pipeline_task_json_round_trips_through_strict_decoder() -> None:
+    task = _task()
+
+    assert pipeline_task_from_json(pipeline_task_json(task)) == task
+
+
+def test_pipeline_task_decoder_reconstructs_configuration_and_bindings() -> None:
+    binding = CompiledBindingPlan(
+        field="source",
+        artifact_identifier="example.artifact/v1",
+        minimum=1,
+        maximum=None,
+        references=("upstream.output",),
+    )
+    task = replace(
+        _task(),
+        configuration_snapshot=ConfigurationSnapshot(
+            model_target="example.models:Configuration",
+            schema_digest="b" * 64,
+            value={"enabled": True, "thresholds": [1, 2]},
+            value_digest="c" * 64,
+        ),
+        setup_bindings=(binding,),
+        input_bindings=(binding,),
+    )
+
+    assert pipeline_task_from_json(pipeline_task_json(task)) == task
+
+
+_MALFORMED_MUTATIONS: list[tuple[Callable[[dict[str, JsonValue]], object], str]] = [
+    (lambda document: document.update(schema="provium.pipeline-task/v2"), "schema"),
+    (lambda document: document.update(unexpected=True), "fields"),
+    (lambda document: document.pop("state"), "fields"),
+    (lambda document: document.update(identifier="not-a-uuid"), "identifier"),
+    (lambda document: document.update(state="unknown"), "state"),
+    (lambda document: document.update(node_identifier=1), "node_identifier"),
+    (
+        lambda document: document.update(expected_output_fields=[1]),
+        "expected_output_fields",
+    ),
+    (
+        lambda document: document.update(expected_output_fields="invalid"),
+        "expected_output_fields",
+    ),
+]
+
+
+@pytest.mark.parametrize(("mutation", "message"), _MALFORMED_MUTATIONS)
+def test_pipeline_task_decoder_rejects_malformed_documents(
+    mutation: Callable[[dict[str, JsonValue]], object], message: str
+) -> None:
+    document = pipeline_task_document(_task())
+    mutation(document)
+
+    with pytest.raises(ExecutionDecodingError, match=message):
+        pipeline_task_from_json(json.dumps(document))
+
+
+def test_pipeline_task_decoder_rejects_malformed_nested_values() -> None:
+    document = pipeline_task_document(_task())
+    document["configuration_snapshot"] = {
+        "model_target": "target",
+        "schema_digest": "digest",
+        "value": {},
+        "value_digest": "digest",
+        "extra": True,
+    }
+    with pytest.raises(ExecutionDecodingError, match="configuration_snapshot fields"):
+        pipeline_task_from_json(json.dumps(document))
+
+    binding: dict[str, JsonValue] = {
+        "field": "source",
+        "artifact_identifier": "artifact",
+        "minimum": True,
+        "maximum": None,
+        "references": [],
+    }
+    document = pipeline_task_document(_task())
+    document["setup_bindings"] = [binding]
+    with pytest.raises(ExecutionDecodingError, match="minimum"):
+        pipeline_task_from_json(json.dumps(document))
+
+    binding["minimum"] = 1
+    binding["maximum"] = True
+    with pytest.raises(ExecutionDecodingError, match="maximum"):
+        pipeline_task_from_json(json.dumps(document))
+
+    binding["maximum"] = None
+    binding["references"] = [1]
+    with pytest.raises(ExecutionDecodingError, match="references"):
+        pipeline_task_from_json(json.dumps(document))
+
+    document["setup_bindings"] = "not-an-array"
+    with pytest.raises(ExecutionDecodingError, match="array"):
+        pipeline_task_from_json(json.dumps(document))
+
+
+@pytest.mark.parametrize("payload", ["not json", "[]", "null"])
+def test_pipeline_task_decoder_requires_a_json_object(payload: str) -> None:
+    with pytest.raises(ExecutionDecodingError, match="JSON object"):
+        pipeline_task_from_json(payload)
