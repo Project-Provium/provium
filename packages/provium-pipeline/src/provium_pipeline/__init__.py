@@ -38,7 +38,13 @@ from .identifiers import (
 
 __version__ = version("provium-pipeline")
 
-from .inputs import InputRecord
+from .inputs import (
+    InputRecord,
+    InputSet,
+    InputSourceDescriptor,
+    InputSourceKind,
+    RunInputSnapshot,
+)
 
 require_compatible_core()
 
@@ -59,13 +65,17 @@ __all__ = [
     "IncompatibleCoreError",
     "InputRecord",
     "InputRecordKey",
+    "InputSet",
     "InputSetIdentifier",
+    "InputSourceDescriptor",
+    "InputSourceKind",
     "PipelineIdentifier",
     "PipelineInputName",
     "PipelineNodeIdentifier",
     "PipelineOutputName",
     "PipelineVersion",
     "RunId",
+    "RunInputSnapshot",
     "StoreIdentifier",
     "TaskId",
     "SUPPORTED_CORE_API_VERSION",
