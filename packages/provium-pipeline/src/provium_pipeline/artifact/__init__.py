@@ -11,6 +11,14 @@ from typing import Protocol
 
 from provium import inspect_finalized_artifact
 
+from .index import (
+    ArtifactIdentityCollisionError,
+    ArtifactIndex,
+    ArtifactIndexError,
+    ArtifactIndexNotFoundError,
+    InMemoryArtifactIndex,
+)
+
 type JsonScalar = None | bool | int | float | str
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 
@@ -164,6 +172,10 @@ class ArtifactStore(Protocol):
 
 __all__ = [
     "ArtifactLocation",
+    "ArtifactIdentityCollisionError",
+    "ArtifactIndex",
+    "ArtifactIndexError",
+    "ArtifactIndexNotFoundError",
     "ArtifactLocationState",
     "ArtifactObjectMetadata",
     "ArtifactStore",
@@ -173,6 +185,7 @@ __all__ = [
     "ArtifactStoreNotFoundError",
     "ArtifactStorePermissionError",
     "ArtifactStoreTransientError",
+    "InMemoryArtifactIndex",
     "InvalidArtifactLocatorError",
     "ManagedArtifactDescriptor",
     "MaterializationCleanup",
