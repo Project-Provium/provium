@@ -9,6 +9,11 @@ from .compatibility import (
     IncompatibleCoreError,
     require_compatible_core,
 )
+from .compiler import (
+    ArtifactCatalogCollection,
+    CatalogResolutionError,
+    ProcedureCatalogCollection,
+)
 from .discovery import (
     PIPELINE_CATALOG_ENTRY_POINT_GROUP,
     PipelineDiscoveryDiagnostic,
@@ -36,6 +41,9 @@ __version__ = version("provium-pipeline")
 require_compatible_core()
 
 __all__ = [
+    "ArtifactCatalogCollection",
+    "CatalogResolutionError",
+    "ProcedureCatalogCollection",
     "PIPELINE_CATALOG_ENTRY_POINT_GROUP",
     "PipelineCatalogRegistration",
     "PipelineDiscoveryDiagnostic",
