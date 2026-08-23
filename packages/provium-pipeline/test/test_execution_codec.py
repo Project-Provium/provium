@@ -17,6 +17,7 @@ from provium_pipeline.execution_codec import (
     ExecutionDecodingError,
     ExecutionEncodingError,
     compiled_pipeline_inputs_from_value,
+    compiled_pipeline_nodes_from_value,
     compiled_pipeline_outputs_from_value,
     pipeline_run_document,
     pipeline_run_document_from_json,
@@ -402,3 +403,53 @@ def test_compiled_pipeline_input_and_output_decoders_reject_malformed_values() -
         compiled_pipeline_outputs_from_value([{**valid_output, "unexpected": True}])
     with pytest.raises(ExecutionDecodingError, match="contract_digest"):
         compiled_pipeline_outputs_from_value([{**valid_output, "contract_digest": 1}])
+
+
+def test_compiled_pipeline_nodes_round_trip_typed_models() -> None:
+    from datetime import UTC, datetime
+
+    from provium_pipeline.execution_store import InMemoryExecutionStore
+    from test.test_execution_store import request
+
+    run = InMemoryExecutionStore(
+        clock=lambda: datetime(2026, 8, 23, tzinfo=UTC)
+    ).create_run(request())
+    pipeline = cast(dict[str, JsonValue], pipeline_run_document(run)["pipeline"])
+
+    assert compiled_pipeline_nodes_from_value(pipeline["nodes"]) == run.pipeline.nodes
+
+
+def test_compiled_pipeline_node_decoder_rejects_malformed_values() -> None:
+    valid_contract: dict[str, JsonValue] = {
+        "field": "result",
+        "artifact_identifier": "example.ResultV1",
+        "minimum": 1,
+        "maximum": None,
+        "digest": "digest",
+    }
+    valid_node: dict[str, JsonValue] = {
+        "identifier": "transform",
+        "procedure_identifier": "example.TransformV1",
+        "procedure_contract_digest": "procedure",
+        "configuration_snapshot": None,
+        "setup_bindings": [],
+        "input_bindings": [],
+        "output_contracts": [valid_contract],
+        "cache_policy": "enabled",
+        "preparation_contract_digest": "preparation",
+        "output_contract_digest": "output",
+    }
+
+    assert compiled_pipeline_nodes_from_value([valid_node])[0].cache_policy == "enabled"
+    with pytest.raises(ExecutionDecodingError, match="cache_policy"):
+        compiled_pipeline_nodes_from_value([{**valid_node, "cache_policy": "unknown"}])
+    with pytest.raises(ExecutionDecodingError, match="output_contracts"):
+        compiled_pipeline_nodes_from_value([{**valid_node, "output_contracts": {}}])
+    with pytest.raises(ExecutionDecodingError, match="minimum"):
+        compiled_pipeline_nodes_from_value(
+            [{**valid_node, "output_contracts": [{**valid_contract, "minimum": True}]}]
+        )
+    with pytest.raises(ExecutionDecodingError, match="digest"):
+        compiled_pipeline_nodes_from_value(
+            [{**valid_node, "output_contracts": [{**valid_contract, "digest": 1}]}]
+        )

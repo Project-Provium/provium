@@ -7,12 +7,14 @@ from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from provium import JsonValue, canonical_json
 from provium_pipeline.compiler.models import (
     CompiledBindingPlan,
+    CompiledOutputContract,
     CompiledPipelineInput,
+    CompiledPipelineNode,
     CompiledPipelineOutput,
     ConfigurationSnapshot,
 )
@@ -394,6 +396,91 @@ def _binding_plans(value: object, context: str) -> tuple[CompiledBindingPlan, ..
             )
         )
     return tuple(plans)
+
+
+def _output_contracts(
+    value: object, context: str
+) -> tuple[CompiledOutputContract, ...]:
+    result: list[CompiledOutputContract] = []
+    fields = {"field", "artifact_identifier", "minimum", "maximum", "digest"}
+    for index, item in enumerate(_object_array(value, context)):
+        document = _strict_object(item, fields, f"{context}[{index}]")
+        result.append(
+            CompiledOutputContract(
+                field=_string(document["field"], f"{context}[{index}].field"),
+                artifact_identifier=_string(
+                    document["artifact_identifier"],
+                    f"{context}[{index}].artifact_identifier",
+                ),
+                minimum=_integer(document["minimum"], f"{context}[{index}].minimum"),
+                maximum=_optional_integer(
+                    document["maximum"], f"{context}[{index}].maximum"
+                ),
+                digest=_string(document["digest"], f"{context}[{index}].digest"),
+            )
+        )
+    return tuple(result)
+
+
+def compiled_pipeline_nodes_from_value(
+    value: object,
+) -> tuple[CompiledPipelineNode, ...]:
+    """Decode compiled nodes without resolving persisted procedure targets."""
+    result: list[CompiledPipelineNode] = []
+    fields = {
+        "identifier",
+        "procedure_identifier",
+        "procedure_contract_digest",
+        "configuration_snapshot",
+        "setup_bindings",
+        "input_bindings",
+        "output_contracts",
+        "cache_policy",
+        "preparation_contract_digest",
+        "output_contract_digest",
+    }
+    for index, item in enumerate(_object_array(value, "pipeline.nodes")):
+        context = f"pipeline.nodes[{index}]"
+        document = _strict_object(item, fields, context)
+        cache_policy = _string(document["cache_policy"], f"{context}.cache_policy")
+        if cache_policy not in {"enabled", "disabled"}:
+            raise ExecutionDecodingError(
+                f"{context}.cache_policy must be enabled or disabled"
+            )
+        result.append(
+            CompiledPipelineNode(
+                identifier=_string(document["identifier"], f"{context}.identifier"),
+                procedure_identifier=_string(
+                    document["procedure_identifier"], f"{context}.procedure_identifier"
+                ),
+                procedure_contract_digest=_string(
+                    document["procedure_contract_digest"],
+                    f"{context}.procedure_contract_digest",
+                ),
+                configuration_snapshot=_configuration_snapshot(
+                    document["configuration_snapshot"]
+                ),
+                setup_bindings=_binding_plans(
+                    document["setup_bindings"], f"{context}.setup_bindings"
+                ),
+                input_bindings=_binding_plans(
+                    document["input_bindings"], f"{context}.input_bindings"
+                ),
+                output_contracts=_output_contracts(
+                    document["output_contracts"], f"{context}.output_contracts"
+                ),
+                cache_policy=cast(Literal["enabled", "disabled"], cache_policy),
+                preparation_contract_digest=_string(
+                    document["preparation_contract_digest"],
+                    f"{context}.preparation_contract_digest",
+                ),
+                output_contract_digest=_string(
+                    document["output_contract_digest"],
+                    f"{context}.output_contract_digest",
+                ),
+            )
+        )
+    return tuple(result)
 
 
 def pipeline_task_from_json(payload: str) -> PipelineTask:
