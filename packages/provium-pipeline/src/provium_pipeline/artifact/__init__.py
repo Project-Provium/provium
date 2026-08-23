@@ -9,6 +9,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
+from provium import inspect_finalized_artifact
+
 type JsonScalar = None | bool | int | float | str
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 
@@ -112,6 +114,26 @@ class InvalidArtifactLocatorError(ArtifactStoreError):
     """A store locator is malformed or unsupported."""
 
 
+def describe_finalized_artifact(path: Path) -> ManagedArtifactDescriptor:
+    """Fully verify a finalized artifact and return its managed descriptor."""
+    try:
+        inspection = inspect_finalized_artifact(path)
+    except ValueError as error:
+        raise ArtifactStoreCorruptionError(str(error)) from error
+    if inspection.created_at is None:
+        raise ArtifactStoreCorruptionError(
+            "artifact container does not include a creation timestamp"
+        )
+    return ManagedArtifactDescriptor(
+        identity=inspection.artifact_identity,
+        artifact_identifier=inspection.artifact_identifier,
+        body_digest=inspection.body_digest,
+        container_digest=inspection.container_digest,
+        size_bytes=inspection.size_bytes,
+        created_at=inspection.created_at,
+    )
+
+
 class ArtifactStore(Protocol):
     """Storage backend for complete finalized Provium artifacts."""
 
@@ -157,4 +179,5 @@ __all__ = [
     "MaterializedArtifact",
     "OrphanQuery",
     "StagedArtifactFile",
+    "describe_finalized_artifact",
 ]
