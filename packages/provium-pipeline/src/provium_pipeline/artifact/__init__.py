@@ -11,6 +11,7 @@ from typing import Protocol
 
 from provium import inspect_finalized_artifact
 
+from .conformance import run_artifact_store_conformance
 from .filesystem import FilesystemArtifactStore
 from .index import (
     ArtifactIdentityCollisionError,
@@ -210,6 +211,7 @@ __all__ = [
     "ArtifactStoreTransientError",
     "ArtifactStoreFactory",
     "FilesystemArtifactStore",
+    "run_artifact_store_conformance",
     "InMemoryArtifactIndex",
     "InvalidArtifactLocatorError",
     "ManagedArtifactDescriptor",

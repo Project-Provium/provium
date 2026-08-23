@@ -91,6 +91,26 @@ def test_republishing_exact_artifact_is_idempotent(
     assert object_path.stat().st_ino == original_inode
 
 
+def test_filesystem_store_passes_reusable_conformance_runner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from provium_pipeline.artifact import run_artifact_store_conformance
+
+    managed = descriptor()
+    install_inspection(monkeypatch, managed)
+    source = tmp_path / "conformance-source.pa"
+    source.write_bytes(b"artifact-bytes")
+    store = FilesystemArtifactStore(identifier="local", root=tmp_path / "store")
+
+    run_artifact_store_conformance(
+        store=store,
+        source=source,
+        descriptor=managed,
+        workspace=tmp_path / "workspace",
+    )
+
+
 def test_publish_never_overwrites_conflicting_existing_object(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -20,6 +20,12 @@ dependencies = [
     "PyYAML>=6,<7",
 ]
 
+[project.entry-points."provium.artifact_stores"]
+filesystem = "provium_pipeline.artifact.plugins:filesystem_artifact_store_factory"
+
+[project.entry-points."provium.artifact_indexes"]
+sqlite = "provium_pipeline.artifact.plugins:sqlite_artifact_index_factory"
+
 [project.urls]
 Homepage = "https://github.com/SirDavidLudwig/provium"
 Issues = "https://github.com/SirDavidLudwig/provium/issues"
