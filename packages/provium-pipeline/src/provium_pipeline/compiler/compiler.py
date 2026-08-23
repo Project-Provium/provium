@@ -12,7 +12,12 @@ from ..definition import (
     PipelineInputReference,
     canonical_definition_document,
 )
-from .catalogs import ArtifactCatalogCollection, ProcedureCatalogCollection
+from .catalogs import (
+    ArtifactCatalogCollection,
+    CatalogResolutionError,
+    ProcedureCatalogCollection,
+)
+from .diagnostics import PipelineCompilationDiagnostic, PipelineCompilationError
 from .models import (
     CompiledBindingPlan,
     CompiledOutputContract,
@@ -45,6 +50,7 @@ class PipelineCompiler:
         *,
         configuration_layers: Sequence[PipelineConfigurationLayer] = (),
     ) -> CompiledPipeline:
+        _validate_procedures(definition, self.procedure_catalogs)
         definition_document = canonical_definition_document(definition)
         definition_digest = canonical_digest(definition_document)
         resolved_configuration = resolve_pipeline_configuration(
@@ -149,6 +155,26 @@ class PipelineCompiler:
             outputs=outputs,
             resolved_configuration=resolved_configuration,
         )
+
+
+def _validate_procedures(
+    definition: PipelineDefinition,
+    catalogs: ProcedureCatalogCollection,
+) -> None:
+    diagnostics: list[PipelineCompilationDiagnostic] = []
+    for name, node in sorted(definition.nodes.items()):
+        try:
+            catalogs.resolve(str(node.uses))
+        except CatalogResolutionError:
+            diagnostics.append(
+                PipelineCompilationDiagnostic(
+                    code="unknown-procedure",
+                    path=f"nodes.{name}.uses",
+                    message=f"procedure '{node.uses}' is not registered",
+                )
+            )
+    if diagnostics:
+        raise PipelineCompilationError(tuple(diagnostics))
 
 
 def _topological_order(definition: PipelineDefinition) -> tuple[str, ...]:

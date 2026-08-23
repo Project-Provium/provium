@@ -13,6 +13,7 @@ from .configuration import (
     load_pipeline_configuration_json,
     load_pipeline_configuration_yaml,
 )
+from .diagnostics import PipelineCompilationDiagnostic, PipelineCompilationError
 from .models import (
     CompiledBindingPlan,
     CompiledOutputContract,
@@ -36,6 +37,8 @@ __all__ = [
     "CompiledPipelineInput",
     "CompiledPipelineNode",
     "CompiledPipelineOutput",
+    "PipelineCompilationDiagnostic",
+    "PipelineCompilationError",
     "PipelineCompiler",
     "PipelineConfigurationLayer",
     "PipelineConfigurationResolutionError",
