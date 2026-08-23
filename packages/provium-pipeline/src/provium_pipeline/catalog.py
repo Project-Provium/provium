@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from importlib import import_module
 from importlib.resources import files
 
@@ -16,35 +17,60 @@ class PipelineCatalogError(ValueError):
 PipelineLoader = Callable[[], PipelineDefinition]
 
 
+@dataclass(frozen=True)
+class PipelineCatalogRegistration:
+    """Inspectable provenance for one lazy catalog registration."""
+
+    identifier: str
+    kind: str
+    location: str
+    source: str
+
+
 class PipelineCatalog:
     """Register and lazily resolve pipeline definitions by identifier."""
 
     def __init__(self) -> None:
         self._loaders: dict[str, PipelineLoader] = {}
         self._resolved: dict[str, PipelineDefinition] = {}
+        self._registrations: dict[str, PipelineCatalogRegistration] = {}
 
     @property
     def identifiers(self) -> tuple[str, ...]:
         """Return registered identifiers in stable sorted order."""
         return tuple(sorted(self._loaders))
 
+    @property
+    def registrations(self) -> tuple[PipelineCatalogRegistration, ...]:
+        """Return registration provenance in identifier order."""
+        return tuple(self._registrations[name] for name in self.identifiers)
+
     def register(self, definition: PipelineDefinition) -> None:
         """Register an in-memory pipeline definition."""
         if not isinstance(definition, PipelineDefinition):
             raise TypeError("pipeline catalog value must be a PipelineDefinition")
         identifier = definition.pipeline.identifier
-        self._reserve(identifier, lambda: definition)
+        self._reserve(identifier, lambda: definition, "memory", "<memory>", "direct")
         self._resolved[identifier] = definition
 
     def register_target(self, identifier: str, target: str) -> None:
         """Register a lazy ``module:attribute`` definition target."""
-        self._reserve(identifier, lambda: self._load_target(identifier, target))
+        self._reserve(
+            identifier,
+            lambda: self._load_target(identifier, target),
+            "target",
+            target,
+            "direct",
+        )
 
     def register_resource(self, identifier: str, package: str, resource: str) -> None:
         """Register a packaged JSON or YAML pipeline definition resource."""
         self._reserve(
             identifier,
             lambda: self._load_resource(identifier, package, resource),
+            "resource",
+            f"{package}:{resource}",
+            "direct",
         )
 
     def get(self, identifier: str) -> PipelineDefinition:
@@ -63,12 +89,48 @@ class PipelineCatalog:
         self._resolved[identifier] = definition
         return definition
 
-    def _reserve(self, identifier: str, loader: PipelineLoader) -> None:
+    def absorb(self, other: PipelineCatalog, *, source: str) -> None:
+        """Copy another catalog's registrations without resolving definitions."""
+        duplicates = [
+            registration.identifier
+            for registration in other.registrations
+            if registration.identifier in self._loaders
+        ]
+        if duplicates:
+            identifier = duplicates[0]
+            previous = self._registrations[identifier].source
+            raise PipelineCatalogError(
+                f"duplicate pipeline {identifier!r} from {source}; "
+                f"already registered from {previous}"
+            )
+        for registration in other.registrations:
+            self._reserve(
+                registration.identifier,
+                other._loaders[registration.identifier],
+                registration.kind,
+                registration.location,
+                source,
+            )
+
+    def _reserve(
+        self,
+        identifier: str,
+        loader: PipelineLoader,
+        kind: str,
+        location: str,
+        source: str,
+    ) -> None:
         if identifier in self._loaders:
             raise PipelineCatalogError(
                 f"pipeline identifier already registered: {identifier!r}"
             )
         self._loaders[identifier] = loader
+        self._registrations[identifier] = PipelineCatalogRegistration(
+            identifier=identifier,
+            kind=kind,
+            location=location,
+            source=source,
+        )
 
     @staticmethod
     def _load_target(identifier: str, target: str) -> PipelineDefinition:
