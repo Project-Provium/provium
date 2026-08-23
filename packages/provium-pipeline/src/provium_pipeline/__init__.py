@@ -39,6 +39,12 @@ from .identifiers import (
 __version__ = version("provium-pipeline")
 
 from .input_codec import InputRecordDecodeError, load_input_records_ndjson
+from .input_resolver import (
+    InputRecordResolver,
+    InputResolutionContext,
+    ResolveInputRecordsRequest,
+    resolve_input_snapshot,
+)
 from .inputs import (
     InputRecord,
     InputSet,
@@ -67,6 +73,8 @@ __all__ = [
     "InputRecord",
     "InputRecordDecodeError",
     "InputRecordKey",
+    "InputRecordResolver",
+    "InputResolutionContext",
     "InputSet",
     "InputSetIdentifier",
     "InputSourceDescriptor",
@@ -76,6 +84,7 @@ __all__ = [
     "PipelineNodeIdentifier",
     "PipelineOutputName",
     "PipelineVersion",
+    "ResolveInputRecordsRequest",
     "RunId",
     "RunInputSnapshot",
     "StoreIdentifier",
@@ -87,4 +96,5 @@ __all__ = [
     "canonical_json_bytes",
     "load_input_records_ndjson",
     "require_compatible_core",
+    "resolve_input_snapshot",
 ]
