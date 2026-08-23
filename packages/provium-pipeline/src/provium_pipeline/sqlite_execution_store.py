@@ -8,6 +8,16 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from provium import canonical_json
+from provium_pipeline.execution_codec import (
+    pipeline_task_from_json,
+    pipeline_task_json,
+    to_json_value,
+)
+from provium_pipeline.identifiers import RunId, TaskId
+from provium_pipeline.run_models import PipelineRun, PipelineTask, TaskState
+from provium_pipeline.task_transitions import transition_task as apply_task_transition
+
 SCHEMA_VERSION = 1
 
 
@@ -31,9 +41,14 @@ class SQLiteDatabaseSettings:
     busy_timeout_ms: int
 
 
+def _require_task_payload(row: tuple[object, ...] | None, identifier: TaskId) -> str:
+    if row is None:
+        raise KeyError(identifier)
+    return str(row[0])
+
+
 _SCHEMA_STATEMENTS = (
-    "CREATE TABLE IF NOT EXISTS runs ("
-    "id TEXT PRIMARY KEY, payload TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS tasks ("
     "id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE, "
     "state TEXT NOT NULL, payload TEXT NOT NULL)",
@@ -91,6 +106,97 @@ class SQLiteExecutionStore:
             journal_mode = str(connection.execute("PRAGMA journal_mode").fetchone()[0])
             timeout = int(connection.execute("PRAGMA busy_timeout").fetchone()[0])
         return SQLiteDatabaseSettings(foreign_keys, journal_mode, timeout)
+
+    def persist_run(
+        self,
+        run: PipelineRun,
+        tasks: tuple[PipelineTask, ...],
+    ) -> None:
+        """Persist a run and its complete task graph in one transaction."""
+        if any(task.run_identifier != run.identifier for task in tasks):
+            raise ValueError("every task must belong to the persisted run")
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute(
+                    "INSERT INTO runs(id, payload) VALUES (?, ?)",
+                    (str(run.identifier), canonical_json(to_json_value(run))),
+                )
+                connection.executemany(
+                    "INSERT INTO tasks(id, run_id, state, payload) VALUES (?, ?, ?, ?)",
+                    (
+                        (
+                            str(task.identifier),
+                            str(task.run_identifier),
+                            task.state.value,
+                            pipeline_task_json(task),
+                        )
+                        for task in tasks
+                    ),
+                )
+                connection.executemany(
+                    "INSERT INTO task_dependencies(task_id, dependency_id) "
+                    "VALUES (?, ?)",
+                    (
+                        (str(task.identifier), str(dependency))
+                        for task in tasks
+                        for dependency in task.dependencies
+                    ),
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def get_task(self, identifier: TaskId) -> PipelineTask:
+        """Load one durable task snapshot."""
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT payload FROM tasks WHERE id = ?", (str(identifier),)
+            ).fetchone()
+        return pipeline_task_from_json(_require_task_payload(row, identifier))
+
+    def list_tasks(self, run_identifier: RunId) -> tuple[PipelineTask, ...]:
+        """Load a run's tasks in stable identifier order."""
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM tasks WHERE run_id = ? ORDER BY id",
+                (str(run_identifier),),
+            ).fetchall()
+        return tuple(pipeline_task_from_json(str(row[0])) for row in rows)
+
+    def transition_task(
+        self,
+        identifier: TaskId,
+        *,
+        expected: TaskState,
+        target: TaskState,
+    ) -> PipelineTask:
+        """Atomically compare and set one task state."""
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT payload FROM tasks WHERE id = ?", (str(identifier),)
+                ).fetchone()
+                transitioned = apply_task_transition(
+                    pipeline_task_from_json(_require_task_payload(row, identifier)),
+                    expected=expected,
+                    target=target,
+                )
+                connection.execute(
+                    "UPDATE tasks SET state = ?, payload = ? WHERE id = ?",
+                    (
+                        transitioned.state.value,
+                        pipeline_task_json(transitioned),
+                        str(identifier),
+                    ),
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+        return transitioned
 
     def _migrate(self) -> None:
         with self._connection() as connection:
