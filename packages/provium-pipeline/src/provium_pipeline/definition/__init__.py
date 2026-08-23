@@ -1,6 +1,19 @@
-"""Pipeline definition models and reference values."""
+"""Pipeline definition models, codecs, and reference values."""
 
-from .models import PipelineInputCardinality, PipelineInputScope
+from .codec import (
+    PipelineDefinitionLoadError,
+    canonical_definition_document,
+    load_pipeline_json,
+    load_pipeline_yaml,
+)
+from .models import (
+    PipelineDefinition,
+    PipelineInputCardinality,
+    PipelineInputDefinition,
+    PipelineInputScope,
+    PipelineMetadata,
+    PipelineNodeDefinition,
+)
 from .references import (
     NodeOutputReference,
     PipelineInputReference,
@@ -12,11 +25,19 @@ from .references import (
 
 __all__ = [
     "NodeOutputReference",
+    "PipelineDefinition",
+    "PipelineDefinitionLoadError",
     "PipelineInputCardinality",
+    "PipelineInputDefinition",
     "PipelineInputReference",
     "PipelineInputScope",
+    "PipelineMetadata",
+    "PipelineNodeDefinition",
     "Reference",
     "ReferenceValue",
+    "canonical_definition_document",
+    "load_pipeline_json",
+    "load_pipeline_yaml",
     "parse_reference",
     "parse_reference_value",
 ]
