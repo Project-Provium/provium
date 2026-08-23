@@ -38,6 +38,7 @@ from .identifiers import (
 
 __version__ = version("provium-pipeline")
 
+from .input_codec import InputRecordDecodeError, load_input_records_ndjson
 from .inputs import (
     InputRecord,
     InputSet,
@@ -64,6 +65,7 @@ __all__ = [
     "DispatchId",
     "IncompatibleCoreError",
     "InputRecord",
+    "InputRecordDecodeError",
     "InputRecordKey",
     "InputSet",
     "InputSetIdentifier",
@@ -83,5 +85,6 @@ __all__ = [
     "canonical_digest",
     "canonical_json",
     "canonical_json_bytes",
+    "load_input_records_ndjson",
     "require_compatible_core",
 ]
