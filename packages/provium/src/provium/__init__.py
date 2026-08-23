@@ -26,6 +26,7 @@ from .artifact.inspection import (
     FinalizedArtifactInspection,
     inspect_finalized_artifact,
 )
+from .canonical import canonical_digest, canonical_json, canonical_json_bytes
 from .cli import CLI_PLUGIN_API_VERSION, CLI_PLUGIN_ENTRY_POINT_GROUP, CLIPlugin
 from .procedure import (
     CancellationToken,
@@ -134,6 +135,9 @@ __all__ = [
     "ProcedureSetupContext",
     "Session",
     "__version__",
+    "canonical_digest",
+    "canonical_json",
+    "canonical_json_bytes",
     "compose_configuration",
     "current_session",
     "decode_header",

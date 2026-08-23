@@ -32,6 +32,9 @@ PIPELINE_CORE_CONTRACTS = (
     PublicContract("provium", "ProcedureOutputResult"),
     PublicContract("provium", "FinalizedArtifactInspection"),
     PublicContract("provium", "inspect_finalized_artifact"),
+    PublicContract("provium", "canonical_json_bytes"),
+    PublicContract("provium", "canonical_json"),
+    PublicContract("provium", "canonical_digest"),
 )
 
 
