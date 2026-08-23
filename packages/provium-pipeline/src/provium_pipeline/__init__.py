@@ -3,6 +3,7 @@
 from importlib.metadata import version
 
 from .canonical import canonical_digest, canonical_json, canonical_json_bytes
+from .catalog import PipelineCatalog, PipelineCatalogError
 from .compatibility import (
     SUPPORTED_CORE_API_VERSION,
     IncompatibleCoreError,
@@ -29,6 +30,8 @@ __version__ = version("provium-pipeline")
 require_compatible_core()
 
 __all__ = [
+    "PipelineCatalog",
+    "PipelineCatalogError",
     "AttemptId",
     "ComputationKey",
     "DispatchId",

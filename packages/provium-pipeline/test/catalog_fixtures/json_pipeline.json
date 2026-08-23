@@ -1,0 +1,12 @@
+{
+  "schema": "provium.pipeline/v1",
+  "pipeline": {
+    "identifier": "json-pipeline",
+    "version": "1",
+    "label": null,
+    "description": null
+  },
+  "inputs": {},
+  "nodes": {},
+  "outputs": {}
+}
