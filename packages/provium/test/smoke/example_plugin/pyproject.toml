@@ -8,6 +8,9 @@ version = "1.0.0"
 requires-python = ">=3.12"
 dependencies = ["provium>=0.5.0"]
 
+[project.entry-points."provium.cli.command_catalogs"]
+example = "provium_example_plugin.catalogs:cli_plugin"
+
 [project.entry-points."provium.artifact_catalogs"]
 example = "provium_example_plugin.catalogs:artifact_catalog"
 

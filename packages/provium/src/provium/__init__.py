@@ -2,6 +2,8 @@
 
 from importlib.metadata import version
 
+__version__ = version("provium")
+
 from .artifact import (
     Artifact,
     ArtifactCatalog,
@@ -24,6 +26,7 @@ from .artifact.inspection import (
     FinalizedArtifactInspection,
     inspect_finalized_artifact,
 )
+from .cli import CLI_PLUGIN_API_VERSION, CLI_PLUGIN_ENTRY_POINT_GROUP, CLIPlugin
 from .procedure import (
     CancellationToken,
     ConfigurationSnapshot,
@@ -76,9 +79,10 @@ from .provenance import (
 from .session import Session, current_session, session
 from .tool.visualization import lineage_to_dot, lineage_to_mermaid, render_lineage
 
-__version__ = version("provium")
-
 __all__ = [
+    "CLI_PLUGIN_API_VERSION",
+    "CLI_PLUGIN_ENTRY_POINT_GROUP",
+    "CLIPlugin",
     "Artifact",
     "ArtifactCatalog",
     "ArtifactDefinition",
