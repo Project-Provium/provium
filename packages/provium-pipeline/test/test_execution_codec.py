@@ -22,6 +22,7 @@ from provium_pipeline.execution_codec import (
     pipeline_task_document,
     pipeline_task_from_json,
     pipeline_task_json,
+    run_input_snapshot_from_value,
     to_json_value,
 )
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
@@ -261,3 +262,89 @@ def test_pipeline_run_document_decoder_rejects_invalid_envelopes() -> None:
     for payload in ("not json", "[]", "null"):
         with pytest.raises(ExecutionDecodingError, match="JSON object"):
             pipeline_run_document_from_json(payload)
+
+
+def test_run_input_snapshot_value_round_trips_typed_models() -> None:
+    from datetime import UTC, datetime
+
+    from provium_pipeline.execution_store import InMemoryExecutionStore
+    from test.test_execution_store import request
+
+    run = InMemoryExecutionStore(
+        clock=lambda: datetime(2026, 8, 23, tzinfo=UTC)
+    ).create_run(request())
+    value = pipeline_run_document(run)["inputs"]
+
+    assert run_input_snapshot_from_value(value) == run.inputs
+
+
+def test_run_input_snapshot_decoder_rejects_malformed_nested_values() -> None:
+    valid: dict[str, JsonValue] = {
+        "records": [{"key": "record", "inputs": {}, "labels": {}}],
+        "shared_inputs": {},
+        "digest": "digest",
+        "sources": [],
+    }
+    assert run_input_snapshot_from_value(valid).digest == "digest"
+
+    with pytest.raises(ExecutionDecodingError, match="fields"):
+        run_input_snapshot_from_value({**valid, "unexpected": True})
+    with pytest.raises(ExecutionDecodingError, match="records"):
+        run_input_snapshot_from_value({**valid, "records": "invalid"})
+    with pytest.raises(ExecutionDecodingError, match="inputs"):
+        run_input_snapshot_from_value(
+            cast(
+                JsonValue,
+                {**valid, "records": [{"key": "record", "inputs": [], "labels": {}}]},
+            )
+        )
+    with pytest.raises(ExecutionDecodingError, match="shared_inputs"):
+        run_input_snapshot_from_value({**valid, "shared_inputs": {"model": [1]}})
+    with pytest.raises(ExecutionDecodingError, match="labels"):
+        run_input_snapshot_from_value(
+            cast(
+                JsonValue,
+                {**valid, "records": [{"key": "record", "inputs": {}, "labels": []}]},
+            )
+        )
+    with pytest.raises(ExecutionDecodingError, match="labels"):
+        run_input_snapshot_from_value(
+            cast(
+                object,
+                {
+                    **valid,
+                    "records": [{"key": "record", "inputs": {}, "labels": {1: "bad"}}],
+                },
+            )
+        )
+    with pytest.raises(ExecutionDecodingError, match="sources"):
+        run_input_snapshot_from_value({**valid, "sources": "invalid"})
+
+
+def test_run_input_snapshot_decoder_reconstructs_source_descriptors() -> None:
+    from provium_pipeline.inputs import InputSourceKind
+
+    kind = next(iter(InputSourceKind))
+    value: dict[str, JsonValue] = {
+        "records": [],
+        "shared_inputs": {},
+        "digest": "digest",
+        "sources": [
+            {
+                "kind": kind.value,
+                "identifier": "source",
+                "configuration": {"path": "inputs.ndjson"},
+                "result_digest": "result",
+            }
+        ],
+    }
+
+    snapshot = run_input_snapshot_from_value(value)
+
+    assert snapshot.sources[0].kind is kind
+    assert snapshot.sources[0].configuration == {"path": "inputs.ndjson"}
+
+    source = cast(dict[str, JsonValue], cast(list[JsonValue], value["sources"])[0])
+    source["kind"] = "invalid"
+    with pytest.raises(ExecutionDecodingError, match="source kind"):
+        run_input_snapshot_from_value(value)

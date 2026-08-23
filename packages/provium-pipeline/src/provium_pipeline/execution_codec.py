@@ -12,6 +12,12 @@ from typing import Any, cast
 from provium import JsonValue, canonical_json
 from provium_pipeline.compiler.models import CompiledBindingPlan, ConfigurationSnapshot
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
+from provium_pipeline.inputs import (
+    InputRecord,
+    InputSourceDescriptor,
+    InputSourceKind,
+    RunInputSnapshot,
+)
 from provium_pipeline.run_models import PipelineRun, PipelineTask
 
 
@@ -150,6 +156,100 @@ def _string_tuple(value: object, context: str) -> tuple[str, ...]:
     if not all(isinstance(item, str) for item in items):
         raise ExecutionDecodingError(f"{context} must be an array of strings")
     return tuple(cast(list[str], items))
+
+
+def _string_tuple_mapping(value: object, context: str) -> dict[str, tuple[str, ...]]:
+    if not isinstance(value, dict):
+        raise ExecutionDecodingError(f"{context} must be a JSON object")
+    mapping = cast(dict[object, object], value)
+    result: dict[str, tuple[str, ...]] = {}
+    for key, items in mapping.items():
+        result[_string(key, f"{context} key")] = _string_tuple(
+            items, f"{context}.{key}"
+        )
+    return result
+
+
+def _json_mapping(value: object, context: str) -> dict[str, JsonValue]:
+    if not isinstance(value, dict):
+        raise ExecutionDecodingError(f"{context} must be a JSON object")
+    mapping = cast(dict[object, object], value)
+    if not all(isinstance(key, str) for key in mapping):
+        raise ExecutionDecodingError(f"{context} must be a JSON object")
+    return cast(dict[str, JsonValue], mapping)
+
+
+def run_input_snapshot_from_value(value: object) -> RunInputSnapshot:
+    """Decode a durable input snapshot without resolving external resources."""
+    document = _strict_object(
+        value, {"records", "shared_inputs", "digest", "sources"}, "inputs"
+    )
+    records_value = document["records"]
+    sources_value = document["sources"]
+    if not isinstance(records_value, list):
+        raise ExecutionDecodingError("inputs.records must be an array")
+    if not isinstance(sources_value, list):
+        raise ExecutionDecodingError("inputs.sources must be an array")
+
+    records: list[InputRecord] = []
+    for index, item in enumerate(cast(list[object], records_value)):
+        record = _strict_object(
+            item, {"key", "inputs", "labels"}, f"inputs.records[{index}]"
+        )
+        records.append(
+            InputRecord(
+                key=InputRecordKey(
+                    _string(record["key"], f"inputs.records[{index}].key")
+                ),
+                inputs=_string_tuple_mapping(
+                    record["inputs"], f"inputs.records[{index}].inputs"
+                ),
+                labels=_json_mapping(
+                    record["labels"], f"inputs.records[{index}].labels"
+                ),
+            )
+        )
+
+    sources: list[InputSourceDescriptor] = []
+    for index, item in enumerate(cast(list[object], sources_value)):
+        source = _strict_object(
+            item,
+            {"kind", "identifier", "configuration", "result_digest"},
+            f"inputs.sources[{index}]",
+        )
+        try:
+            kind = InputSourceKind(
+                _string(source["kind"], f"inputs.sources[{index}].kind")
+            )
+        except ValueError as error:
+            raise ExecutionDecodingError(
+                f"invalid input source kind: {error}"
+            ) from error
+        sources.append(
+            InputSourceDescriptor(
+                kind=kind,
+                identifier=_string(
+                    source["identifier"], f"inputs.sources[{index}].identifier"
+                ),
+                configuration=_json_mapping(
+                    source["configuration"],
+                    f"inputs.sources[{index}].configuration",
+                ),
+                result_digest=_string(
+                    source["result_digest"],
+                    f"inputs.sources[{index}].result_digest",
+                ),
+            )
+        )
+
+    return RunInputSnapshot(
+        records=records,
+        shared_inputs=_string_tuple_mapping(
+            document["shared_inputs"], "inputs.shared_inputs"
+        ),
+        digest=_string(document["digest"], "inputs.digest"),
+        sources=sources,
+    )
 
 
 def _configuration_snapshot(value: object) -> ConfigurationSnapshot | None:
