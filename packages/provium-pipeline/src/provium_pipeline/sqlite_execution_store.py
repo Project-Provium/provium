@@ -8,11 +8,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from provium import canonical_json
 from provium_pipeline.execution_codec import (
+    pipeline_run_json,
     pipeline_task_from_json,
     pipeline_task_json,
-    to_json_value,
 )
 from provium_pipeline.identifiers import RunId, TaskId
 from provium_pipeline.run_models import PipelineRun, PipelineTask, TaskState
@@ -120,7 +119,7 @@ class SQLiteExecutionStore:
             try:
                 connection.execute(
                     "INSERT INTO runs(id, payload) VALUES (?, ?)",
-                    (str(run.identifier), canonical_json(to_json_value(run))),
+                    (str(run.identifier), pipeline_run_json(run)),
                 )
                 connection.executemany(
                     "INSERT INTO tasks(id, run_id, state, payload) VALUES (?, ?, ?, ?)",

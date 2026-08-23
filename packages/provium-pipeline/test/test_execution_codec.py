@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from types import MappingProxyType
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -15,6 +16,8 @@ from provium_pipeline.compiler.models import CompiledBindingPlan, ConfigurationS
 from provium_pipeline.execution_codec import (
     ExecutionDecodingError,
     ExecutionEncodingError,
+    pipeline_run_document,
+    pipeline_run_json,
     pipeline_task_document,
     pipeline_task_from_json,
     pipeline_task_json,
@@ -208,3 +211,26 @@ def test_pipeline_task_decoder_rejects_malformed_nested_values() -> None:
 def test_pipeline_task_decoder_requires_a_json_object(payload: str) -> None:
     with pytest.raises(ExecutionDecodingError, match="JSON object"):
         pipeline_task_from_json(payload)
+
+
+def test_pipeline_run_json_is_versioned_complete_and_canonical() -> None:
+    from datetime import UTC, datetime
+
+    from provium_pipeline.execution_store import InMemoryExecutionStore
+    from test.test_execution_store import request
+
+    store = InMemoryExecutionStore(clock=lambda: datetime(2026, 8, 23, tzinfo=UTC))
+    run = store.create_run(request())
+
+    document = pipeline_run_document(run)
+    encoded = pipeline_run_json(run)
+
+    pipeline = cast(dict[str, JsonValue], document["pipeline"])
+    inputs = cast(dict[str, JsonValue], document["inputs"])
+    assert document["schema"] == "provium.pipeline-run/v1"
+    assert document["identifier"] == str(run.identifier)
+    assert pipeline["definition_digest"] == run.pipeline.definition_digest
+    assert inputs["digest"] == run.inputs.digest
+    assert document["state"] == run.state.value
+    assert json.loads(encoded) == document
+    assert encoded == pipeline_run_json(run)

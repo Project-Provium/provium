@@ -12,7 +12,7 @@ from typing import Any, cast
 from provium import JsonValue, canonical_json
 from provium_pipeline.compiler.models import CompiledBindingPlan, ConfigurationSnapshot
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
-from provium_pipeline.run_models import PipelineTask
+from provium_pipeline.run_models import PipelineRun, PipelineTask
 
 
 class ExecutionEncodingError(TypeError):
@@ -54,6 +54,17 @@ def to_json_value(value: object) -> JsonValue:
     raise ExecutionEncodingError(
         f"unsupported execution JSON value: {type(value).__name__}"
     )
+
+
+def pipeline_run_document(run: PipelineRun) -> dict[str, JsonValue]:
+    """Return the complete versioned durable representation of a run."""
+    encoded = cast(dict[str, JsonValue], to_json_value(run))
+    return {"schema": "provium.pipeline-run/v1", **encoded}
+
+
+def pipeline_run_json(run: PipelineRun) -> str:
+    """Return canonical JSON text for a durable run snapshot."""
+    return canonical_json(pipeline_run_document(run))
 
 
 def pipeline_task_document(task: PipelineTask) -> dict[str, JsonValue]:
