@@ -1,6 +1,16 @@
+from dataclasses import replace
+
 import pytest
 
-from provium import ArtifactCatalog, ProcedureCatalog
+from provium import (
+    ArtifactCatalog,
+    ProcedureCatalog,
+    ProcedureContract,
+    ProcedureInputs,
+    ProcedureOutputs,
+    input,
+    output,
+)
 from provium_pipeline import PipelineNodeIdentifier, PipelineOutputName
 from provium_pipeline.compiler import (
     ArtifactCatalogCollection,
@@ -17,12 +27,31 @@ from provium_pipeline.definition import (
 from test.definition.test_builder import RESULT, SOURCE, TRANSFORM
 
 
+class PassthroughContract(ProcedureContract[None]):
+    class SetupInputs(ProcedureInputs):
+        model = input(SOURCE)
+
+    class Inputs(ProcedureInputs):
+        source = input(SOURCE)
+
+    class Outputs(ProcedureOutputs):
+        result = output(SOURCE)
+
+
+PASSTHROUGH = replace(
+    TRANSFORM,
+    identifier="example.PassthroughV1",
+    contract=PassthroughContract,
+)
+
+
 def compiler() -> PipelineCompiler:
     artifacts = ArtifactCatalog()
     artifacts.register(SOURCE)
     artifacts.register(RESULT)
     procedures = ProcedureCatalog()
     procedures.register(TRANSFORM)
+    procedures.register(PASSTHROUGH)
     return PipelineCompiler(
         artifact_catalogs=ArtifactCatalogCollection((artifacts,)),
         procedure_catalogs=ProcedureCatalogCollection((procedures,)),
@@ -126,15 +155,23 @@ def test_pipeline_identity_and_node_names_do_not_change_semantic_digest() -> Non
 
 def test_compiler_orders_dependencies_and_preserves_node_output_references() -> None:
     source = definition()
-    first = source.nodes["transform"]
+    first = source.nodes["transform"].model_copy(
+        update={"uses": PASSTHROUGH.identifier}
+    )
     second = first.model_copy(
         update={
+            "setup": {
+                "model": NodeOutputReference(
+                    node=PipelineNodeIdentifier("first"),
+                    output=PipelineOutputName("result"),
+                )
+            },
             "inputs": {
                 "source": NodeOutputReference(
                     node=PipelineNodeIdentifier("first"),
                     output=PipelineOutputName("result"),
                 )
-            }
+            },
         }
     )
     graph = source.model_copy(
@@ -159,7 +196,9 @@ def test_compiler_orders_dependencies_and_preserves_node_output_references() -> 
 
 def test_compiler_rejects_cycles() -> None:
     source = definition()
-    template = source.nodes["transform"]
+    template = source.nodes["transform"].model_copy(
+        update={"uses": PASSTHROUGH.identifier}
+    )
     first = template.model_copy(
         update={
             "inputs": {
@@ -180,7 +219,51 @@ def test_compiler_rejects_cycles() -> None:
             }
         }
     )
-    graph = source.model_copy(update={"nodes": {"first": first, "second": second}})
+    graph = source.model_copy(
+        update={
+            "nodes": {"first": first, "second": second},
+            "outputs": {
+                "result": NodeOutputReference(
+                    node=PipelineNodeIdentifier("first"),
+                    output=PipelineOutputName("result"),
+                )
+            },
+        }
+    )
 
     with pytest.raises(ValueError, match="pipeline graph contains a cycle"):
         compiler().compile(graph)
+
+
+def independent_definition(
+    transform_name: str, passthrough_name: str
+) -> PipelineDefinition:
+    source = definition()
+    transform = source.nodes["transform"]
+    passthrough = transform.model_copy(update={"uses": PASSTHROUGH.identifier})
+    return source.model_copy(
+        update={
+            "nodes": {
+                transform_name: transform,
+                passthrough_name: passthrough,
+            },
+            "outputs": {
+                "result": NodeOutputReference(
+                    node=PipelineNodeIdentifier(transform_name),
+                    output=PipelineOutputName("result"),
+                ),
+                "source": NodeOutputReference(
+                    node=PipelineNodeIdentifier(passthrough_name),
+                    output=PipelineOutputName("result"),
+                ),
+            },
+        }
+    )
+
+
+def test_independent_node_renames_do_not_change_semantic_digest() -> None:
+    first = compiler().compile(independent_definition("a-transform", "z-source"))
+    renamed = compiler().compile(independent_definition("z-transform", "a-source"))
+
+    assert first.definition_digest != renamed.definition_digest
+    assert first.semantic_digest == renamed.semantic_digest

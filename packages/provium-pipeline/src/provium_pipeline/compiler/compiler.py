@@ -12,12 +12,7 @@ from ..definition import (
     PipelineInputReference,
     canonical_definition_document,
 )
-from .catalogs import (
-    ArtifactCatalogCollection,
-    CatalogResolutionError,
-    ProcedureCatalogCollection,
-)
-from .diagnostics import PipelineCompilationDiagnostic, PipelineCompilationError
+from .catalogs import ArtifactCatalogCollection, ProcedureCatalogCollection
 from .models import (
     CompiledBindingPlan,
     CompiledOutputContract,
@@ -27,6 +22,7 @@ from .models import (
     CompiledPipelineOutput,
 )
 from .resolution import PipelineConfigurationLayer, resolve_pipeline_configuration
+from .validation import validate_pipeline_definition
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -50,7 +46,9 @@ class PipelineCompiler:
         *,
         configuration_layers: Sequence[PipelineConfigurationLayer] = (),
     ) -> CompiledPipeline:
-        _validate_procedures(definition, self.procedure_catalogs)
+        validate_pipeline_definition(
+            definition, self.artifact_catalogs, self.procedure_catalogs
+        )
         definition_document = canonical_definition_document(definition)
         definition_digest = canonical_digest(definition_document)
         resolved_configuration = resolve_pipeline_configuration(
@@ -123,6 +121,12 @@ class PipelineCompiler:
             )
             for name, reference in sorted(definition.outputs.items())
         )
+        semantic_nodes: list[JsonValue] = []
+        semantic_node_digests: dict[str, str] = {}
+        for node in nodes:
+            document = _semantic_node_document(node, semantic_node_digests)
+            semantic_nodes.append(document)
+            semantic_node_digests[node.identifier] = canonical_digest(document)
         semantic_document: dict[str, JsonValue] = {
             "inputs": [
                 {
@@ -133,10 +137,10 @@ class PipelineCompiler:
                 }
                 for item in inputs
             ],
-            "nodes": [_semantic_node_document(item, ordered_names) for item in nodes],
+            "nodes": sorted(semantic_nodes, key=canonical_digest),
             "outputs": [
                 {
-                    "node": ordered_names.index(item.node),
+                    "node": semantic_node_digests[item.node],
                     "field": item.field,
                     "artifact_identifier": item.artifact_identifier,
                     "contract_digest": item.contract_digest,
@@ -157,26 +161,6 @@ class PipelineCompiler:
         )
 
 
-def _validate_procedures(
-    definition: PipelineDefinition,
-    catalogs: ProcedureCatalogCollection,
-) -> None:
-    diagnostics: list[PipelineCompilationDiagnostic] = []
-    for name, node in sorted(definition.nodes.items()):
-        try:
-            catalogs.resolve(str(node.uses))
-        except CatalogResolutionError:
-            diagnostics.append(
-                PipelineCompilationDiagnostic(
-                    code="unknown-procedure",
-                    path=f"nodes.{name}.uses",
-                    message=f"procedure '{node.uses}' is not registered",
-                )
-            )
-    if diagnostics:
-        raise PipelineCompilationError(tuple(diagnostics))
-
-
 def _topological_order(definition: PipelineDefinition) -> tuple[str, ...]:
     remaining = set(definition.nodes)
     ordered: list[str] = []
@@ -186,8 +170,6 @@ def _topological_order(definition: PipelineDefinition) -> tuple[str, ...]:
             for name in remaining
             if _node_dependencies(definition.nodes[name]).issubset(ordered)
         )
-        if not ready:
-            raise ValueError("pipeline graph contains a cycle")
         ordered.extend(ready)
         remaining.difference_update(ready)
     return tuple(ordered)
@@ -275,13 +257,13 @@ def _output_contract_document(
 
 
 def _semantic_node_document(
-    node: CompiledPipelineNode, ordered_names: tuple[str, ...]
+    node: CompiledPipelineNode, node_digests: Mapping[str, str]
 ) -> dict[str, JsonValue]:
     def normalize(reference: str) -> str:
         if not reference.startswith("$nodes."):
             return reference
         _, name, _, field = reference.split(".", 3)
-        return f"$nodes.{ordered_names.index(name)}.outputs.{field}"
+        return f"$nodes.{node_digests[name]}.outputs.{field}"
 
     return {
         "procedure_identifier": node.procedure_identifier,
