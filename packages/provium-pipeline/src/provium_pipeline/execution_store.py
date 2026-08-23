@@ -5,14 +5,16 @@ from datetime import datetime
 from threading import RLock
 from typing import Protocol
 
-from .identifiers import RunId
+from .identifiers import RunId, TaskId
 from .run_models import (
     CreateRunRequest,
     PipelineRun,
     PipelineTask,
     RunPlan,
+    TaskState,
     plan_run,
 )
+from .task_transitions import transition_task as apply_task_transition
 
 
 class RunIdempotencyConflictError(ValueError):
@@ -29,6 +31,16 @@ class ExecutionStore(Protocol):
     def list_runs(self) -> tuple[PipelineRun, ...]: ...
 
     def list_tasks(self, run_identifier: RunId) -> tuple[PipelineTask, ...]: ...
+
+    def get_task(self, identifier: TaskId) -> PipelineTask: ...
+
+    def transition_task(
+        self,
+        identifier: TaskId,
+        *,
+        expected: TaskState,
+        target: TaskState,
+    ) -> PipelineTask: ...
 
 
 class _RunPlanner(Protocol):
@@ -87,6 +99,39 @@ class InMemoryExecutionStore:
     def list_tasks(self, run_identifier: RunId) -> tuple[PipelineTask, ...]:
         with self._lock:
             return self._tasks[run_identifier]
+
+    def get_task(self, identifier: TaskId) -> PipelineTask:
+        with self._lock:
+            _, _, task = self._locate_task(identifier)
+            return task
+
+    def transition_task(
+        self,
+        identifier: TaskId,
+        *,
+        expected: TaskState,
+        target: TaskState,
+    ) -> PipelineTask:
+        with self._lock:
+            run_identifier, index, task = self._locate_task(identifier)
+            transitioned = apply_task_transition(
+                task,
+                expected=expected,
+                target=target,
+            )
+            if transitioned is task:
+                return task
+            tasks = list(self._tasks[run_identifier])
+            tasks[index] = transitioned
+            self._tasks[run_identifier] = tuple(tasks)
+            return transitioned
+
+    def _locate_task(self, identifier: TaskId) -> tuple[RunId, int, PipelineTask]:
+        for run_identifier, tasks in self._tasks.items():
+            for index, task in enumerate(tasks):
+                if task.identifier == identifier:
+                    return run_identifier, index, task
+        raise KeyError(identifier)
 
     @staticmethod
     def _scoped_key(request: CreateRunRequest) -> tuple[str, str] | None:
