@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         ArtifactObjectMetadata,
         ManagedArtifactDescriptor,
         MaterializedArtifact,
+        OrphanQuery,
     )
 
 
@@ -146,6 +147,47 @@ class FilesystemArtifactStore:
             path=destination,
             cleanup=MaterializationCleanup.REQUIRED,
         )
+
+    def delete(self, location: ArtifactLocation) -> None:
+        from . import ArtifactStorePermissionError, ArtifactStoreTransientError
+
+        path = self._path_from_location(location)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return
+        except PermissionError as error:
+            raise ArtifactStorePermissionError(str(error)) from error
+        except OSError as error:
+            raise ArtifactStoreTransientError(str(error)) from error
+        if self._durable:
+            self._fsync_directory(path.parent)
+
+    def list_orphans(self, request: OrphanQuery) -> tuple[ArtifactLocation, ...]:
+        from . import ArtifactLocation, ArtifactLocationState
+
+        locations: list[ArtifactLocation] = []
+        for path in sorted((self._root / "objects").rglob("*.pa")):
+            if path.is_symlink() or not path.is_file():
+                continue
+            metadata = path.stat()
+            created_at = datetime.fromtimestamp(metadata.st_mtime, tz=UTC)
+            if (
+                request.created_before is not None
+                and created_at >= request.created_before
+            ):
+                continue
+            locations.append(
+                ArtifactLocation(
+                    store_identifier=self.identifier,
+                    locator={"path": path.relative_to(self._root).as_posix()},
+                    state=ArtifactLocationState.ACTIVE,
+                    size_bytes=metadata.st_size,
+                    created_at=created_at,
+                    verified_at=None,
+                )
+            )
+        return tuple(locations)
 
     def _copy_materialized(
         self,
