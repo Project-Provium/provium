@@ -155,11 +155,13 @@ def test_non_durable_publication_skips_durability_sync(
     assert location.size_bytes == managed.size_bytes
 
 
+@pytest.mark.parametrize("identity", ["../../escape", ""])
 def test_publish_rejects_identity_that_escapes_object_tree(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    identity: str,
 ) -> None:
-    managed = replace(descriptor(), identity="../../escape")
+    managed = replace(descriptor(), identity=identity)
     install_inspection(monkeypatch, managed)
     source = tmp_path / "source.pa"
     source.write_bytes(b"artifact-bytes")

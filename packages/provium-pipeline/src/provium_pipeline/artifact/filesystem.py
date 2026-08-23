@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import os
 import shutil
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,7 +14,12 @@ from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, BinaryIO, cast
 
 if TYPE_CHECKING:
-    from . import ArtifactLocation, ManagedArtifactDescriptor
+    from . import (
+        ArtifactLocation,
+        ArtifactObjectMetadata,
+        ManagedArtifactDescriptor,
+        MaterializedArtifact,
+    )
 
 
 def describe_finalized_artifact(path: Path) -> ManagedArtifactDescriptor:
@@ -58,6 +64,149 @@ class FilesystemArtifactStore:
                 return self._location(destination, descriptor)
             self._publish_new(source, destination, descriptor)
         return self._location(destination, descriptor)
+
+    def stat(self, location: ArtifactLocation) -> ArtifactObjectMetadata:
+        from . import ArtifactObjectMetadata, ArtifactStoreNotFoundError
+
+        path = self._path_from_location(location)
+        try:
+            metadata = path.stat()
+        except FileNotFoundError as error:
+            raise ArtifactStoreNotFoundError(
+                f"artifact object does not exist at {path}"
+            ) from error
+        return ArtifactObjectMetadata(
+            size_bytes=metadata.st_size,
+            modified_at=datetime.fromtimestamp(metadata.st_mtime, tz=UTC),
+        )
+
+    def materialize(
+        self,
+        *,
+        descriptor: ManagedArtifactDescriptor,
+        locations: Sequence[ArtifactLocation],
+        destination: Path,
+    ) -> MaterializedArtifact:
+        from . import (
+            ArtifactStoreNotFoundError,
+            MaterializationCleanup,
+            MaterializedArtifact,
+        )
+
+        location = next(
+            (
+                candidate
+                for candidate in locations
+                if candidate.store_identifier == self.identifier
+                and candidate.state.value == "active"
+            ),
+            None,
+        )
+        if location is None:
+            raise ArtifactStoreNotFoundError(
+                f"no active {self.identifier!r} location exists for "
+                f"artifact {descriptor.identity!r}"
+            )
+        source = self._path_from_location(location)
+        if not source.exists():
+            raise ArtifactStoreNotFoundError(
+                f"artifact object {descriptor.identity!r} does not exist"
+            )
+        self._verify_managed(source, descriptor)
+
+        resolved_destination = destination.resolve()
+        if resolved_destination == source:
+            return MaterializedArtifact(
+                descriptor=descriptor,
+                path=source,
+                cleanup=MaterializationCleanup.NOT_REQUIRED,
+            )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists():
+            self._verify_managed(destination, descriptor)
+        else:
+            try:
+                os.link(source, destination)
+            except FileExistsError:
+                self._verify_managed(destination, descriptor)
+            except PermissionError as error:
+                from . import ArtifactStorePermissionError
+
+                raise ArtifactStorePermissionError(str(error)) from error
+            except OSError as error:
+                if error.errno == errno.EXDEV:
+                    self._copy_materialized(source, destination, descriptor)
+                else:
+                    from . import ArtifactStoreTransientError
+
+                    raise ArtifactStoreTransientError(str(error)) from error
+        self._verify_managed(destination, descriptor)
+        return MaterializedArtifact(
+            descriptor=descriptor,
+            path=destination,
+            cleanup=MaterializationCleanup.REQUIRED,
+        )
+
+    def _copy_materialized(
+        self,
+        source: Path,
+        destination: Path,
+        descriptor: ManagedArtifactDescriptor,
+    ) -> None:
+        with NamedTemporaryFile(
+            mode="w+b",
+            dir=destination.parent,
+            prefix=f".{destination.name}-",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            try:
+                with source.open("rb") as source_stream:
+                    self._copy(source_stream, cast(BinaryIO, temporary))
+                self._verify_managed(temporary_path, descriptor)
+                try:
+                    os.link(temporary_path, destination)
+                except FileExistsError:
+                    self._verify_managed(destination, descriptor)
+            finally:
+                temporary_path.unlink(missing_ok=True)
+
+    def _path_from_location(self, location: ArtifactLocation) -> Path:
+        from . import InvalidArtifactLocatorError
+
+        locator = location.locator
+        if (
+            location.store_identifier != self.identifier
+            or not isinstance(locator, dict)
+        ):
+            raise InvalidArtifactLocatorError(
+                f"location is not valid for filesystem store {self.identifier!r}"
+            )
+        relative_path = locator.get("path")
+        if not isinstance(relative_path, str):
+            raise InvalidArtifactLocatorError(
+                "filesystem artifact locator requires a string 'path'"
+            )
+        objects_root = self._root / "objects"
+        candidate = (self._root / relative_path).resolve()
+        if not candidate.is_relative_to(objects_root):
+            raise InvalidArtifactLocatorError(
+                "filesystem artifact locator escapes the object root"
+            )
+        return candidate
+
+    def _verify_managed(
+        self,
+        path: Path,
+        descriptor: ManagedArtifactDescriptor,
+    ) -> None:
+        from . import ArtifactStoreCorruptionError
+
+        if describe_finalized_artifact(path) != descriptor:
+            raise ArtifactStoreCorruptionError(
+                f"artifact object {descriptor.identity!r} does not match its descriptor"
+            )
 
     def _object_path(self, identity: str) -> Path:
         from . import InvalidArtifactLocatorError
