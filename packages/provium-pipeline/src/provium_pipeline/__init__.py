@@ -53,6 +53,7 @@ from .inputs import (
     InputSourceKind,
     RunInputSnapshot,
 )
+from .run_models import TaskState, run_fingerprint
 
 require_compatible_core()
 
@@ -91,6 +92,7 @@ __all__ = [
     "RunInputSnapshot",
     "StoreIdentifier",
     "TaskId",
+    "TaskState",
     "SUPPORTED_CORE_API_VERSION",
     "__version__",
     "canonical_digest",
@@ -99,5 +101,6 @@ __all__ = [
     "load_input_records_ndjson",
     "require_compatible_core",
     "resolve_input_snapshot",
+    "run_fingerprint",
     "validate_input_snapshot",
 ]
