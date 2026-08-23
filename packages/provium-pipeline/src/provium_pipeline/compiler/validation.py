@@ -153,12 +153,13 @@ def _graph_diagnostics(
         }
         for name, node in definition.nodes.items()
     }
-    if _contains_cycle(dependencies):
+    cycle = _find_cycle(dependencies)
+    if cycle is not None:
         return [
             _diagnostic(
                 "cycle",
                 "nodes",
-                "pipeline graph contains a cycle",
+                f"pipeline graph contains a cycle: {' -> '.join(cycle)}",
             )
         ]
 
@@ -192,23 +193,35 @@ def _graph_diagnostics(
     ]
 
 
-def _contains_cycle(dependencies: dict[str, set[str]]) -> bool:
-    visiting: set[str] = set()
+def _find_cycle(
+    dependencies: dict[str, set[str]],
+) -> tuple[str, ...] | None:
+    path: list[str] = []
+    positions: dict[str, int] = {}
     visited: set[str] = set()
 
-    def visit(name: str) -> bool:
-        if name in visiting:
-            return True
+    def visit(name: str) -> tuple[str, ...] | None:
+        position = positions.get(name)
+        if position is not None:
+            return tuple((*path[position:], name))
         if name in visited:
-            return False
-        visiting.add(name)
-        if any(visit(dependency) for dependency in dependencies[name]):
-            return True
-        visiting.remove(name)
+            return None
+        positions[name] = len(path)
+        path.append(name)
+        for dependency in sorted(dependencies[name]):
+            cycle = visit(dependency)
+            if cycle is not None:
+                return cycle
+        path.pop()
+        del positions[name]
         visited.add(name)
-        return False
+        return None
 
-    return any(visit(name) for name in sorted(dependencies))
+    for name in sorted(dependencies):
+        cycle = visit(name)
+        if cycle is not None:
+            return cycle
+    return None
 
 
 def _node_references(node: PipelineNodeDefinition) -> tuple[BindingReference, ...]:

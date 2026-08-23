@@ -231,8 +231,10 @@ def test_compiler_rejects_cycles() -> None:
         }
     )
 
-    with pytest.raises(ValueError, match="pipeline graph contains a cycle"):
+    with pytest.raises(ValueError, match="pipeline graph contains a cycle") as caught:
         compiler().compile(graph)
+
+    assert "first -> second -> first" in str(caught.value)
 
 
 def independent_definition(
