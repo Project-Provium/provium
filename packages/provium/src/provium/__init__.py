@@ -20,6 +20,10 @@ from .artifact import (
     reset_artifact_discovery,
     stage_artifact,
 )
+from .artifact.inspection import (
+    FinalizedArtifactInspection,
+    inspect_finalized_artifact,
+)
 from .procedure import (
     CancellationToken,
     ConfigurationSnapshot,
@@ -45,6 +49,7 @@ from .procedure import (
     ProcedureOptionalInputField,
     ProcedureOptionalOutputField,
     ProcedureOutputField,
+    ProcedureOutputResult,
     ProcedureOutputs,
     ProcedureProcessContext,
     ProcedureRepeatedInputField,
@@ -78,6 +83,7 @@ __all__ = [
     "ArtifactCatalog",
     "ArtifactDefinition",
     "ArtifactHeader",
+    "FinalizedArtifactInspection",
     "ArtifactLineage",
     "ArtifactReadBinding",
     "ArtifactReader",
@@ -104,6 +110,7 @@ __all__ = [
     "ProcedureExecutionRecord",
     "ProcedureExecutionSession",
     "ProcedureExecutionResult",
+    "ProcedureOutputResult",
     "ProcedureExecutor",
     "ProcedureIOField",
     "ProcedureIOFieldMetadata",
@@ -126,6 +133,7 @@ __all__ = [
     "discover_procedure_catalogs",
     "encode_header",
     "input",
+    "inspect_finalized_artifact",
     "lineage_to_dot",
     "lineage_to_mermaid",
     "load_json_configuration",

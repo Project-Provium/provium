@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import struct
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from os import PathLike
 from pathlib import Path
 from typing import Any, Self, cast
@@ -16,12 +17,13 @@ CONTAINER_VERSION = 1
 _PREFIX = struct.Struct(">8sHQQQQ")
 PREFIX_SIZE = _PREFIX.size
 _UINT64_MAX = 2**64 - 1
-_METADATA_KEYS = {
+_LEGACY_METADATA_KEYS = {
     "artifact_identifier",
     "artifact_identity",
     "body_digest",
     "lineage",
 }
+_METADATA_KEYS = _LEGACY_METADATA_KEYS | {"created_at"}
 
 
 def _require_text(value: object, field_name: str) -> None:
@@ -39,13 +41,16 @@ def _require_uint64(value: object, field_name: str) -> None:
 
 
 def _metadata_bytes(header: ArtifactHeader) -> bytes:
+    metadata: dict[str, Any] = {
+        "artifact_identifier": header.artifact_identifier,
+        "artifact_identity": header.artifact_identity,
+        "body_digest": header.body_digest,
+        "lineage": header.lineage.to_dict(),
+    }
+    if header.created_at is not None:
+        metadata["created_at"] = header.created_at.isoformat().replace("+00:00", "Z")
     return json.dumps(
-        {
-            "artifact_identifier": header.artifact_identifier,
-            "artifact_identity": header.artifact_identity,
-            "body_digest": header.body_digest,
-            "lineage": header.lineage.to_dict(),
-        },
+        metadata,
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,
@@ -62,6 +67,7 @@ class ArtifactHeader:
     body_length: int
     body_digest: str
     lineage: ArtifactLineage
+    created_at: datetime | None = None
     metadata_offset: int = PREFIX_SIZE
     metadata_length: int = field(init=False)
 
@@ -74,9 +80,11 @@ class ArtifactHeader:
         body_length: int,
         body_digest: str,
         lineage: ArtifactLineage,
+        created_at: datetime | None = None,
         metadata_offset: int = PREFIX_SIZE,
     ) -> Self:
         """Create a header with its body directly after encoded metadata."""
+        created_at = created_at or datetime.now(UTC)
         sizing_header = cls(
             artifact_identifier=artifact_identifier,
             artifact_identity=artifact_identity,
@@ -84,6 +92,7 @@ class ArtifactHeader:
             body_length=body_length,
             body_digest=body_digest,
             lineage=lineage,
+            created_at=created_at,
             metadata_offset=metadata_offset,
         )
         return cls(
@@ -93,6 +102,7 @@ class ArtifactHeader:
             body_length=body_length,
             body_digest=body_digest,
             lineage=lineage,
+            created_at=created_at,
             metadata_offset=metadata_offset,
         )
 
@@ -104,6 +114,12 @@ class ArtifactHeader:
         _require_text(self.body_digest, "body_digest")
         if not isinstance(self.lineage, ArtifactLineage):
             raise TypeError("lineage must be an ArtifactLineage")
+        if self.created_at is not None:
+            if not isinstance(self.created_at, datetime):
+                raise TypeError("created_at must be a datetime or None")
+            if self.created_at.tzinfo is None or self.created_at.utcoffset() is None:
+                raise ValueError("created_at must be timezone-aware")
+            object.__setattr__(self, "created_at", self.created_at.astimezone(UTC))
         self._validate_lineage_record()
         _require_uint64(self.metadata_offset, "metadata_offset")
         if self.metadata_offset < PREFIX_SIZE:
@@ -153,8 +169,15 @@ def _decode_metadata(
     if not isinstance(decoded, dict):
         raise TypeError("invalid metadata shape")
     metadata = cast(dict[str, Any], decoded)
-    if set(metadata) != _METADATA_KEYS:
+    if set(metadata) not in (_LEGACY_METADATA_KEYS, _METADATA_KEYS):
         raise ValueError("invalid metadata shape")
+    created_at_value = metadata.get("created_at")
+    if created_at_value is None:
+        created_at = None
+    elif isinstance(created_at_value, str):
+        created_at = datetime.fromisoformat(created_at_value.replace("Z", "+00:00"))
+    else:
+        raise TypeError("created_at must be a string")
     return ArtifactHeader(
         artifact_identifier=metadata["artifact_identifier"],
         artifact_identity=metadata["artifact_identity"],
@@ -162,6 +185,7 @@ def _decode_metadata(
         body_length=body_length,
         body_digest=metadata["body_digest"],
         lineage=ArtifactLineage.from_dict(metadata["lineage"]),
+        created_at=created_at,
         metadata_offset=metadata_offset,
     )
 

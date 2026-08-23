@@ -213,7 +213,25 @@ class PreparedProcedure[
                 allow_binding_creation=False,
             ):
                 self._process(inputs, outputs, context)
-        return cast(ProcedureExecutionResult, execution.result)
+        from dataclasses import replace
+
+        from provium.artifact.inspection import inspect_finalized_artifact
+        from provium.procedure.result import ProcedureOutputResult
+
+        result = cast(ProcedureExecutionResult, execution.result)
+        output_results = {
+            name: ProcedureOutputResult(
+                path=binding.path.resolve(),
+                reference=result.outputs.get(name),
+                inspection=(
+                    inspect_finalized_artifact(binding.path)
+                    if name in result.outputs
+                    else None
+                ),
+            )
+            for name, binding in output_bindings.items()
+        }
+        return replace(result, output_results=output_results)
 
     def _execute_without_outputs(
         self,
