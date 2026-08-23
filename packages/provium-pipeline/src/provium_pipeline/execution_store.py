@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from datetime import datetime
+from threading import RLock
+from typing import Protocol
+
+from .identifiers import RunId
+from .run_models import (
+    CreateRunRequest,
+    PipelineRun,
+    PipelineTask,
+    RunPlan,
+    plan_run,
+)
+
+
+class RunIdempotencyConflictError(ValueError):
+    """A scoped idempotency key was reused for a different run request."""
+
+
+class ExecutionStore(Protocol):
+    """Atomic persistence boundary for pipeline execution state."""
+
+    def create_run(self, request: CreateRunRequest) -> PipelineRun: ...
+
+    def get_run(self, identifier: RunId) -> PipelineRun: ...
+
+    def list_runs(self) -> tuple[PipelineRun, ...]: ...
+
+    def list_tasks(self, run_identifier: RunId) -> tuple[PipelineTask, ...]: ...
+
+
+class _RunPlanner(Protocol):
+    def __call__(
+        self,
+        request: CreateRunRequest,
+        *,
+        now: datetime,
+    ) -> RunPlan: ...
+
+
+class InMemoryExecutionStore:
+    """Thread-safe deterministic reference execution-store adapter."""
+
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], datetime],
+        planner: _RunPlanner = plan_run,
+    ) -> None:
+        self._clock = clock
+        self._planner = planner
+        self._lock = RLock()
+        self._runs: dict[RunId, PipelineRun] = {}
+        self._tasks: dict[RunId, tuple[PipelineTask, ...]] = {}
+        self._idempotency: dict[tuple[str, str], RunId] = {}
+
+    def create_run(self, request: CreateRunRequest) -> PipelineRun:
+        with self._lock:
+            scoped_key = self._scoped_key(request)
+            if scoped_key is not None:
+                existing_id = self._idempotency.get(scoped_key)
+                if existing_id is not None:
+                    existing = self._runs[existing_id]
+                    if existing.request_digest != request.digest:
+                        namespace, key = scoped_key
+                        raise RunIdempotencyConflictError(
+                            f"idempotency key conflicts: {namespace}/{key}"
+                        )
+                    return existing
+            plan = self._planner(request, now=self._clock())
+            self._runs[plan.run.identifier] = plan.run
+            self._tasks[plan.run.identifier] = plan.tasks
+            if scoped_key is not None:
+                self._idempotency[scoped_key] = plan.run.identifier
+            return plan.run
+
+    def get_run(self, identifier: RunId) -> PipelineRun:
+        with self._lock:
+            return self._runs[identifier]
+
+    def list_runs(self) -> tuple[PipelineRun, ...]:
+        with self._lock:
+            return tuple(self._runs.values())
+
+    def list_tasks(self, run_identifier: RunId) -> tuple[PipelineTask, ...]:
+        with self._lock:
+            return self._tasks[run_identifier]
+
+    @staticmethod
+    def _scoped_key(request: CreateRunRequest) -> tuple[str, str] | None:
+        if request.idempotency_key is None:
+            return None
+        return (request.idempotency_namespace or "default", request.idempotency_key)
+
+
+__all__ = [
+    "ExecutionStore",
+    "InMemoryExecutionStore",
+    "RunIdempotencyConflictError",
+]

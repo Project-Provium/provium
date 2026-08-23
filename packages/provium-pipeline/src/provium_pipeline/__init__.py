@@ -38,6 +38,11 @@ from .identifiers import (
 
 __version__ = version("provium-pipeline")
 
+from .execution_store import (
+    ExecutionStore,
+    InMemoryExecutionStore,
+    RunIdempotencyConflictError,
+)
 from .input_codec import InputRecordDecodeError, load_input_records_ndjson
 from .input_resolver import (
     InputRecordResolver,
@@ -83,6 +88,8 @@ __all__ = [
     "ComputationKey",
     "DispatchId",
     "IncompatibleCoreError",
+    "ExecutionStore",
+    "InMemoryExecutionStore",
     "InputRecord",
     "InputRecordDecodeError",
     "InputRecordKey",
@@ -102,6 +109,7 @@ __all__ = [
     "PipelineTask",
     "ResolveInputRecordsRequest",
     "RunId",
+    "RunIdempotencyConflictError",
     "RunOutputExpectation",
     "RunPlan",
     "RunState",
