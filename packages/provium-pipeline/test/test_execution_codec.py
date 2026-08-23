@@ -25,6 +25,7 @@ from provium_pipeline.execution_codec import (
     pipeline_task_document,
     pipeline_task_from_json,
     pipeline_task_json,
+    resolved_pipeline_configuration_from_value,
     run_input_snapshot_from_value,
     to_json_value,
 )
@@ -452,4 +453,80 @@ def test_compiled_pipeline_node_decoder_rejects_malformed_values() -> None:
     with pytest.raises(ExecutionDecodingError, match="digest"):
         compiled_pipeline_nodes_from_value(
             [{**valid_node, "output_contracts": [{**valid_contract, "digest": 1}]}]
+        )
+
+
+def test_resolved_pipeline_configuration_round_trips_typed_models() -> None:
+    from datetime import UTC, datetime
+
+    from provium_pipeline.execution_store import InMemoryExecutionStore
+    from test.test_execution_store import request
+
+    run = InMemoryExecutionStore(
+        clock=lambda: datetime(2026, 8, 23, tzinfo=UTC)
+    ).create_run(request())
+    pipeline = cast(dict[str, JsonValue], pipeline_run_document(run)["pipeline"])
+
+    assert (
+        resolved_pipeline_configuration_from_value(pipeline["resolved_configuration"])
+        == run.pipeline.resolved_configuration
+    )
+
+
+def test_resolved_pipeline_configuration_decoder_rejects_malformed_values() -> None:
+    valid: dict[str, JsonValue] = {
+        "layers": [],
+        "nodes": [{"node": "transform", "source_layers": [], "snapshot": None}],
+        "document": {"schema": "provium.pipeline-config/v1", "nodes": {}},
+        "document_digest": "digest",
+    }
+
+    assert resolved_pipeline_configuration_from_value(valid).document_digest == "digest"
+    with pytest.raises(ExecutionDecodingError, match="layers"):
+        resolved_pipeline_configuration_from_value({**valid, "layers": {}})
+    with pytest.raises(ExecutionDecodingError, match="source_layers"):
+        resolved_pipeline_configuration_from_value(
+            {
+                **valid,
+                "nodes": [
+                    {"node": "transform", "source_layers": [1], "snapshot": None}
+                ],
+            }
+        )
+    with pytest.raises(ExecutionDecodingError, match="document"):
+        resolved_pipeline_configuration_from_value({**valid, "document": []})
+
+
+def test_resolved_pipeline_configuration_decoder_verifies_layer_audit() -> None:
+    from provium_pipeline.compiler.configuration import PipelineConfiguration
+    from provium_pipeline.compiler.resolution import PipelineConfigurationLayer
+
+    layer = PipelineConfigurationLayer(
+        source="override.json",
+        configuration=PipelineConfiguration(nodes={"transform": {"threshold": 2}}),
+    )
+    layer_value = cast(dict[str, JsonValue], to_json_value(layer))
+    value: dict[str, JsonValue] = {
+        "layers": [layer_value],
+        "nodes": [],
+        "document": {"schema": "provium.pipeline-config/v1", "nodes": {}},
+        "document_digest": "digest",
+    }
+
+    decoded = resolved_pipeline_configuration_from_value(value)
+
+    assert decoded.layers == (layer,)
+
+    invalid_configuration = {**layer_value, "configuration": {"unexpected": True}}
+    with pytest.raises(ExecutionDecodingError, match="configuration"):
+        resolved_pipeline_configuration_from_value(
+            {**value, "layers": [invalid_configuration]}
+        )
+    with pytest.raises(ExecutionDecodingError, match="document does not match"):
+        resolved_pipeline_configuration_from_value(
+            {**value, "layers": [{**layer_value, "document": {}}]}
+        )
+    with pytest.raises(ExecutionDecodingError, match="digest does not match"):
+        resolved_pipeline_configuration_from_value(
+            {**value, "layers": [{**layer_value, "digest": "wrong"}]}
         )

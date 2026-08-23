@@ -9,7 +9,10 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal, cast
 
+from pydantic import BaseModel
+
 from provium import JsonValue, canonical_json
+from provium_pipeline.compiler.configuration import PipelineConfiguration
 from provium_pipeline.compiler.models import (
     CompiledBindingPlan,
     CompiledOutputContract,
@@ -17,6 +20,11 @@ from provium_pipeline.compiler.models import (
     CompiledPipelineNode,
     CompiledPipelineOutput,
     ConfigurationSnapshot,
+)
+from provium_pipeline.compiler.resolution import (
+    PipelineConfigurationLayer,
+    ResolvedNodeConfiguration,
+    ResolvedPipelineConfiguration,
 )
 from provium_pipeline.definition.models import PipelineInputScope
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
@@ -48,6 +56,8 @@ def to_json_value(value: object) -> JsonValue:
         return f"{value.__module__}:{value.__qualname__}"
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
+    if isinstance(value, BaseModel):
+        return cast(JsonValue, value.model_dump(mode="json", by_alias=True))
     if is_dataclass(value) and not isinstance(value, type):
         runtime_value = cast(Any, value)
         return {
@@ -358,6 +368,78 @@ def _configuration_snapshot(value: object) -> ConfigurationSnapshot | None:
         value=cast(JsonValue, document["value"]),
         value_digest=_string(
             document["value_digest"], "configuration_snapshot.value_digest"
+        ),
+    )
+
+
+def resolved_pipeline_configuration_from_value(
+    value: object,
+) -> ResolvedPipelineConfiguration:
+    """Decode the resolved configuration audit stored with a compiled pipeline."""
+    document = _strict_object(
+        value,
+        {"layers", "nodes", "document", "document_digest"},
+        "pipeline.resolved_configuration",
+    )
+    layers: list[PipelineConfigurationLayer] = []
+    for index, item in enumerate(
+        _object_array(document["layers"], "pipeline.resolved_configuration.layers")
+    ):
+        context = f"pipeline.resolved_configuration.layers[{index}]"
+        layer_document = _strict_object(
+            item, {"source", "configuration", "document", "digest"}, context
+        )
+        configuration_value = _json_mapping(
+            layer_document["configuration"], f"{context}.configuration"
+        )
+        try:
+            configuration = PipelineConfiguration.model_validate(configuration_value)
+        except ValueError as error:
+            raise ExecutionDecodingError(
+                f"invalid {context}.configuration: {error}"
+            ) from error
+        layer = PipelineConfigurationLayer(
+            source=_string(layer_document["source"], f"{context}.source"),
+            configuration=configuration,
+        )
+        if (
+            _json_mapping(layer_document["document"], f"{context}.document")
+            != layer.document
+        ):
+            raise ExecutionDecodingError(
+                f"{context}.document does not match configuration"
+            )
+        if _string(layer_document["digest"], f"{context}.digest") != layer.digest:
+            raise ExecutionDecodingError(
+                f"{context}.digest does not match configuration"
+            )
+        layers.append(layer)
+
+    nodes: list[ResolvedNodeConfiguration] = []
+    for index, item in enumerate(
+        _object_array(document["nodes"], "pipeline.resolved_configuration.nodes")
+    ):
+        context = f"pipeline.resolved_configuration.nodes[{index}]"
+        node = _strict_object(item, {"node", "source_layers", "snapshot"}, context)
+        nodes.append(
+            ResolvedNodeConfiguration(
+                node=_string(node["node"], f"{context}.node"),
+                source_layers=_string_tuple(
+                    node["source_layers"], f"{context}.source_layers"
+                ),
+                snapshot=_configuration_snapshot(node["snapshot"]),
+            )
+        )
+
+    return ResolvedPipelineConfiguration(
+        layers=tuple(layers),
+        nodes=tuple(nodes),
+        document=_json_mapping(
+            document["document"], "pipeline.resolved_configuration.document"
+        ),
+        document_digest=_string(
+            document["document_digest"],
+            "pipeline.resolved_configuration.document_digest",
         ),
     )
 
