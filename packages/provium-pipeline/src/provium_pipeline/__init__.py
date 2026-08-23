@@ -53,11 +53,22 @@ from .inputs import (
     InputSourceKind,
     RunInputSnapshot,
 )
-from .run_models import TaskState, run_fingerprint
+from .run_models import (
+    CreateRunRequest,
+    PipelineRun,
+    PipelineTask,
+    RunOutputExpectation,
+    RunPlan,
+    RunState,
+    TaskState,
+    plan_run,
+    run_fingerprint,
+)
 
 require_compatible_core()
 
 __all__ = [
+    "CreateRunRequest",
     "ArtifactCatalogCollection",
     "CatalogResolutionError",
     "ProcedureCatalogCollection",
@@ -87,8 +98,13 @@ __all__ = [
     "PipelineNodeIdentifier",
     "PipelineOutputName",
     "PipelineVersion",
+    "PipelineRun",
+    "PipelineTask",
     "ResolveInputRecordsRequest",
     "RunId",
+    "RunOutputExpectation",
+    "RunPlan",
+    "RunState",
     "RunInputSnapshot",
     "StoreIdentifier",
     "TaskId",
@@ -101,6 +117,7 @@ __all__ = [
     "load_input_records_ndjson",
     "require_compatible_core",
     "resolve_input_snapshot",
+    "plan_run",
     "run_fingerprint",
     "validate_input_snapshot",
 ]
