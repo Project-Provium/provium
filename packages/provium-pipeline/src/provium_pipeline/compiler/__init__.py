@@ -5,12 +5,21 @@ from .catalogs import (
     CatalogResolutionError,
     ProcedureCatalogCollection,
 )
+from .compiler import PipelineCompiler
 from .configuration import (
     PipelineConfiguration,
     PipelineConfigurationLoadError,
     canonical_configuration_document,
     load_pipeline_configuration_json,
     load_pipeline_configuration_yaml,
+)
+from .models import (
+    CompiledBindingPlan,
+    CompiledOutputContract,
+    CompiledPipeline,
+    CompiledPipelineInput,
+    CompiledPipelineNode,
+    CompiledPipelineOutput,
 )
 from .resolution import (
     PipelineConfigurationLayer,
@@ -21,6 +30,13 @@ from .resolution import (
 )
 
 __all__ = [
+    "CompiledBindingPlan",
+    "CompiledOutputContract",
+    "CompiledPipeline",
+    "CompiledPipelineInput",
+    "CompiledPipelineNode",
+    "CompiledPipelineOutput",
+    "PipelineCompiler",
     "PipelineConfigurationLayer",
     "PipelineConfigurationResolutionError",
     "ResolvedNodeConfiguration",
