@@ -38,6 +38,8 @@ from .identifiers import (
 
 __version__ = version("provium-pipeline")
 
+from .inputs import InputRecord
+
 require_compatible_core()
 
 __all__ = [
@@ -55,6 +57,7 @@ __all__ = [
     "ComputationKey",
     "DispatchId",
     "IncompatibleCoreError",
+    "InputRecord",
     "InputRecordKey",
     "InputSetIdentifier",
     "PipelineIdentifier",
