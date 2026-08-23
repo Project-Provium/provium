@@ -45,6 +45,7 @@ from .input_resolver import (
     ResolveInputRecordsRequest,
     resolve_input_snapshot,
 )
+from .input_validation import InputValidationError, validate_input_snapshot
 from .inputs import (
     InputRecord,
     InputSet,
@@ -79,6 +80,7 @@ __all__ = [
     "InputSetIdentifier",
     "InputSourceDescriptor",
     "InputSourceKind",
+    "InputValidationError",
     "PipelineIdentifier",
     "PipelineInputName",
     "PipelineNodeIdentifier",
@@ -97,4 +99,5 @@ __all__ = [
     "load_input_records_ndjson",
     "require_compatible_core",
     "resolve_input_snapshot",
+    "validate_input_snapshot",
 ]
