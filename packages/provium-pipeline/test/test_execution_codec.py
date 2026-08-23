@@ -17,6 +17,7 @@ from provium_pipeline.execution_codec import (
     ExecutionDecodingError,
     ExecutionEncodingError,
     pipeline_run_document,
+    pipeline_run_document_from_json,
     pipeline_run_json,
     pipeline_task_document,
     pipeline_task_from_json,
@@ -234,3 +235,29 @@ def test_pipeline_run_json_is_versioned_complete_and_canonical() -> None:
     assert document["state"] == run.state.value
     assert json.loads(encoded) == document
     assert encoded == pipeline_run_json(run)
+    assert pipeline_run_document_from_json(encoded) == document
+
+
+def test_pipeline_run_document_decoder_rejects_invalid_envelopes() -> None:
+    from datetime import UTC, datetime
+
+    from provium_pipeline.execution_store import InMemoryExecutionStore
+    from test.test_execution_store import request
+
+    run = InMemoryExecutionStore(
+        clock=lambda: datetime(2026, 8, 23, tzinfo=UTC)
+    ).create_run(request())
+    document = pipeline_run_document(run)
+
+    document["schema"] = "provium.pipeline-run/v2"
+    with pytest.raises(ExecutionDecodingError, match="schema"):
+        pipeline_run_document_from_json(json.dumps(document))
+
+    document = pipeline_run_document(run)
+    document["unexpected"] = True
+    with pytest.raises(ExecutionDecodingError, match="fields"):
+        pipeline_run_document_from_json(json.dumps(document))
+
+    for payload in ("not json", "[]", "null"):
+        with pytest.raises(ExecutionDecodingError, match="JSON object"):
+            pipeline_run_document_from_json(payload)

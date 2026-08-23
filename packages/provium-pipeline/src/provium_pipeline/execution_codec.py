@@ -95,6 +95,35 @@ class ExecutionDecodingError(ValueError):
     """Raised when durable execution JSON does not match its declared schema."""
 
 
+def pipeline_run_document_from_json(payload: str) -> dict[str, JsonValue]:
+    """Parse and validate the versioned envelope of a durable run snapshot."""
+    try:
+        decoded = json.loads(payload)
+    except (json.JSONDecodeError, TypeError) as error:
+        raise ExecutionDecodingError("pipeline run must be a JSON object") from error
+    document = _strict_object(
+        decoded,
+        {
+            "schema",
+            "identifier",
+            "idempotency_namespace",
+            "idempotency_key",
+            "request_digest",
+            "pipeline",
+            "inputs",
+            "fingerprint",
+            "created_at",
+            "metadata",
+            "state",
+            "expected_outputs",
+        },
+        "pipeline run",
+    )
+    if document["schema"] != "provium.pipeline-run/v1":
+        raise ExecutionDecodingError("unsupported pipeline run schema")
+    return cast(dict[str, JsonValue], document)
+
+
 def _strict_object(value: object, fields: set[str], context: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ExecutionDecodingError(f"{context} must be a JSON object")
