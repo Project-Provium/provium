@@ -35,6 +35,13 @@ PIPELINE_CORE_CONTRACTS = (
 )
 
 
+def test_core_api_version_is_public() -> None:
+    provium = importlib.import_module("provium")
+
+    assert provium.PROVIUM_CORE_API_VERSION == 1
+    assert isinstance(provium.PROVIUM_CORE_API_VERSION, int)
+
+
 @pytest.mark.parametrize("contract", PIPELINE_CORE_CONTRACTS)
 def test_pipeline_core_contract_is_public_and_inspectable(
     contract: PublicContract,

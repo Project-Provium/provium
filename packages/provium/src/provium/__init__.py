@@ -79,7 +79,11 @@ from .provenance import (
 from .session import Session, current_session, session
 from .tool.visualization import lineage_to_dot, lineage_to_mermaid, render_lineage
 
+# Compatibility version for Provium's public core integration contracts.
+PROVIUM_CORE_API_VERSION = 1
+
 __all__ = [
+    "PROVIUM_CORE_API_VERSION",
     "CLI_PLUGIN_API_VERSION",
     "CLI_PLUGIN_ENTRY_POINT_GROUP",
     "CLIPlugin",
