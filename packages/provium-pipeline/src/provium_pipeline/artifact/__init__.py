@@ -20,6 +20,7 @@ from .index import (
     InMemoryArtifactIndex,
 )
 from .service import ArtifactImportService
+from .sqlite_index import SQLiteArtifactIndex
 
 type JsonScalar = None | bool | int | float | str
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -195,6 +196,7 @@ __all__ = [
     "MaterializationCleanup",
     "MaterializedArtifact",
     "OrphanQuery",
+    "SQLiteArtifactIndex",
     "StagedArtifactFile",
     "describe_finalized_artifact",
 ]
