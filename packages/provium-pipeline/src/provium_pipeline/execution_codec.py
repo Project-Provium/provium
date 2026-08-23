@@ -10,7 +10,13 @@ from enum import Enum
 from typing import Any, cast
 
 from provium import JsonValue, canonical_json
-from provium_pipeline.compiler.models import CompiledBindingPlan, ConfigurationSnapshot
+from provium_pipeline.compiler.models import (
+    CompiledBindingPlan,
+    CompiledPipelineInput,
+    CompiledPipelineOutput,
+    ConfigurationSnapshot,
+)
+from provium_pipeline.definition.models import PipelineInputScope
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
 from provium_pipeline.inputs import (
     InputRecord,
@@ -177,6 +183,85 @@ def _json_mapping(value: object, context: str) -> dict[str, JsonValue]:
     if not all(isinstance(key, str) for key in mapping):
         raise ExecutionDecodingError(f"{context} must be a JSON object")
     return cast(dict[str, JsonValue], mapping)
+
+
+def _object_array(value: object, context: str) -> list[object]:
+    if not isinstance(value, list):
+        raise ExecutionDecodingError(f"{context} must be an array")
+    return cast(list[object], value)
+
+
+def _integer(value: object, context: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ExecutionDecodingError(f"{context} must be an integer")
+    return value
+
+
+def _optional_integer(value: object, context: str) -> int | None:
+    if value is None:
+        return None
+    return _integer(value, context)
+
+
+def compiled_pipeline_inputs_from_value(
+    value: object,
+) -> tuple[CompiledPipelineInput, ...]:
+    """Decode the pipeline input portion of a compiled run snapshot."""
+    result: list[CompiledPipelineInput] = []
+    fields = {"name", "artifact_identifier", "scope", "minimum", "maximum"}
+    for index, item in enumerate(_object_array(value, "pipeline.inputs")):
+        document = _strict_object(item, fields, f"pipeline.inputs[{index}]")
+        try:
+            scope = PipelineInputScope(
+                _string(document["scope"], f"pipeline.inputs[{index}].scope")
+            )
+        except ValueError as error:
+            raise ExecutionDecodingError(
+                f"invalid pipeline input scope: {error}"
+            ) from error
+        result.append(
+            CompiledPipelineInput(
+                name=_string(document["name"], f"pipeline.inputs[{index}].name"),
+                artifact_identifier=_string(
+                    document["artifact_identifier"],
+                    f"pipeline.inputs[{index}].artifact_identifier",
+                ),
+                scope=scope,
+                minimum=_integer(
+                    document["minimum"], f"pipeline.inputs[{index}].minimum"
+                ),
+                maximum=_optional_integer(
+                    document["maximum"], f"pipeline.inputs[{index}].maximum"
+                ),
+            )
+        )
+    return tuple(result)
+
+
+def compiled_pipeline_outputs_from_value(
+    value: object,
+) -> tuple[CompiledPipelineOutput, ...]:
+    """Decode the pipeline output portion of a compiled run snapshot."""
+    result: list[CompiledPipelineOutput] = []
+    fields = {"name", "node", "field", "artifact_identifier", "contract_digest"}
+    for index, item in enumerate(_object_array(value, "pipeline.outputs")):
+        document = _strict_object(item, fields, f"pipeline.outputs[{index}]")
+        result.append(
+            CompiledPipelineOutput(
+                name=_string(document["name"], f"pipeline.outputs[{index}].name"),
+                node=_string(document["node"], f"pipeline.outputs[{index}].node"),
+                field=_string(document["field"], f"pipeline.outputs[{index}].field"),
+                artifact_identifier=_string(
+                    document["artifact_identifier"],
+                    f"pipeline.outputs[{index}].artifact_identifier",
+                ),
+                contract_digest=_string(
+                    document["contract_digest"],
+                    f"pipeline.outputs[{index}].contract_digest",
+                ),
+            )
+        )
+    return tuple(result)
 
 
 def run_input_snapshot_from_value(value: object) -> RunInputSnapshot:

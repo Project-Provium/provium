@@ -16,6 +16,8 @@ from provium_pipeline.compiler.models import CompiledBindingPlan, ConfigurationS
 from provium_pipeline.execution_codec import (
     ExecutionDecodingError,
     ExecutionEncodingError,
+    compiled_pipeline_inputs_from_value,
+    compiled_pipeline_outputs_from_value,
     pipeline_run_document,
     pipeline_run_document_from_json,
     pipeline_run_json,
@@ -348,3 +350,55 @@ def test_run_input_snapshot_decoder_reconstructs_source_descriptors() -> None:
     source["kind"] = "invalid"
     with pytest.raises(ExecutionDecodingError, match="source kind"):
         run_input_snapshot_from_value(value)
+
+
+def test_compiled_pipeline_inputs_and_outputs_round_trip_typed_models() -> None:
+    from datetime import UTC, datetime
+
+    from provium_pipeline.execution_store import InMemoryExecutionStore
+    from test.test_execution_store import request
+
+    run = InMemoryExecutionStore(
+        clock=lambda: datetime(2026, 8, 23, tzinfo=UTC)
+    ).create_run(request())
+    pipeline = cast(dict[str, JsonValue], pipeline_run_document(run)["pipeline"])
+
+    assert (
+        compiled_pipeline_inputs_from_value(pipeline["inputs"]) == run.pipeline.inputs
+    )
+    assert (
+        compiled_pipeline_outputs_from_value(pipeline["outputs"])
+        == run.pipeline.outputs
+    )
+
+
+def test_compiled_pipeline_input_and_output_decoders_reject_malformed_values() -> None:
+    valid_input: dict[str, JsonValue] = {
+        "name": "source",
+        "artifact_identifier": "example.SourceV1",
+        "scope": "record",
+        "minimum": 1,
+        "maximum": None,
+    }
+    assert compiled_pipeline_inputs_from_value([valid_input])[0].maximum is None
+
+    valid_output: dict[str, JsonValue] = {
+        "name": "result",
+        "node": "transform",
+        "field": "result",
+        "artifact_identifier": "example.ResultV1",
+        "contract_digest": "digest",
+    }
+
+    with pytest.raises(ExecutionDecodingError, match="array"):
+        compiled_pipeline_inputs_from_value({})
+    with pytest.raises(ExecutionDecodingError, match="scope"):
+        compiled_pipeline_inputs_from_value([{**valid_input, "scope": "invalid"}])
+    with pytest.raises(ExecutionDecodingError, match="minimum"):
+        compiled_pipeline_inputs_from_value([{**valid_input, "minimum": True}])
+    with pytest.raises(ExecutionDecodingError, match="maximum"):
+        compiled_pipeline_inputs_from_value([{**valid_input, "maximum": False}])
+    with pytest.raises(ExecutionDecodingError, match="fields"):
+        compiled_pipeline_outputs_from_value([{**valid_output, "unexpected": True}])
+    with pytest.raises(ExecutionDecodingError, match="contract_digest"):
+        compiled_pipeline_outputs_from_value([{**valid_output, "contract_digest": 1}])
