@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from multiprocessing import get_context
 from pathlib import Path
@@ -79,6 +80,73 @@ def test_sqlite_attempt_leases_validate_and_fence_active_claims(
             ttl=timedelta(seconds=10),
         )
     assert manager.recover_expired(_NOW + timedelta(seconds=9)) == ()
+
+
+def test_sqlite_attempt_leases_renew_release_and_fence_tokens(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "execution.sqlite3"
+    store = SQLiteExecutionStore(database, clock=lambda: _NOW)
+    run = store.create_run(request(key=None))
+    task = store.list_tasks(run.identifier)[0]
+    manager = SQLiteAttemptLeaseManager(database)
+    manager.claim(
+        task.identifier,
+        state=TaskState.READY,
+        worker_identity="worker",
+        token="owner",
+        now=_NOW,
+        ttl=timedelta(seconds=10),
+    )
+
+    with pytest.raises(LeaseConflictError, match="token"):
+        manager.renew(
+            task.identifier,
+            token="wrong",
+            now=_NOW,
+            ttl=timedelta(seconds=10),
+        )
+    with pytest.raises(LeaseConflictError, match="token"):
+        manager.release(task.identifier, token="wrong", ended_at=_NOW)
+    with pytest.raises(ValueError, match="ttl"):
+        manager.renew(
+            task.identifier,
+            token="owner",
+            now=_NOW,
+            ttl=timedelta(0),
+        )
+
+    renewed = manager.renew(
+        task.identifier,
+        token="owner",
+        now=_NOW + timedelta(seconds=5),
+        ttl=timedelta(seconds=10),
+    )
+    released = manager.release(
+        task.identifier,
+        token="owner",
+        ended_at=_NOW + timedelta(seconds=6),
+    )
+    second = manager.claim(
+        task.identifier,
+        state=TaskState.RETRY_WAIT,
+        worker_identity="worker",
+        token="second",
+        now=_NOW + timedelta(seconds=6),
+        ttl=timedelta(seconds=1),
+    )
+
+    assert renewed.heartbeat_at == _NOW + timedelta(seconds=5)
+    assert renewed.expires_at == _NOW + timedelta(seconds=15)
+    assert released == replace(renewed, ended_at=_NOW + timedelta(seconds=6))
+    assert second.attempt_number == 2
+    with pytest.raises(LeaseConflictError, match="expired"):
+        manager.renew(
+            task.identifier,
+            token="second",
+            now=_NOW + timedelta(seconds=8),
+            ttl=timedelta(seconds=1),
+        )
 
 
 def test_sqlite_attempt_recovery_rolls_back_malformed_payload(

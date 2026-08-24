@@ -6,6 +6,7 @@ import json
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,82 @@ class SQLiteAttemptLeaseManager:
                 connection.rollback()
                 raise
         return lease
+
+    def renew(
+        self,
+        task: TaskId,
+        *,
+        token: str,
+        now: datetime,
+        ttl: timedelta,
+    ) -> TaskAttemptLease:
+        """Extend an unexpired lease held by the matching fence token."""
+        if ttl <= timedelta(0):
+            raise ValueError("lease ttl must be positive")
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                identifier, lease = self._require_token(connection, task, token)
+                renewed = self._renewed_lease(lease, now, ttl)
+                connection.execute(
+                    "UPDATE attempts SET lease_expires_at = ?, payload = ? "
+                    "WHERE id = ?",
+                    (renewed.expires_at.isoformat(), _lease_json(renewed), identifier),
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+        return renewed
+
+    def release(
+        self,
+        task: TaskId,
+        *,
+        token: str,
+        ended_at: datetime,
+    ) -> TaskAttemptLease:
+        """End the durable lease held by the matching fence token."""
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                identifier, lease = self._require_token(connection, task, token)
+                released = replace(lease, ended_at=ended_at)
+                connection.execute(
+                    "UPDATE attempts SET lease_token = NULL, "
+                    "lease_expires_at = NULL, payload = ? WHERE id = ?",
+                    (_lease_json(released), identifier),
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+        return released
+
+    @staticmethod
+    def _renewed_lease(
+        lease: TaskAttemptLease,
+        now: datetime,
+        ttl: timedelta,
+    ) -> TaskAttemptLease:
+        if lease.expires_at <= now:
+            raise LeaseConflictError("lease has expired")
+        return replace(lease, heartbeat_at=now, expires_at=now + ttl)
+
+    @staticmethod
+    def _require_token(
+        connection: sqlite3.Connection,
+        task: TaskId,
+        token: str,
+    ) -> tuple[str, TaskAttemptLease]:
+        row = connection.execute(
+            "SELECT id, lease_token, payload FROM attempts "
+            "WHERE task_id = ? AND lease_token IS NOT NULL",
+            (str(task),),
+        ).fetchone()
+        if row is None or str(row[1]) != token:
+            raise LeaseConflictError("lease token does not own task")
+        return str(row[0]), _lease_from_json(str(row[2]))
 
     @staticmethod
     def _require_available(connection: sqlite3.Connection, task: TaskId) -> None:
