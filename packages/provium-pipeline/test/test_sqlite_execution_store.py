@@ -90,6 +90,27 @@ def test_sqlite_store_requires_positive_busy_timeout(
         )
 
 
+def test_sqlite_store_creates_run_and_task_graph_atomically(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    from test.test_execution_store import request
+
+    store = SQLiteExecutionStore(
+        tmp_path / "execution.sqlite3",
+        clock=lambda: datetime(2026, 8, 23, tzinfo=UTC),
+    )
+
+    run = store.create_run(request(key=None))
+
+    assert store.get_run(run.identifier) == run
+    assert store.list_runs() == (run,)
+    assert store.list_tasks(run.identifier)
+    assert all(
+        task.run_identifier == run.identifier
+        for task in store.list_tasks(run.identifier)
+    )
+
+
 def test_sqlite_store_persists_and_reopens_run_tasks_atomically(
     tmp_path: Path,
 ) -> None:

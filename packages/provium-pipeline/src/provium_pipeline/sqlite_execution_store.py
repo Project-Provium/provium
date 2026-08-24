@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 
 from provium_pipeline.execution_codec import (
     pipeline_run_from_json,
@@ -15,7 +17,14 @@ from provium_pipeline.execution_codec import (
     pipeline_task_json,
 )
 from provium_pipeline.identifiers import RunId, TaskId
-from provium_pipeline.run_models import PipelineRun, PipelineTask, TaskState
+from provium_pipeline.run_models import (
+    CreateRunRequest,
+    PipelineRun,
+    PipelineTask,
+    RunPlan,
+    TaskState,
+    plan_run,
+)
 from provium_pipeline.task_transitions import transition_task as apply_task_transition
 
 SCHEMA_VERSION = 1
@@ -30,6 +39,15 @@ def _require_supported_schema(version: int) -> None:
         raise UnsupportedSchemaVersionError(
             "database schema is newer than this package"
         )
+
+
+class _RunPlanner(Protocol):
+    def __call__(
+        self,
+        request: CreateRunRequest,
+        *,
+        now: datetime,
+    ) -> RunPlan: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,11 +100,15 @@ class SQLiteExecutionStore:
         database: Path,
         *,
         busy_timeout_ms: int = 5_000,
+        clock: Callable[[], datetime] | None = None,
+        planner: _RunPlanner = plan_run,
     ) -> None:
         if busy_timeout_ms <= 0:
             raise ValueError("busy_timeout_ms must be positive")
         self._database = database
         self._busy_timeout_ms = busy_timeout_ms
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._planner = planner
         database.parent.mkdir(parents=True, exist_ok=True)
         self._migrate()
 
@@ -106,6 +128,12 @@ class SQLiteExecutionStore:
             journal_mode = str(connection.execute("PRAGMA journal_mode").fetchone()[0])
             timeout = int(connection.execute("PRAGMA busy_timeout").fetchone()[0])
         return SQLiteDatabaseSettings(foreign_keys, journal_mode, timeout)
+
+    def create_run(self, request: CreateRunRequest) -> PipelineRun:
+        """Plan and atomically persist a run with its complete task graph."""
+        plan = self._planner(request, now=self._clock())
+        self.persist_run(plan.run, plan.tasks)
+        return plan.run
 
     def persist_run(
         self,
