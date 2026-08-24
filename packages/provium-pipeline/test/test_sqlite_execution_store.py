@@ -93,6 +93,43 @@ def test_sqlite_store_backfills_legacy_migration_fixture_checksum(
     assert len(checksum) == 64
 
 
+def test_sqlite_store_rolls_back_partial_migration_and_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import provium_pipeline.sqlite_execution_store as sqlite_store_module
+
+    database = tmp_path / "partial-migration.db"
+    valid_statements = getattr(sqlite_store_module, "_SCHEMA_STATEMENTS")
+    monkeypatch.setattr(
+        sqlite_store_module,
+        "_SCHEMA_STATEMENTS",
+        (
+            valid_statements[0],
+            "CREATE TABLE partial_side_effect(value TEXT)",
+            "INVALID SQL",
+        ),
+    )
+
+    with pytest.raises(sqlite3.OperationalError):
+        SQLiteExecutionStore(database)
+
+    with sqlite3.connect(database) as connection:
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    assert "partial_side_effect" not in tables
+    assert "schema_migrations" not in tables
+
+    monkeypatch.setattr(sqlite_store_module, "_SCHEMA_STATEMENTS", valid_statements)
+    store = SQLiteExecutionStore(database)
+
+    assert store.schema_version == 1
+
+
 def test_sqlite_store_rejects_migration_checksum_mismatch(tmp_path: Path) -> None:
     database = tmp_path / "execution.sqlite3"
     SQLiteExecutionStore(database)
