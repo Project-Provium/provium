@@ -106,6 +106,8 @@ def test_sqlite_store_persists_and_reopens_run_tasks_atomically(
     SQLiteExecutionStore(database).persist_run(run, tasks)
     reopened = SQLiteExecutionStore(database)
 
+    assert reopened.get_run(run.identifier) == run
+    assert reopened.list_runs() == (run,)
     assert reopened.list_tasks(run.identifier) == tasks
     assert reopened.get_task(tasks[0].identifier) == tasks[0]
 
@@ -163,6 +165,20 @@ def test_sqlite_store_rejects_mismatched_tasks_and_rolls_back_failures(
     with pytest.raises(sqlite3.IntegrityError):
         store.persist_run(run, tasks)
     assert store.list_tasks(run.identifier) == tasks
+
+
+def test_sqlite_store_reports_unknown_runs_and_lists_empty_database(
+    tmp_path: Path,
+) -> None:
+    from uuid import uuid4
+
+    from provium_pipeline.identifiers import RunId
+
+    store = SQLiteExecutionStore(tmp_path / "execution.sqlite3")
+
+    assert store.list_runs() == ()
+    with pytest.raises(KeyError, match="unknown run identifier"):
+        store.get_run(RunId(uuid4()))
 
 
 def test_sqlite_store_rejects_unknown_task_operations(tmp_path: Path) -> None:

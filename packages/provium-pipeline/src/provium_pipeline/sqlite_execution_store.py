@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from provium_pipeline.execution_codec import (
+    pipeline_run_from_json,
     pipeline_run_json,
     pipeline_task_from_json,
     pipeline_task_json,
@@ -146,6 +147,22 @@ class SQLiteExecutionStore:
             except BaseException:
                 connection.rollback()
                 raise
+
+    def get_run(self, identifier: RunId) -> PipelineRun:
+        """Load one durable run snapshot."""
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT payload FROM runs WHERE id = ?", (str(identifier),)
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"unknown run identifier: {identifier}")
+        return pipeline_run_from_json(str(row[0]))
+
+    def list_runs(self) -> tuple[PipelineRun, ...]:
+        """Load durable runs in stable identifier order."""
+        with self._connection() as connection:
+            rows = connection.execute("SELECT payload FROM runs ORDER BY id").fetchall()
+        return tuple(pipeline_run_from_json(str(row[0])) for row in rows)
 
     def get_task(self, identifier: TaskId) -> PipelineTask:
         """Load one durable task snapshot."""
