@@ -26,6 +26,7 @@ from provium_pipeline.execution_codec import (
     compiled_pipeline_outputs_from_value,
     pipeline_run_document,
     pipeline_run_document_from_json,
+    pipeline_run_from_json,
     pipeline_run_json,
     pipeline_task_document,
     pipeline_task_from_json,
@@ -35,8 +36,10 @@ from provium_pipeline.execution_codec import (
     to_json_value,
 )
 from provium_pipeline.execution_codec import to_json_value as _to_json_value
+from provium_pipeline.execution_store import InMemoryExecutionStore
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
 from provium_pipeline.run_models import PipelineTask, TaskState
+from test.test_execution_store import request as _execution_request
 
 
 @dataclass(frozen=True)
@@ -272,6 +275,58 @@ def test_pipeline_run_document_decoder_rejects_invalid_envelopes() -> None:
     for payload in ("not json", "[]", "null"):
         with pytest.raises(ExecutionDecodingError, match="JSON object"):
             pipeline_run_document_from_json(payload)
+
+
+def test_pipeline_run_json_round_trips_typed_model() -> None:
+    run = InMemoryExecutionStore(
+        clock=lambda: datetime(2026, 8, 23, tzinfo=UTC)
+    ).create_run(_execution_request())
+
+    assert pipeline_run_from_json(pipeline_run_json(run)) == run
+
+
+def test_pipeline_run_decoder_rejects_malformed_typed_fields() -> None:
+    run = InMemoryExecutionStore(
+        clock=lambda: datetime(2026, 8, 23, tzinfo=UTC)
+    ).create_run(_execution_request())
+    document = pipeline_run_document(run)
+    expected_outputs = cast(list[dict[str, JsonValue]], document["expected_outputs"])
+
+    with pytest.raises(ExecutionDecodingError, match="pipeline run identifier"):
+        pipeline_run_from_json(json.dumps({**document, "identifier": 1}))
+    with pytest.raises(ExecutionDecodingError, match="pipeline run identifier"):
+        pipeline_run_from_json(json.dumps({**document, "identifier": "not-a-uuid"}))
+    with pytest.raises(ExecutionDecodingError, match="pipeline run created at"):
+        pipeline_run_from_json(json.dumps({**document, "created_at": "not-a-date"}))
+    with pytest.raises(ExecutionDecodingError, match="pipeline run state"):
+        pipeline_run_from_json(json.dumps({**document, "state": "unknown"}))
+    decoded = pipeline_run_from_json(
+        json.dumps({**document, "idempotency_namespace": None})
+    )
+    assert decoded.idempotency_namespace is None
+
+    decoded = pipeline_run_from_json(
+        json.dumps({**document, "idempotency_namespace": "namespace"})
+    )
+    assert decoded.idempotency_namespace == "namespace"
+
+    with pytest.raises(
+        ExecutionDecodingError, match="pipeline run idempotency namespace"
+    ):
+        pipeline_run_from_json(json.dumps({**document, "idempotency_namespace": 1}))
+    with pytest.raises(ExecutionDecodingError, match="pipeline run metadata"):
+        pipeline_run_from_json(json.dumps({**document, "metadata": []}))
+    with pytest.raises(
+        ExecutionDecodingError, match="pipeline run expected output fields"
+    ):
+        pipeline_run_from_json(
+            json.dumps(
+                {
+                    **document,
+                    "expected_outputs": [{**expected_outputs[0], "unexpected": True}],
+                }
+            )
+        )
 
 
 def test_run_input_snapshot_value_round_trips_typed_models() -> None:

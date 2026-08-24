@@ -8,6 +8,7 @@ from dataclasses import fields, is_dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal, cast
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -35,7 +36,12 @@ from provium_pipeline.inputs import (
     InputSourceKind,
     RunInputSnapshot,
 )
-from provium_pipeline.run_models import PipelineRun, PipelineTask
+from provium_pipeline.run_models import (
+    PipelineRun,
+    PipelineTask,
+    RunOutputExpectation,
+    RunState,
+)
 
 
 class ExecutionEncodingError(TypeError):
@@ -147,6 +153,73 @@ def pipeline_run_document_from_json(payload: str) -> dict[str, JsonValue]:
     if document["schema"] != "provium.pipeline-run/v1":
         raise ExecutionDecodingError("unsupported pipeline run schema")
     return cast(dict[str, JsonValue], document)
+
+
+def pipeline_run_from_json(payload: str) -> PipelineRun:
+    """Reconstruct a durable run from its strict versioned JSON snapshot."""
+    document = pipeline_run_document_from_json(payload)
+    expected_outputs = tuple(
+        RunOutputExpectation(
+            record_key=InputRecordKey(
+                _string(output["record_key"], "pipeline run expected output record key")
+            ),
+            name=_string(output["name"], "pipeline run expected output name"),
+            node=_string(output["node"], "pipeline run expected output node"),
+            field=_string(output["field"], "pipeline run expected output field"),
+        )
+        for output in (
+            _strict_object(
+                value,
+                {"record_key", "name", "node", "field"},
+                "pipeline run expected output",
+            )
+            for value in _object_array(
+                document["expected_outputs"], "pipeline run expected outputs"
+            )
+        )
+    )
+    try:
+        created_at = datetime.fromisoformat(
+            _string(document["created_at"], "pipeline run created at")
+        )
+    except ValueError as error:
+        raise ExecutionDecodingError("invalid pipeline run created at") from error
+    try:
+        state = RunState(_string(document["state"], "pipeline run state"))
+    except ValueError as error:
+        raise ExecutionDecodingError("invalid pipeline run state") from error
+    return PipelineRun(
+        identifier=_run_id(document["identifier"]),
+        idempotency_namespace=_optional_string(
+            document["idempotency_namespace"], "pipeline run idempotency namespace"
+        ),
+        idempotency_key=_optional_string(
+            document["idempotency_key"], "pipeline run idempotency key"
+        ),
+        request_digest=_string(
+            document["request_digest"], "pipeline run request digest"
+        ),
+        pipeline=compiled_pipeline_from_value(document["pipeline"]),
+        inputs=run_input_snapshot_from_value(document["inputs"]),
+        fingerprint=_string(document["fingerprint"], "pipeline run fingerprint"),
+        created_at=created_at,
+        metadata=_json_mapping(document["metadata"], "pipeline run metadata"),
+        state=state,
+        expected_outputs=expected_outputs,
+    )
+
+
+def _run_id(value: object) -> RunId:
+    try:
+        return RunId(UUID(_string(value, "pipeline run identifier")))
+    except ValueError as error:
+        raise ExecutionDecodingError("invalid pipeline run identifier") from error
+
+
+def _optional_string(value: object, context: str) -> str | None:
+    if value is None:
+        return None
+    return _string(value, context)
 
 
 def _strict_object(value: object, fields: set[str], context: str) -> dict[str, object]:
