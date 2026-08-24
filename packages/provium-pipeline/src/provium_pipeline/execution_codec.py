@@ -16,6 +16,7 @@ from provium_pipeline.compiler.configuration import PipelineConfiguration
 from provium_pipeline.compiler.models import (
     CompiledBindingPlan,
     CompiledOutputContract,
+    CompiledPipeline,
     CompiledPipelineInput,
     CompiledPipelineNode,
     CompiledPipelineOutput,
@@ -502,6 +503,46 @@ def _output_contracts(
             )
         )
     return tuple(result)
+
+
+def compiled_pipeline_from_value(value: object) -> CompiledPipeline:
+    document = _strict_object(
+        value,
+        {
+            "identifier",
+            "version",
+            "definition_snapshot",
+            "definition_digest",
+            "semantic_digest",
+            "inputs",
+            "nodes",
+            "outputs",
+            "resolved_configuration",
+        },
+        "compiled pipeline",
+    )
+    return CompiledPipeline(
+        identifier=_string(document["identifier"], "compiled pipeline identifier"),
+        version=_string(document["version"], "compiled pipeline version"),
+        definition_snapshot=_json_mapping(
+            document["definition_snapshot"],
+            "compiled pipeline definition snapshot",
+        ),
+        definition_digest=_string(
+            document["definition_digest"],
+            "compiled pipeline definition digest",
+        ),
+        semantic_digest=_string(
+            document["semantic_digest"],
+            "compiled pipeline semantic digest",
+        ),
+        inputs=compiled_pipeline_inputs_from_value(document["inputs"]),
+        nodes=compiled_pipeline_nodes_from_value(document["nodes"]),
+        outputs=compiled_pipeline_outputs_from_value(document["outputs"]),
+        resolved_configuration=resolved_pipeline_configuration_from_value(
+            document["resolved_configuration"]
+        ),
+    )
 
 
 def compiled_pipeline_nodes_from_value(

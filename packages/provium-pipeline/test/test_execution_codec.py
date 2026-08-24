@@ -13,9 +13,14 @@ import pytest
 
 from provium import JsonValue
 from provium_pipeline.compiler.models import CompiledBindingPlan, ConfigurationSnapshot
+from provium_pipeline.compiler.models import CompiledPipeline as _CompiledPipeline
+from provium_pipeline.compiler.resolution import (
+    ResolvedPipelineConfiguration as _ResolvedPipelineConfiguration,
+)
 from provium_pipeline.execution_codec import (
     ExecutionDecodingError,
     ExecutionEncodingError,
+    compiled_pipeline_from_value,
     compiled_pipeline_inputs_from_value,
     compiled_pipeline_nodes_from_value,
     compiled_pipeline_outputs_from_value,
@@ -29,6 +34,7 @@ from provium_pipeline.execution_codec import (
     run_input_snapshot_from_value,
     to_json_value,
 )
+from provium_pipeline.execution_codec import to_json_value as _to_json_value
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
 from provium_pipeline.run_models import PipelineTask, TaskState
 
@@ -352,6 +358,64 @@ def test_run_input_snapshot_decoder_reconstructs_source_descriptors() -> None:
     source["kind"] = "invalid"
     with pytest.raises(ExecutionDecodingError, match="source kind"):
         run_input_snapshot_from_value(value)
+
+
+def test_compiled_pipeline_decoder_round_trips_typed_model() -> None:
+    resolved_configuration = _ResolvedPipelineConfiguration(
+        layers=(),
+        nodes=(),
+        document={},
+        document_digest="configuration-digest",
+    )
+    pipeline = _CompiledPipeline(
+        identifier="example.pipeline",
+        version="1.0.0",
+        definition_snapshot={},
+        definition_digest="definition-digest",
+        semantic_digest="semantic-digest",
+        inputs=(),
+        nodes=(),
+        outputs=(),
+        resolved_configuration=resolved_configuration,
+    )
+
+    document = _to_json_value(pipeline)
+
+    assert compiled_pipeline_from_value(document) == pipeline
+
+
+def test_compiled_pipeline_decoder_rejects_malformed_envelopes() -> None:
+    pipeline = _CompiledPipeline(
+        identifier="example.pipeline",
+        version="1.0.0",
+        definition_snapshot={},
+        definition_digest="definition-digest",
+        semantic_digest="semantic-digest",
+        inputs=(),
+        nodes=(),
+        outputs=(),
+        resolved_configuration=_ResolvedPipelineConfiguration(
+            layers=(),
+            nodes=(),
+            document={},
+            document_digest="configuration-digest",
+        ),
+    )
+    document = _to_json_value(pipeline)
+    assert isinstance(document, dict)
+
+    with pytest.raises(ExecutionDecodingError, match="compiled pipeline fields"):
+        compiled_pipeline_from_value({**document, "unexpected": True})
+    with pytest.raises(ExecutionDecodingError, match="compiled pipeline fields"):
+        compiled_pipeline_from_value(
+            {key: value for key, value in document.items() if key != "identifier"}
+        )
+    with pytest.raises(ExecutionDecodingError, match="compiled pipeline identifier"):
+        compiled_pipeline_from_value({**document, "identifier": 1})
+    with pytest.raises(
+        ExecutionDecodingError, match="compiled pipeline definition snapshot"
+    ):
+        compiled_pipeline_from_value({**document, "definition_snapshot": []})
 
 
 def test_compiled_pipeline_inputs_and_outputs_round_trip_typed_models() -> None:
