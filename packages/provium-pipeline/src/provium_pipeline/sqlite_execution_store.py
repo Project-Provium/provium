@@ -16,6 +16,7 @@ from provium_pipeline.execution_codec import (
     pipeline_task_from_json,
     pipeline_task_json,
 )
+from provium_pipeline.execution_store import RunIdempotencyConflictError
 from provium_pipeline.identifiers import RunId, TaskId
 from provium_pipeline.run_models import (
     CreateRunRequest,
@@ -131,8 +132,21 @@ class SQLiteExecutionStore:
 
     def create_run(self, request: CreateRunRequest) -> PipelineRun:
         """Plan and atomically persist a run with its complete task graph."""
-        plan = self._planner(request, now=self._clock())
-        self.persist_run(plan.run, plan.tasks)
+        scoped_key = self._scoped_key(request)
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                if scoped_key is not None:
+                    existing = self._idempotent_run(connection, request, scoped_key)
+                    if existing is not None:
+                        connection.commit()
+                        return existing
+                plan = self._planner(request, now=self._clock())
+                self._insert_run(connection, plan.run, plan.tasks)
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
         return plan.run
 
     def persist_run(
@@ -146,35 +160,74 @@ class SQLiteExecutionStore:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
-                connection.execute(
-                    "INSERT INTO runs(id, payload) VALUES (?, ?)",
-                    (str(run.identifier), pipeline_run_json(run)),
-                )
-                connection.executemany(
-                    "INSERT INTO tasks(id, run_id, state, payload) VALUES (?, ?, ?, ?)",
-                    (
-                        (
-                            str(task.identifier),
-                            str(task.run_identifier),
-                            task.state.value,
-                            pipeline_task_json(task),
-                        )
-                        for task in tasks
-                    ),
-                )
-                connection.executemany(
-                    "INSERT INTO task_dependencies(task_id, dependency_id) "
-                    "VALUES (?, ?)",
-                    (
-                        (str(task.identifier), str(dependency))
-                        for task in tasks
-                        for dependency in task.dependencies
-                    ),
-                )
+                self._insert_run(connection, run, tasks)
                 connection.commit()
             except BaseException:
                 connection.rollback()
                 raise
+
+    @classmethod
+    def _idempotent_run(
+        cls,
+        connection: sqlite3.Connection,
+        request: CreateRunRequest,
+        scoped_key: tuple[str, str],
+    ) -> PipelineRun | None:
+        rows = connection.execute("SELECT payload FROM runs").fetchall()
+        for row in rows:
+            existing = pipeline_run_from_json(str(row[0]))
+            if cls._scoped_key_for_run(existing) != scoped_key:
+                continue
+            if existing.request_digest != request.digest:
+                namespace, key = scoped_key
+                raise RunIdempotencyConflictError(
+                    f"idempotency key conflicts: {namespace}/{key}"
+                )
+            return existing
+        return None
+
+    @staticmethod
+    def _insert_run(
+        connection: sqlite3.Connection,
+        run: PipelineRun,
+        tasks: tuple[PipelineTask, ...],
+    ) -> None:
+        connection.execute(
+            "INSERT INTO runs(id, payload) VALUES (?, ?)",
+            (str(run.identifier), pipeline_run_json(run)),
+        )
+        connection.executemany(
+            "INSERT INTO tasks(id, run_id, state, payload) VALUES (?, ?, ?, ?)",
+            (
+                (
+                    str(task.identifier),
+                    str(task.run_identifier),
+                    task.state.value,
+                    pipeline_task_json(task),
+                )
+                for task in tasks
+            ),
+        )
+        connection.executemany(
+            "INSERT INTO task_dependencies(task_id, dependency_id) VALUES (?, ?)",
+            (
+                (str(task.identifier), str(dependency))
+                for task in tasks
+                for dependency in task.dependencies
+            ),
+        )
+
+    @staticmethod
+    def _scoped_key(request: CreateRunRequest) -> tuple[str, str] | None:
+        if request.idempotency_key is None:
+            return None
+        return (request.idempotency_namespace or "default", request.idempotency_key)
+
+    @staticmethod
+    def _scoped_key_for_run(run: PipelineRun) -> tuple[str, str] | None:
+        if run.idempotency_key is None:
+            return None
+        return (run.idempotency_namespace or "default", run.idempotency_key)
 
     def get_run(self, identifier: RunId) -> PipelineRun:
         """Load one durable run snapshot."""

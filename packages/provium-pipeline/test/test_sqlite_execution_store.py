@@ -111,6 +111,36 @@ def test_sqlite_store_creates_run_and_task_graph_atomically(tmp_path: Path) -> N
     )
 
 
+def test_sqlite_store_replays_scoped_idempotency_and_rejects_conflicts(
+    tmp_path: Path,
+) -> None:
+    from datetime import UTC, datetime
+
+    from provium_pipeline.execution_store import RunIdempotencyConflictError
+    from test.test_execution_store import request
+
+    store = SQLiteExecutionStore(
+        tmp_path / "execution.sqlite3",
+        clock=lambda: datetime(2026, 8, 23, tzinfo=UTC),
+    )
+    unscoped = store.create_run(request("unscoped", key=None))
+    original = store.create_run(request())
+
+    assert store.create_run(request()) == original
+    assert {run.identifier for run in store.list_runs()} == {
+        unscoped.identifier,
+        original.identifier,
+    }
+    other = store.create_run(request(key="other"))
+    with pytest.raises(RunIdempotencyConflictError, match="test/same"):
+        store.create_run(request("different-source"))
+    assert {run.identifier for run in store.list_runs()} == {
+        unscoped.identifier,
+        original.identifier,
+        other.identifier,
+    }
+
+
 def test_sqlite_store_persists_and_reopens_run_tasks_atomically(
     tmp_path: Path,
 ) -> None:
