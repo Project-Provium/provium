@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
@@ -42,6 +43,20 @@ def _require_supported_schema(version: int) -> None:
         )
 
 
+def _migration_checksum() -> str:
+    payload = "\0".join(_SCHEMA_STATEMENTS).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _require_migration_checksum(version: int, checksum: str | None) -> str:
+    expected = _migration_checksum()
+    if checksum is not None and checksum != expected:
+        raise MigrationChecksumError(
+            f"migration checksum mismatch for version {version}"
+        )
+    return expected
+
+
 class _RunPlanner(Protocol):
     def __call__(
         self,
@@ -49,6 +64,10 @@ class _RunPlanner(Protocol):
         *,
         now: datetime,
     ) -> RunPlan: ...
+
+
+class MigrationChecksumError(RuntimeError):
+    """An applied migration no longer matches its recorded definition."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,19 +320,42 @@ class SQLiteExecutionStore:
             try:
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS schema_migrations ("
-                    "version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL "
-                    "DEFAULT CURRENT_TIMESTAMP)"
+                    "version INTEGER PRIMARY KEY, checksum TEXT, "
+                    "applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
                 )
-                row = connection.execute(
-                    "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
-                ).fetchone()
-                version = int(row[0])
+                columns = {
+                    str(row[1])
+                    for row in connection.execute(
+                        "PRAGMA table_info(schema_migrations)"
+                    ).fetchall()
+                }
+                if "checksum" not in columns:
+                    connection.execute(
+                        "ALTER TABLE schema_migrations ADD COLUMN checksum TEXT"
+                    )
+                rows = connection.execute(
+                    "SELECT version, checksum FROM schema_migrations ORDER BY version"
+                ).fetchall()
+                version = int(rows[-1][0]) if rows else 0
                 _require_supported_schema(version)
+                for applied_version, checksum in rows:
+                    expected = _require_migration_checksum(
+                        int(applied_version),
+                        str(checksum) if checksum is not None else None,
+                    )
+                    if checksum is None:
+                        connection.execute(
+                            "UPDATE schema_migrations SET checksum = ? "
+                            "WHERE version = ?",
+                            (expected, int(applied_version)),
+                        )
                 if version < 1:
                     for statement in _SCHEMA_STATEMENTS:
                         connection.execute(statement)
                     connection.execute(
-                        "INSERT INTO schema_migrations(version) VALUES (1)"
+                        "INSERT INTO schema_migrations(version, checksum) "
+                        "VALUES (1, ?)",
+                        (_migration_checksum(),),
                     )
                 connection.commit()
             except BaseException:

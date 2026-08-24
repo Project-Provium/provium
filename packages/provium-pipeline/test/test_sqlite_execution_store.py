@@ -7,6 +7,7 @@ import pytest
 
 from provium_pipeline.sqlite_execution_store import (
     SCHEMA_VERSION,
+    MigrationChecksumError,
     SQLiteExecutionStore,
     UnsupportedSchemaVersionError,
 )
@@ -61,6 +62,47 @@ def test_sqlite_store_reopens_existing_schema_without_duplicate_migration(
     with sqlite3.connect(database) as connection:
         count = connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()
     assert count == (SCHEMA_VERSION,)
+
+
+def test_sqlite_store_backfills_legacy_migration_fixture_checksum(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "execution.sqlite3"
+    SQLiteExecutionStore(database)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "ALTER TABLE schema_migrations RENAME TO schema_migrations_current"
+        )
+        connection.execute(
+            "CREATE TABLE schema_migrations ("
+            "version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO schema_migrations(version, applied_at) "
+            "SELECT version, applied_at FROM schema_migrations_current"
+        )
+        connection.execute("DROP TABLE schema_migrations_current")
+
+    reopened = SQLiteExecutionStore(database)
+
+    assert reopened.schema_version == SCHEMA_VERSION
+    with sqlite3.connect(database) as connection:
+        checksum = connection.execute(
+            "SELECT checksum FROM schema_migrations WHERE version = 1"
+        ).fetchone()[0]
+    assert len(checksum) == 64
+
+
+def test_sqlite_store_rejects_migration_checksum_mismatch(tmp_path: Path) -> None:
+    database = tmp_path / "execution.sqlite3"
+    SQLiteExecutionStore(database)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE schema_migrations SET checksum = 'tampered' WHERE version = 1"
+        )
+
+    with pytest.raises(MigrationChecksumError, match="version 1"):
+        SQLiteExecutionStore(database)
 
 
 def test_sqlite_store_rejects_database_from_newer_schema(tmp_path: Path) -> None:
