@@ -98,7 +98,7 @@ class InMemoryExecutionStore:
 
     def list_tasks(self, run_identifier: RunId) -> tuple[PipelineTask, ...]:
         with self._lock:
-            return self._tasks[run_identifier]
+            return self._tasks.get(run_identifier, ())
 
     def get_task(self, identifier: TaskId) -> PipelineTask:
         with self._lock:
