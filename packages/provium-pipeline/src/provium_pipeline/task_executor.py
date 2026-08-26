@@ -5,10 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from pydantic import ValidationError
 
+from provium.artifact.binding import ArtifactReadBinding
+from provium.artifact.definition import Artifact
 from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
 from provium_pipeline.artifact import (
     ArtifactLocation,
@@ -17,6 +19,7 @@ from provium_pipeline.artifact import (
     MaterializationCleanup,
     MaterializedArtifact,
 )
+from provium_pipeline.compiler.catalogs import ArtifactCatalogCollection
 from provium_pipeline.compiler.models import CompiledBindingPlan
 
 
@@ -72,6 +75,33 @@ class AttemptMaterializations:
 
 class BindingResolutionError(RuntimeError):
     """Resolved artifacts violate a frozen binding plan."""
+
+
+def _build_read_binding(
+    artifact: type[Artifact[Any, Any]],
+    path: Path,
+) -> ArtifactReadBinding[Any]:
+    return ArtifactReadBinding(artifact, path)
+
+
+def build_read_binding_value(
+    plan: CompiledBindingPlan,
+    paths: Sequence[Path],
+    catalogs: ArtifactCatalogCollection,
+    *,
+    binding_factory: Callable[[type[Artifact[Any, Any]], Path], object] = (
+        _build_read_binding
+    ),
+) -> object:
+    """Build the core scalar, optional, or repeated read-binding value."""
+    artifact = cast(
+        type[Artifact[Any, Any]],
+        catalogs.resolve(plan.artifact_identifier).resolve(),
+    )
+    bindings = tuple(binding_factory(artifact, path) for path in paths)
+    if plan.maximum == 1:
+        return None if not bindings else bindings[0]
+    return bindings
 
 
 def materialize_binding_inputs(
@@ -222,6 +252,7 @@ __all__ = [
     "PreparedProcedureCache",
     "PreparedProcedureKey",
     "StoredArtifact",
+    "build_read_binding_value",
     "materialize_binding_inputs",
     "resolve_binding_references",
     "verify_configuration_snapshot",

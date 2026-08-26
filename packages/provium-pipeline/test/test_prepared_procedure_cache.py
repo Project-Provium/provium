@@ -15,6 +15,7 @@ from provium_pipeline.artifact import (
     MaterializationCleanup,
     MaterializedArtifact,
 )
+from provium_pipeline.compiler.catalogs import ArtifactCatalogCollection
 from provium_pipeline.compiler.models import CompiledBindingPlan
 from provium_pipeline.task_executor import (
     AttemptMaterializations,
@@ -23,6 +24,7 @@ from provium_pipeline.task_executor import (
     PreparedProcedureCache,
     PreparedProcedureKey,
     StoredArtifact,
+    build_read_binding_value,
     materialize_binding_inputs,
     resolve_binding_references,
     verify_configuration_snapshot,
@@ -394,6 +396,92 @@ def test_materialize_binding_inputs_cleanup_survives_partial_failure(
     ownership.close()
 
     assert not (tmp_path / "attempt" / "documents-0000.pa").exists()
+
+
+class _Definition:
+    def __init__(self, artifact: object) -> None:
+        self.artifact = artifact
+        self.resolve_count = 0
+
+    def resolve(self) -> object:
+        self.resolve_count += 1
+        return self.artifact
+
+
+class _Catalogs:
+    def __init__(self, definition: _Definition) -> None:
+        self.definition = definition
+        self.identifiers: list[str] = []
+
+    def resolve(self, identifier: str) -> _Definition:
+        self.identifiers.append(identifier)
+        return self.definition
+
+
+def test_build_read_binding_value_preserves_repeated_shape_and_order() -> None:
+    artifact = object()
+    definition = _Definition(artifact)
+    catalogs = cast(ArtifactCatalogCollection, _Catalogs(definition))
+    paths = (Path("first.pa"), Path("second.pa"))
+
+    value = build_read_binding_value(
+        _binding_plan(minimum=1, maximum=None),
+        paths,
+        catalogs,
+        binding_factory=lambda resolved, path: (resolved, path),
+    )
+
+    assert value == ((artifact, paths[0]), (artifact, paths[1]))
+    assert definition.resolve_count == 1
+
+
+def test_build_read_binding_value_uses_core_binding_constructor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import provium_pipeline.task_executor as task_executor_module
+
+    artifact = object()
+    catalogs = cast(ArtifactCatalogCollection, _Catalogs(_Definition(artifact)))
+
+    def binding(resolved: object, path: Path) -> tuple[object, Path]:
+        return resolved, path
+
+    monkeypatch.setattr(task_executor_module, "ArtifactReadBinding", binding)
+
+    assert build_read_binding_value(
+        _binding_plan(minimum=1, maximum=1),
+        (Path("document.pa"),),
+        catalogs,
+    ) == (artifact, Path("document.pa"))
+
+
+def test_build_read_binding_value_supports_optional_and_required_scalars() -> None:
+    artifact = object()
+    catalogs = cast(ArtifactCatalogCollection, _Catalogs(_Definition(artifact)))
+    optional = CompiledBindingPlan(
+        field="previous",
+        artifact_identifier="example.document.v1",
+        minimum=0,
+        maximum=1,
+        references=(),
+    )
+    required = replace(optional, field="document", minimum=1)
+
+    assert (
+        build_read_binding_value(
+            optional,
+            (),
+            catalogs,
+            binding_factory=lambda resolved, path: (resolved, path),
+        )
+        is None
+    )
+    assert build_read_binding_value(
+        required,
+        (Path("document.pa"),),
+        catalogs,
+        binding_factory=lambda resolved, path: (resolved, path),
+    ) == (artifact, Path("document.pa"))
 
 
 def test_materialize_binding_inputs_rejects_unknown_identity(tmp_path: Path) -> None:
