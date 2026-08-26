@@ -8,7 +8,13 @@ from typing import cast
 import pytest
 
 from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
-from provium_pipeline.artifact import MaterializationCleanup, MaterializedArtifact
+from provium_pipeline.artifact import (
+    ArtifactLocation,
+    ArtifactStore,
+    ManagedArtifactDescriptor,
+    MaterializationCleanup,
+    MaterializedArtifact,
+)
 from provium_pipeline.compiler.models import CompiledBindingPlan
 from provium_pipeline.task_executor import (
     AttemptMaterializations,
@@ -16,6 +22,8 @@ from provium_pipeline.task_executor import (
     ConfigurationSnapshotMismatchError,
     PreparedProcedureCache,
     PreparedProcedureKey,
+    StoredArtifact,
+    materialize_binding_inputs,
     resolve_binding_references,
     verify_configuration_snapshot,
 )
@@ -303,3 +311,98 @@ def test_attempt_materializations_clean_all_owned_paths_after_failure() -> None:
     materializations.close()
 
     assert removed == [Path("third.pa"), Path("second.pa"), Path("first.pa")]
+
+
+def _stored(identity: str) -> StoredArtifact:
+    descriptor = cast(
+        ManagedArtifactDescriptor,
+        SimpleNamespace(identity=identity),
+    )
+    location = cast(ArtifactLocation, SimpleNamespace(identity=identity))
+    return StoredArtifact(descriptor=descriptor, locations=(location,))
+
+
+class _MaterializingStore:
+    def __init__(self, *, fail_at: int | None = None) -> None:
+        self.calls: list[tuple[str, Path]] = []
+        self.fail_at = fail_at
+
+    def materialize(
+        self,
+        *,
+        descriptor: ManagedArtifactDescriptor,
+        locations: tuple[ArtifactLocation, ...],
+        destination: Path,
+    ) -> MaterializedArtifact:
+        del locations
+        self.calls.append((descriptor.identity, destination))
+        if self.fail_at == len(self.calls):
+            raise OSError("materialization failed")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.touch()
+        return _materialized(destination, MaterializationCleanup.REQUIRED)
+
+
+def test_materialize_binding_inputs_preserves_identity_order(tmp_path: Path) -> None:
+    store = _MaterializingStore()
+    ownership = AttemptMaterializations()
+    artifacts = {
+        "sha256:first": _stored("sha256:first"),
+        "sha256:second": _stored("sha256:second"),
+    }
+
+    paths = materialize_binding_inputs(
+        _binding_plan(minimum=1, maximum=None),
+        ("sha256:first", "sha256:second"),
+        artifacts,
+        cast(ArtifactStore, store),
+        tmp_path / "attempt",
+        ownership,
+    )
+
+    assert paths == (
+        tmp_path / "attempt" / "documents-0000.pa",
+        tmp_path / "attempt" / "documents-0001.pa",
+    )
+    assert [identity for identity, _ in store.calls] == [
+        "sha256:first",
+        "sha256:second",
+    ]
+    ownership.close()
+    assert not any(path.exists() for path in paths)
+
+
+def test_materialize_binding_inputs_cleanup_survives_partial_failure(
+    tmp_path: Path,
+) -> None:
+    store = _MaterializingStore(fail_at=2)
+    ownership = AttemptMaterializations()
+    artifacts = {
+        "sha256:first": _stored("sha256:first"),
+        "sha256:second": _stored("sha256:second"),
+    }
+
+    with pytest.raises(OSError, match="materialization failed"):
+        materialize_binding_inputs(
+            _binding_plan(minimum=1, maximum=None),
+            ("sha256:first", "sha256:second"),
+            artifacts,
+            cast(ArtifactStore, store),
+            tmp_path / "attempt",
+            ownership,
+        )
+    ownership.close()
+
+    assert not (tmp_path / "attempt" / "documents-0000.pa").exists()
+
+
+def test_materialize_binding_inputs_rejects_unknown_identity(tmp_path: Path) -> None:
+    with pytest.raises(BindingResolutionError, match="not available"):
+        materialize_binding_inputs(
+            _binding_plan(minimum=1, maximum=None),
+            ("sha256:missing",),
+            {},
+            cast(ArtifactStore, _MaterializingStore()),
+            tmp_path / "attempt",
+            AttemptMaterializations(),
+        )

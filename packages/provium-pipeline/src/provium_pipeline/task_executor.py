@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -10,12 +10,26 @@ from typing import Protocol
 from pydantic import ValidationError
 
 from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
-from provium_pipeline.artifact import MaterializationCleanup, MaterializedArtifact
+from provium_pipeline.artifact import (
+    ArtifactLocation,
+    ArtifactStore,
+    ManagedArtifactDescriptor,
+    MaterializationCleanup,
+    MaterializedArtifact,
+)
 from provium_pipeline.compiler.models import CompiledBindingPlan
 
 
 def _remove_materialization(path: Path) -> None:
     path.unlink(missing_ok=True)
+
+
+@dataclass(frozen=True, slots=True)
+class StoredArtifact:
+    """One managed artifact and its active storage locations."""
+
+    descriptor: ManagedArtifactDescriptor
+    locations: tuple[ArtifactLocation, ...]
 
 
 class AttemptMaterializations:
@@ -58,6 +72,34 @@ class AttemptMaterializations:
 
 class BindingResolutionError(RuntimeError):
     """Resolved artifacts violate a frozen binding plan."""
+
+
+def materialize_binding_inputs(
+    plan: CompiledBindingPlan,
+    identities: Sequence[str],
+    artifacts: Mapping[str, StoredArtifact],
+    store: ArtifactStore,
+    workspace: Path,
+    ownership: AttemptMaterializations,
+) -> tuple[Path, ...]:
+    """Materialize ordered binding identities into an attempt workspace."""
+    workspace.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    for index, identity in enumerate(identities):
+        try:
+            stored = artifacts[identity]
+        except KeyError as error:
+            raise BindingResolutionError(
+                f"artifact identity is not available: {identity!r}"
+            ) from error
+        destination = workspace / f"{plan.field}-{index:04d}.pa"
+        materialized = store.materialize(
+            descriptor=stored.descriptor,
+            locations=stored.locations,
+            destination=destination,
+        )
+        paths.append(ownership.track(materialized))
+    return tuple(paths)
 
 
 def resolve_binding_references(
@@ -179,6 +221,8 @@ __all__ = [
     "ConfigurationSnapshotMismatchError",
     "PreparedProcedureCache",
     "PreparedProcedureKey",
+    "StoredArtifact",
+    "materialize_binding_inputs",
     "resolve_binding_references",
     "verify_configuration_snapshot",
 ]
