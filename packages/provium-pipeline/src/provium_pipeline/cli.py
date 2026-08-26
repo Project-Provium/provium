@@ -34,6 +34,7 @@ from .definition.codec import (
 from .definition.models import PipelineDefinition
 from .discovery import discover_pipeline_catalogs
 from .dispatch_codec import dispatch_document
+from .dispatch_models import DependencyPolicy, Dispatch, TaskSelection
 from .dispatch_store import DispatchStore
 from .execution_codec import pipeline_run_document, to_json_value
 from .exports import RunExportService
@@ -60,6 +61,18 @@ class PipelineCLIBackend(Protocol):
         action: str,
         arguments: argparse.Namespace,
     ) -> CLIResult: ...
+
+
+class RunExecutor(Protocol):
+    """Execute a selected subset of an existing run."""
+
+    def execute(
+        self,
+        run_identifier: RunId,
+        *,
+        selection: TaskSelection,
+        dependency_policy: DependencyPolicy,
+    ) -> Dispatch: ...
 
 
 class RunCanceller(Protocol):
@@ -183,6 +196,7 @@ class LocalCLIBackend:
         dispatches: DispatchStore | None = None,
         artifact_locations: Callable[[str], Iterable[object]] | None = None,
         run_creator: RunCreator | None = None,
+        run_executor: RunExecutor | None = None,
     ) -> None:
         self._store = cast(ExportRunLookup, store)
         self._canceller = cast(RunCanceller, store)
@@ -192,6 +206,7 @@ class LocalCLIBackend:
         self._dispatches = dispatches
         self._artifact_locations = artifact_locations or _no_locations
         self._run_creator = run_creator
+        self._run_executor = run_executor
 
     def execute(
         self,
@@ -214,6 +229,8 @@ class LocalCLIBackend:
             )
         if group == "run" and action == "create" and self._run_creator is not None:
             return self._create_run(arguments)
+        if group == "run" and action == "execute" and self._run_executor is not None:
+            return self._execute_run(arguments)
         if group == "run" and action == "cancel":
             return self._cancel_run(arguments)
         if group == "run" and action in {"configuration export", "export"}:
@@ -262,6 +279,30 @@ class LocalCLIBackend:
         return CLIResult(
             {"run_id": str(run.identifier), "status": run.state.value}
         )
+
+    def _execute_run(self, arguments: argparse.Namespace) -> CLIResult:
+        executor = cast(RunExecutor, self._run_executor)
+        selection = TaskSelection(
+            all=arguments.all,
+            all_remaining=arguments.all_remaining,
+            labels=tuple(arguments.label),
+            nodes=tuple(arguments.node),
+            only_failed=arguments.only_failed,
+            only_incomplete=not arguments.all,
+            procedures=tuple(arguments.procedure),
+            records=tuple(arguments.record),
+        )
+        dependency_policy = (
+            DependencyPolicy.INCLUDE_MISSING_UPSTREAM
+            if arguments.include_missing_upstream
+            else DependencyPolicy.SELECTED_ONLY
+        )
+        dispatch = executor.execute(
+            RunId.parse(arguments.run_id),
+            selection=selection,
+            dependency_policy=dependency_policy,
+        )
+        return CLIResult({"dispatch": dispatch_document(dispatch)["dispatch"]})
 
     def _create_run(self, arguments: argparse.Namespace) -> CLIResult:
         if arguments.input_set is None:
