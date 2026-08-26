@@ -217,6 +217,128 @@ def test_multiprocess_supervisor_cleans_up_when_polling_fails() -> None:
     assert process.joins == 1
 
 
+def test_multiprocess_supervisor_requests_cooperative_shutdown_before_termination() -> (
+    None
+):
+    events: list[str] = []
+
+    class _OrderedProcess(_Process):
+        def terminate(self) -> None:
+            events.append("terminate")
+            super().terminate()
+
+        def join(self) -> None:
+            events.append("join")
+            super().join()
+
+    supervisor = MultiprocessSupervisor(
+        slots=1,
+        process_factory=lambda _identity: _OrderedProcess(),
+        is_terminal=lambda: True,
+        wait_for_change=lambda: None,
+        request_cancellation=lambda: events.append("cancel"),
+        wait_for_shutdown=lambda: events.append("grace"),
+    )
+
+    supervisor.run()
+
+    assert events == ["cancel", "grace", "terminate", "join"]
+
+
+def test_multiprocess_supervisor_preserves_poll_error_over_shutdown_failure() -> None:
+    poll_error = RuntimeError("poll failed")
+    shutdown_error = OSError("cancel failed")
+    joined: list[None] = []
+
+    class _JoinedProcess(_Process):
+        def join(self) -> None:
+            joined.append(None)
+            super().join()
+
+    def fail_poll() -> None:
+        raise poll_error
+
+    def fail_cancellation() -> None:
+        raise shutdown_error
+
+    supervisor = MultiprocessSupervisor(
+        slots=1,
+        process_factory=lambda _identity: _JoinedProcess(),
+        is_terminal=lambda: False,
+        wait_for_change=fail_poll,
+        request_cancellation=fail_cancellation,
+    )
+
+    with pytest.raises(RuntimeError, match="poll failed") as caught:
+        supervisor.run()
+
+    assert caught.value is poll_error
+    assert caught.value.__cause__ is shutdown_error
+    assert joined == [None]
+
+
+def test_multiprocess_supervisor_attempts_every_shutdown_step_after_failures() -> None:
+    events: list[str] = []
+    cancellation_error = RuntimeError("cancel failed")
+
+    def failing_action(name: str, error: BaseException) -> None:
+        events.append(name)
+        raise error
+
+    class _FailingShutdownProcess(_Process):
+        def is_alive(self) -> bool:
+            events.append("alive")
+            raise OSError("alive failed")
+
+        def terminate(self) -> None:
+            events.append("terminate")
+            raise OSError("terminate failed")
+
+        def join(self) -> None:
+            events.append("join")
+            raise OSError("join failed")
+
+    supervisor = MultiprocessSupervisor(
+        slots=1,
+        process_factory=lambda _identity: _FailingShutdownProcess(),
+        is_terminal=lambda: True,
+        wait_for_change=lambda: None,
+        request_cancellation=lambda: failing_action("cancel", cancellation_error),
+        wait_for_shutdown=lambda: failing_action("grace", OSError("grace failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="cancel failed") as caught:
+        supervisor.run()
+
+    assert caught.value is cancellation_error
+    assert events == ["cancel", "grace", "alive", "terminate", "join"]
+
+
+def test_multiprocess_supervisor_cleans_up_partially_started_workers() -> None:
+    process = _Process()
+    starts = 0
+
+    def factory(_identity: str) -> _Process:
+        nonlocal starts
+        starts += 1
+        if starts == 2:
+            raise RuntimeError("spawn failed")
+        return process
+
+    supervisor = MultiprocessSupervisor(
+        slots=2,
+        process_factory=factory,
+        is_terminal=lambda: False,
+        wait_for_change=lambda: None,
+    )
+
+    with pytest.raises(RuntimeError, match="spawn failed"):
+        supervisor.run()
+
+    assert process.terminates == 1
+    assert process.joins == 1
+
+
 def test_multiprocess_supervisor_replaces_crashed_slot_and_stops_at_terminal() -> None:
     created: list[tuple[str, _Process]] = []
     terminal = False

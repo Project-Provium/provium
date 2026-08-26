@@ -6,6 +6,10 @@ from multiprocessing import get_context
 from typing import Protocol, cast
 
 
+def _noop() -> None:
+    return None
+
+
 class WorkerProcess(Protocol):
     """Minimal child-process surface required by the supervisor."""
 
@@ -77,6 +81,8 @@ class MultiprocessSupervisor:
         process_factory: Callable[[str], WorkerProcess],
         is_terminal: Callable[[], bool],
         wait_for_change: Callable[[], None],
+        request_cancellation: Callable[[], None] | None = None,
+        wait_for_shutdown: Callable[[], None] | None = None,
     ) -> None:
         if slots <= 0:
             raise ValueError("slots must be positive")
@@ -84,16 +90,45 @@ class MultiprocessSupervisor:
         self._process_factory = process_factory
         self._is_terminal = is_terminal
         self._wait_for_change = wait_for_change
+        self._request_cancellation = request_cancellation or _noop
+        self._wait_for_shutdown = wait_for_shutdown or _noop
 
     def _start(self, slot: int) -> WorkerProcess:
         process = self._process_factory(f"pipeline-worker-{slot}")
         process.start()
         return process
 
+    def _shutdown(self, processes: dict[int, WorkerProcess]) -> None:
+        failures: list[BaseException] = []
+        for action in (self._request_cancellation, self._wait_for_shutdown):
+            try:
+                action()
+            except BaseException as error:
+                failures.append(error)
+        for process in processes.values():
+            try:
+                alive = process.is_alive()
+            except BaseException as error:
+                alive = True
+                failures.append(error)
+            if alive:
+                try:
+                    process.terminate()
+                except BaseException as error:
+                    failures.append(error)
+            try:
+                process.join()
+            except BaseException as error:
+                failures.append(error)
+        if failures:
+            raise failures[0]
+
     def run(self) -> None:
         """Supervise workers until the dispatch reaches a terminal state."""
-        processes = {slot: self._start(slot) for slot in range(self._slots)}
+        processes: dict[int, WorkerProcess] = {}
         try:
+            for slot in range(self._slots):
+                processes[slot] = self._start(slot)
             while not self._is_terminal():
                 self._wait_for_change()
                 if self._is_terminal():
@@ -103,11 +138,13 @@ class MultiprocessSupervisor:
                         continue
                     process.join()
                     processes[slot] = self._start(slot)
-        finally:
-            for process in processes.values():
-                if process.is_alive():
-                    process.terminate()
-                process.join()
+        except BaseException as error:
+            try:
+                self._shutdown(processes)
+            except BaseException as cleanup_error:
+                raise error from cleanup_error
+            raise
+        self._shutdown(processes)
 
 
 __all__ = [
