@@ -25,7 +25,7 @@ class SQLiteDispatchStore:
         with self._connection() as connection:
             connection.execute(
                 """
-                CREATE TABLE IF NOT EXISTS dispatches (
+                CREATE TABLE IF NOT EXISTS pipeline_dispatches (
                     identifier TEXT PRIMARY KEY,
                     run_identifier TEXT NOT NULL,
                     idempotency_key TEXT,
@@ -36,8 +36,8 @@ class SQLiteDispatchStore:
                 """
             )
             connection.execute(
-                "CREATE INDEX IF NOT EXISTS dispatches_run_order "
-                "ON dispatches(run_identifier, created_at, identifier)"
+                "CREATE INDEX IF NOT EXISTS pipeline_dispatches_run_order "
+                "ON pipeline_dispatches(run_identifier, created_at, identifier)"
             )
 
     def create(self, dispatch: Dispatch) -> Dispatch:
@@ -58,7 +58,7 @@ class SQLiteDispatchStore:
         dispatch: Dispatch,
     ) -> Dispatch | None:
         row = connection.execute(
-            "SELECT payload FROM dispatches WHERE identifier = ?",
+            "SELECT payload FROM pipeline_dispatches WHERE identifier = ?",
             (str(dispatch.identifier),),
         ).fetchone()
         if row is None:
@@ -78,7 +78,7 @@ class SQLiteDispatchStore:
         if dispatch.idempotency_key is None:
             return None
         row = connection.execute(
-            "SELECT payload FROM dispatches "
+            "SELECT payload FROM pipeline_dispatches "
             "WHERE run_identifier = ? AND idempotency_key = ?",
             (str(dispatch.run_identifier), dispatch.idempotency_key),
         ).fetchone()
@@ -98,7 +98,7 @@ class SQLiteDispatchStore:
         dispatch: Dispatch,
     ) -> None:
         connection.execute(
-            "INSERT INTO dispatches("
+            "INSERT INTO pipeline_dispatches("
             "identifier, run_identifier, idempotency_key, created_at, payload"
             ") VALUES (?, ?, ?, ?, ?)",
             (
@@ -151,7 +151,7 @@ class SQLiteDispatchStore:
         identifier: DispatchId,
     ) -> Dispatch:
         row = connection.execute(
-            "SELECT payload FROM dispatches WHERE identifier = ?",
+            "SELECT payload FROM pipeline_dispatches WHERE identifier = ?",
             (str(identifier),),
         ).fetchone()
         if row is None:
@@ -164,14 +164,14 @@ class SQLiteDispatchStore:
         dispatch: Dispatch,
     ) -> None:
         connection.execute(
-            "UPDATE dispatches SET payload = ? WHERE identifier = ?",
+            "UPDATE pipeline_dispatches SET payload = ? WHERE identifier = ?",
             (dispatch_json(dispatch), str(dispatch.identifier)),
         )
 
     def get(self, identifier: DispatchId) -> Dispatch:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT payload FROM dispatches WHERE identifier = ?",
+                "SELECT payload FROM pipeline_dispatches WHERE identifier = ?",
                 (str(identifier),),
             ).fetchone()
         if row is None:
@@ -181,7 +181,7 @@ class SQLiteDispatchStore:
     def list_for_run(self, run_identifier: RunId) -> tuple[Dispatch, ...]:
         with self._connection() as connection:
             rows = connection.execute(
-                "SELECT payload FROM dispatches WHERE run_identifier = ? "
+                "SELECT payload FROM pipeline_dispatches WHERE run_identifier = ? "
                 "ORDER BY created_at, identifier",
                 (str(run_identifier),),
             ).fetchall()

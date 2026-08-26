@@ -14,6 +14,7 @@ from provium_pipeline.dispatch_models import (
 )
 from provium_pipeline.identifiers import DispatchId, RunId, TaskId
 from provium_pipeline.sqlite_dispatch_store import SQLiteDispatchStore
+from provium_pipeline.sqlite_execution_store import SQLiteExecutionStore
 
 RUN = RunId.parse("00000000-0000-0000-0000-000000000100")
 OTHER_RUN = RunId.parse("00000000-0000-0000-0000-000000000200")
@@ -42,6 +43,16 @@ def _dispatch(
         created_at=datetime(2026, 1, 1, 0, 0, number, tzinfo=UTC),
         idempotency_key=key,
     )
+
+
+def test_sqlite_dispatch_store_coexists_with_execution_schema(tmp_path: Path) -> None:
+    database = tmp_path / "state.sqlite3"
+
+    executions = SQLiteExecutionStore(database)
+    dispatches = SQLiteDispatchStore(database)
+
+    assert executions.schema_version == 1
+    assert dispatches.list_for_run(RUN) == ()
 
 
 def test_sqlite_dispatch_store_persists_reopens_and_lists_stably(

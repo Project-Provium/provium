@@ -32,10 +32,12 @@ from .definition.codec import (
 )
 from .definition.models import PipelineDefinition
 from .discovery import discover_pipeline_catalogs
+from .dispatch_codec import dispatch_document
+from .dispatch_store import DispatchStore
 from .execution_codec import pipeline_run_document, to_json_value
 from .exports import RunExportService
 from .exports import RunLookup as ExportRunLookup
-from .identifiers import InputSetIdentifier, RunId
+from .identifiers import DispatchId, InputSetIdentifier, RunId
 from .input_codec import load_input_records_ndjson
 from .inputs import InputRecord, InputSet
 from .run_creation import RunCreationService
@@ -177,6 +179,7 @@ class LocalCLIBackend:
         *,
         exporter: RunExporter | None = None,
         input_sets: InputSetStore | None = None,
+        dispatches: DispatchStore | None = None,
         artifact_locations: Callable[[str], Iterable[object]] | None = None,
         run_creator: RunCreator | None = None,
     ) -> None:
@@ -185,6 +188,7 @@ class LocalCLIBackend:
         self._runs = RunQueryService(store)
         self._exporter = exporter or RunExportService(self._store)
         self._input_sets = input_sets
+        self._dispatches = dispatches
         self._artifact_locations = artifact_locations or _no_locations
         self._run_creator = run_creator
 
@@ -196,6 +200,8 @@ class LocalCLIBackend:
     ) -> CLIResult:
         if group == "input-set" and self._input_sets is not None:
             return self._input_set(action, arguments)
+        if group == "dispatch" and self._dispatches is not None:
+            return self._read_dispatch(action, arguments)
         if group == "pipeline" and action == "list":
             return self._list_pipelines()
         if group == "pipeline" and action == "validate":
@@ -223,6 +229,22 @@ class LocalCLIBackend:
                 message=f"local backend does not support {group} {action} yet",
             )
         return self._read_run(action, arguments)
+
+    def _read_dispatch(
+        self,
+        action: str,
+        arguments: argparse.Namespace,
+    ) -> CLIResult:
+        if action == "show":
+            dispatch = self._dispatches
+            assert dispatch is not None
+            value = dispatch.get(DispatchId.parse(arguments.dispatch_id))
+            return CLIResult({"dispatch": dispatch_document(value)["dispatch"]})
+        return CLIResult(
+            {"action": action, "group": "dispatch"},
+            exit_code=2,
+            message=f"local backend does not support dispatch {action} yet",
+        )
 
     def _cancel_run(self, arguments: argparse.Namespace) -> CLIResult:
         run = self._canceller.cancel_run(RunId.parse(arguments.run_id))
@@ -455,6 +477,7 @@ class _EnvironmentBackend:
         import os
 
         from provium_pipeline.artifact.sqlite_index import SQLiteArtifactIndex
+        from provium_pipeline.sqlite_dispatch_store import SQLiteDispatchStore
         from provium_pipeline.sqlite_execution_store import SQLiteExecutionStore
         from provium_pipeline.sqlite_input_sets import SQLiteInputSetStore
 
@@ -466,6 +489,7 @@ class _EnvironmentBackend:
         )
         database.parent.mkdir(parents=True, exist_ok=True)
         runs = SQLiteExecutionStore(database)
+        dispatches = SQLiteDispatchStore(database)
         input_sets = SQLiteInputSetStore(database)
         artifact_index = SQLiteArtifactIndex(database)
         artifact_catalogs, procedure_catalogs = _installed_validation_catalogs()
@@ -478,6 +502,7 @@ class _EnvironmentBackend:
         return LocalCLIBackend(
             cast(RunLookup, runs),
             input_sets=cast(InputSetStore, input_sets),
+            dispatches=dispatches,
             artifact_locations=artifact_index.get_active_locations,
             run_creator=run_creator,
         ).execute(
