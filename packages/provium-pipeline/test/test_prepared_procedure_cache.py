@@ -8,6 +8,10 @@ from typing import cast
 import pytest
 
 from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
+from provium.procedure.definition import (
+    ProcedureContractMetadata,
+    ProcedureIOFieldMetadata,
+)
 from provium_pipeline.artifact import (
     ArtifactLocation,
     ArtifactStore,
@@ -24,6 +28,7 @@ from provium_pipeline.task_executor import (
     PreparedProcedureCache,
     PreparedProcedureKey,
     StoredArtifact,
+    build_output_bindings,
     build_read_binding_value,
     materialize_binding_inputs,
     resolve_binding_references,
@@ -482,6 +487,86 @@ def test_build_read_binding_value_supports_optional_and_required_scalars() -> No
         catalogs,
         binding_factory=lambda resolved, path: (resolved, path),
     ) == (artifact, Path("document.pa"))
+
+
+def _output_metadata() -> ProcedureContractMetadata:
+    fields = tuple(
+        ProcedureIOFieldMetadata(
+            name=name,
+            artifact_identifier="example.document.v1",
+            artifact_description="Document",
+            direction="output",
+            minimum=minimum,
+            maximum=1,
+            repeated=False,
+            description=None,
+        )
+        for name, minimum in (("required", 1), ("optional", 0))
+    )
+    return ProcedureContractMetadata(
+        configuration_target=None,
+        _configuration_schema_json=None,
+        configuration_schema_digest=None,
+        setup_inputs=(),
+        inputs=(),
+        outputs=fields,
+        digest="sha256:contract",
+    )
+
+
+def test_build_output_bindings_includes_required_and_optional_outputs(
+    tmp_path: Path,
+) -> None:
+    artifact = object()
+    catalogs = cast(ArtifactCatalogCollection, _Catalogs(_Definition(artifact)))
+
+    bindings = build_output_bindings(
+        ("required", "optional"),
+        _output_metadata(),
+        catalogs,
+        tmp_path,
+        binding_factory=lambda resolved, path: (resolved, path),
+    )
+
+    assert bindings == {
+        "required": (artifact, tmp_path / "required.pa"),
+        "optional": (artifact, tmp_path / "optional.pa"),
+    }
+
+
+def test_build_output_bindings_uses_core_binding_constructor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import provium_pipeline.task_executor as task_executor_module
+
+    artifact = object()
+    catalogs = cast(ArtifactCatalogCollection, _Catalogs(_Definition(artifact)))
+
+    def binding(resolved: object, path: Path) -> tuple[object, Path]:
+        return resolved, path
+
+    monkeypatch.setattr(task_executor_module, "ArtifactWriteBinding", binding)
+
+    assert build_output_bindings(
+        ("required", "optional"),
+        _output_metadata(),
+        catalogs,
+        tmp_path,
+    )["required"] == (artifact, tmp_path / "required.pa")
+
+
+def test_build_output_bindings_rejects_frozen_contract_drift(tmp_path: Path) -> None:
+    catalogs = cast(ArtifactCatalogCollection, _Catalogs(_Definition(object())))
+
+    with pytest.raises(BindingResolutionError, match="output fields"):
+        build_output_bindings(
+            ("required",),
+            _output_metadata(),
+            catalogs,
+            tmp_path,
+            binding_factory=lambda resolved, path: (resolved, path),
+        )
 
 
 def test_materialize_binding_inputs_rejects_unknown_identity(tmp_path: Path) -> None:

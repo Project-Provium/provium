@@ -9,9 +9,10 @@ from typing import Any, Protocol, cast
 
 from pydantic import ValidationError
 
-from provium.artifact.binding import ArtifactReadBinding
+from provium.artifact.binding import ArtifactReadBinding, ArtifactWriteBinding
 from provium.artifact.definition import Artifact
 from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
+from provium.procedure.definition import ProcedureContractMetadata
 from provium_pipeline.artifact import (
     ArtifactLocation,
     ArtifactStore,
@@ -75,6 +76,43 @@ class AttemptMaterializations:
 
 class BindingResolutionError(RuntimeError):
     """Resolved artifacts violate a frozen binding plan."""
+
+
+def _build_write_binding(
+    artifact: type[Artifact[Any, Any]],
+    path: Path,
+) -> ArtifactWriteBinding[Any]:
+    return ArtifactWriteBinding(artifact, path)
+
+
+def build_output_bindings(
+    expected_fields: Sequence[str],
+    contract: ProcedureContractMetadata,
+    catalogs: ArtifactCatalogCollection,
+    workspace: Path,
+    *,
+    binding_factory: Callable[[type[Artifact[Any, Any]], Path], object] = (
+        _build_write_binding
+    ),
+) -> dict[str, object]:
+    """Build output bindings after verifying the frozen field contract."""
+    installed_fields = tuple(field.name for field in contract.outputs)
+    if tuple(expected_fields) != installed_fields:
+        raise BindingResolutionError(
+            "frozen output fields do not match the installed procedure contract"
+        )
+    workspace.mkdir(parents=True, exist_ok=True)
+    bindings: dict[str, object] = {}
+    for field in contract.outputs:
+        artifact = cast(
+            type[Artifact[Any, Any]],
+            catalogs.resolve(field.artifact_identifier).resolve(),
+        )
+        bindings[field.name] = binding_factory(
+            artifact,
+            workspace / f"{field.name}.pa",
+        )
+    return bindings
 
 
 def _build_read_binding(
@@ -252,6 +290,7 @@ __all__ = [
     "PreparedProcedureCache",
     "PreparedProcedureKey",
     "StoredArtifact",
+    "build_output_bindings",
     "build_read_binding_value",
     "materialize_binding_inputs",
     "resolve_binding_references",
