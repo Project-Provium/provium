@@ -13,14 +13,9 @@ from .identifiers import TaskId
 from .run_models import PipelineTask, TaskState
 from .serial import SerialRunner
 
-_TERMINAL_TASK_STATES = frozenset(
-    {
-        TaskState.SUCCEEDED,
-        TaskState.REUSED,
-        TaskState.FAILED,
-        TaskState.CANCELLED,
-    }
-)
+_SUCCESSFUL_TASK_STATES = frozenset({TaskState.SUCCEEDED, TaskState.REUSED})
+_FAILED_TASK_STATES = frozenset({TaskState.FAILED, TaskState.CANCELLED})
+_TERMINAL_TASK_STATES = _SUCCESSFUL_TASK_STATES | _FAILED_TASK_STATES
 
 
 class ExecutionTasks(Protocol):
@@ -102,7 +97,7 @@ class SerialDispatchWorker:
 
     def _claim(self, dispatch: Dispatch) -> _ClaimedTask | None:
         for identifier in dispatch.task_identifiers:
-            task = self._executions.get_task(identifier)
+            task = self._resolve_blocked(self._executions.get_task(identifier))
             if task.state not in {TaskState.READY, TaskState.RETRY_WAIT}:
                 continue
             now = self._clock()
@@ -126,6 +121,25 @@ class SerialDispatchWorker:
                 raise
             return _ClaimedTask(leased, lease)
         return None
+
+    def _resolve_blocked(self, task: PipelineTask) -> PipelineTask:
+        if task.state is not TaskState.BLOCKED:
+            return task
+        dependency_states = tuple(
+            self._executions.get_task(identifier).state
+            for identifier in task.dependencies
+        )
+        if any(state in _FAILED_TASK_STATES for state in dependency_states):
+            target = TaskState.CANCELLED
+        elif all(state in _SUCCESSFUL_TASK_STATES for state in dependency_states):
+            target = TaskState.READY
+        else:
+            return task
+        return self._executions.transition_task(
+            task.identifier,
+            expected=TaskState.BLOCKED,
+            target=target,
+        )
 
     def _execute(self, claimed: _ClaimedTask) -> None:
         try:

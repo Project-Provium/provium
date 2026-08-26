@@ -16,10 +16,15 @@ from test.test_dispatch_transitions import dispatch_for_state
 NOW = datetime(2026, 8, 26, tzinfo=UTC)
 
 
-def _task(*, state: TaskState = TaskState.READY) -> PipelineTask:
+def _task(
+    *,
+    state: TaskState = TaskState.READY,
+    run_identifier: RunId | None = None,
+    dependencies: tuple[TaskId, ...] = (),
+) -> PipelineTask:
     return PipelineTask(
         identifier=TaskId.new(),
-        run_identifier=RunId.new(),
+        run_identifier=run_identifier or RunId.new(),
         node_identifier="node",
         record_key=InputRecordKey("record"),
         procedure_identifier="procedure",
@@ -28,7 +33,7 @@ def _task(*, state: TaskState = TaskState.READY) -> PipelineTask:
         setup_bindings=(),
         input_bindings=(),
         expected_output_fields=(),
-        dependencies=(),
+        dependencies=dependencies,
         state=state,
     )
 
@@ -119,11 +124,12 @@ class _Attempts:
         )
 
 
-def _dispatch(task: PipelineTask) -> Dispatch:
+def _dispatch(first: PipelineTask, *rest: PipelineTask) -> Dispatch:
+    tasks = (first, *rest)
     return replace(
         dispatch_for_state(DispatchState.RUNNING),
-        run_identifier=task.run_identifier,
-        task_identifiers=(task.identifier,),
+        run_identifier=first.run_identifier,
+        task_identifiers=tuple(task.identifier for task in tasks),
     )
 
 
@@ -210,17 +216,22 @@ def test_serial_dispatch_worker_releases_lease_after_transition_conflict() -> No
 
 
 def test_serial_dispatch_worker_waits_and_rescans_nonclaimable_tasks() -> None:
-    selected = _task(state=TaskState.BLOCKED)
-    executions = _Executions(selected)
+    dependency = _task()
+    selected = _task(
+        state=TaskState.BLOCKED,
+        run_identifier=dependency.run_identifier,
+        dependencies=(dependency.identifier,),
+    )
+    executions = _Executions(dependency, selected)
     attempts = _Attempts()
     waits: list[None] = []
 
     def make_ready() -> None:
         waits.append(None)
         executions.transition_task(
-            selected.identifier,
-            expected=TaskState.BLOCKED,
-            target=TaskState.READY,
+            dependency.identifier,
+            expected=TaskState.READY,
+            target=TaskState.SUCCEEDED,
         )
 
     SerialDispatchWorker(
@@ -236,6 +247,57 @@ def test_serial_dispatch_worker_waits_and_rescans_nonclaimable_tasks() -> None:
 
     assert waits == [None]
     assert executions.get_task(selected.identifier).state is TaskState.SUCCEEDED
+
+
+def test_serial_dispatch_worker_promotes_and_executes_dependency_chain() -> None:
+    upstream = _task()
+    downstream = _task(
+        state=TaskState.BLOCKED,
+        run_identifier=upstream.run_identifier,
+        dependencies=(upstream.identifier,),
+    )
+    executions = _Executions(upstream, downstream)
+    attempts = _Attempts()
+    observed: list[TaskId] = []
+
+    def observe(task: PipelineTask, _: TaskAttemptLease) -> None:
+        observed.append(task.identifier)
+
+    _worker(executions, attempts, observe).run(_dispatch(upstream, downstream))
+
+    assert observed == [upstream.identifier, downstream.identifier]
+    assert (
+        downstream.identifier,
+        TaskState.BLOCKED,
+        TaskState.READY,
+    ) in executions.transitions
+    assert executions.get_task(downstream.identifier).state is TaskState.SUCCEEDED
+
+
+def test_serial_dispatch_worker_cancels_task_with_failed_dependency() -> None:
+    upstream = _task(state=TaskState.FAILED)
+    downstream = _task(
+        state=TaskState.BLOCKED,
+        run_identifier=upstream.run_identifier,
+        dependencies=(upstream.identifier,),
+    )
+    executions = _Executions(upstream, downstream)
+    waits: list[None] = []
+    worker = SerialDispatchWorker(
+        executions=executions,
+        attempts=_Attempts(),
+        execute_task=_succeed,
+        clock=lambda: NOW,
+        token_factory=lambda: "token",
+        worker_identity="serial-1",
+        lease_ttl=timedelta(seconds=30),
+        wait_for_work=lambda: waits.append(None),
+    )
+
+    worker.run(_dispatch(upstream, downstream))
+
+    assert executions.get_task(downstream.identifier).state is TaskState.CANCELLED
+    assert waits == [None]
 
 
 def test_serial_dispatch_worker_requires_positive_lease_ttl() -> None:
