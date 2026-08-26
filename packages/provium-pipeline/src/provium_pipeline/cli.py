@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
-from collections.abc import Generator, Mapping
+from collections.abc import Callable, Generator, Iterable, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
@@ -20,6 +20,7 @@ from provium.cli.command import Command
 from provium.cli.plugin import CLI_PLUGIN_API_VERSION, CLIPlugin
 from provium.procedure.discovery import discover_procedure_catalogs
 
+from .artifact.query import ArtifactQueryService, InputSetArtifactBinding
 from .compiler.catalogs import ArtifactCatalogCollection, ProcedureCatalogCollection
 from .compiler.diagnostics import PipelineCompilationError
 from .compiler.validation import validate_pipeline_definition
@@ -30,7 +31,7 @@ from .definition.codec import (
 )
 from .definition.models import PipelineDefinition
 from .discovery import discover_pipeline_catalogs
-from .execution_codec import pipeline_run_document
+from .execution_codec import pipeline_run_document, to_json_value
 from .exports import RunExportService
 from .exports import RunLookup as ExportRunLookup
 from .identifiers import InputSetIdentifier, RunId
@@ -97,6 +98,10 @@ def _load_pipeline_source(source: str) -> PipelineDefinition:
     raise ValueError(f"unsupported pipeline source extension: {path.suffix}")
 
 
+def _no_locations(identity: str) -> tuple[object, ...]:
+    return ()
+
+
 def _labels(values: list[str]) -> dict[str, JsonValue]:
     labels: dict[str, JsonValue] = {}
     for value in values:
@@ -142,11 +147,13 @@ class LocalCLIBackend:
         *,
         exporter: RunExporter | None = None,
         input_sets: InputSetStore | None = None,
+        artifact_locations: Callable[[str], Iterable[object]] | None = None,
     ) -> None:
         self._store = cast(ExportRunLookup, store)
         self._runs = RunQueryService(store)
         self._exporter = exporter or RunExportService(self._store)
         self._input_sets = input_sets
+        self._artifact_locations = artifact_locations or _no_locations
 
     def execute(
         self,
@@ -197,6 +204,8 @@ class LocalCLIBackend:
                 }
             )
         value = store.get(arguments.input_set_id)
+        if action == "artifacts":
+            return self._input_set_artifacts(value, arguments.locations)
         if action == "show":
             return CLIResult(_input_set_document(value))
         if action == "export":
@@ -205,6 +214,45 @@ class LocalCLIBackend:
             {"action": action, "group": "input-set"},
             exit_code=2,
             message=f"local backend does not support input-set {action} yet",
+        )
+
+    def _input_set_artifacts(
+        self,
+        value: InputSet,
+        include_locations: bool,
+    ) -> CLIResult:
+        bindings = tuple(
+            InputSetArtifactBinding(
+                input_set_id=value.identity,
+                record_key=str(record.key),
+                input_field=name,
+                artifact_identity=identity,
+            )
+            for record in value.records
+            for name, identities in record.inputs.items()
+            for identity in identities
+        )
+        query = ArtifactQueryService(
+            bindings=(),
+            location_lookup=self._artifact_locations,
+            input_set_bindings=bindings,
+        )
+        return CLIResult(
+            {
+                "artifacts": [
+                    {
+                        **asdict(result.binding),
+                        "locations": [
+                            to_json_value(location)
+                            for location in result.locations
+                        ],
+                    }
+                    for result in query.query_input_set(
+                        value.identity,
+                        include_locations=include_locations,
+                    )
+                ]
+            }
         )
 
     def _create_input_set(
@@ -350,6 +398,7 @@ class _EnvironmentBackend:
     ) -> CLIResult:
         import os
 
+        from provium_pipeline.artifact.sqlite_index import SQLiteArtifactIndex
         from provium_pipeline.sqlite_execution_store import SQLiteExecutionStore
         from provium_pipeline.sqlite_input_sets import SQLiteInputSetStore
 
@@ -363,6 +412,7 @@ class _EnvironmentBackend:
         return LocalCLIBackend(
             cast(RunLookup, SQLiteExecutionStore(database)),
             input_sets=cast(InputSetStore, SQLiteInputSetStore(database)),
+            artifact_locations=SQLiteArtifactIndex(database).get_active_locations,
         ).execute(
             group,
             action,

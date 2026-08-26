@@ -540,6 +540,7 @@ def test_local_cli_backend_input_set_creation_validates_and_reads_stdin(
     backend = LocalCLIBackend(
         cast(RunLookup, object()),
         input_sets=input_sets,
+        artifact_locations=lambda identity: (f"location:{identity}",),
     )
     content = (
         '{"inputs":{"document":["artifact-1"]},'
@@ -574,15 +575,22 @@ def test_local_cli_backend_input_set_creation_validates_and_reads_stdin(
                 source=None,
             ),
         )
-    unsupported = backend.execute(
+    artifacts = backend.execute(
         "input-set",
         "artifacts",
-        argparse.Namespace(input_set_id="stdin-v1"),
+        argparse.Namespace(input_set_id="stdin-v1", locations=True),
     )
-    assert unsupported.exit_code == 2
-    assert unsupported.message == (
-        "local backend does not support input-set artifacts yet"
-    )
+    assert artifacts.data == {
+        "artifacts": [
+            {
+                "artifact_identity": "artifact-1",
+                "input_field": "document",
+                "input_set_id": created.data["identity"],
+                "locations": ["location:artifact-1"],
+                "record_key": "record-1",
+            }
+        ]
+    }
 
 
 def test_local_cli_backend_creates_lists_shows_and_exports_input_sets(
@@ -620,6 +628,16 @@ def test_local_cli_backend_creates_lists_shows_and_exports_input_sets(
         "export",
         argparse.Namespace(input_set_id="evaluation-v1", output=str(output)),
     )
+    artifacts = backend.execute(
+        "input-set",
+        "artifacts",
+        argparse.Namespace(input_set_id="evaluation-v1", locations=True),
+    )
+    unsupported = backend.execute(
+        "input-set",
+        "delete",
+        argparse.Namespace(input_set_id="evaluation-v1"),
+    )
 
     assert created.data["identifier"] == "evaluation-v1"
     assert listed.data["input_sets"] == [created.data]
@@ -632,6 +650,19 @@ def test_local_cli_backend_creates_lists_shows_and_exports_input_sets(
             "labels": {"split": "evaluation"},
         }
     ]
+    assert artifacts.data == {
+        "artifacts": [
+            {
+                "artifact_identity": "artifact-1",
+                "input_field": "document",
+                "input_set_id": created.data["identity"],
+                "locations": [],
+                "record_key": "record-1",
+            }
+        ]
+    }
+    assert unsupported.exit_code == 2
+    assert unsupported.message == "local backend does not support input-set delete yet"
     assert exported.data == {"output": str(output)}
     assert output.read_text() == source.read_text()
 
