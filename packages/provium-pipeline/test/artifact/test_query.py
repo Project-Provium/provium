@@ -1,6 +1,7 @@
 from provium_pipeline.artifact.query import (
     ArtifactQuery,
     ArtifactQueryService,
+    InputSetArtifactBinding,
     RunArtifactBinding,
 )
 
@@ -70,3 +71,21 @@ def test_query_can_include_locations_and_preserves_reuse_provenance() -> None:
     assert result.binding.origin_run_id == "run-origin"
     assert result.binding.origin_task_id == "task-origin"
     assert result.locations == ("cache://copy", "store://reused")
+
+
+def test_input_set_queries_and_direct_location_lookup_are_deterministic() -> None:
+    service = ArtifactQueryService(
+        bindings=(),
+        input_set_bindings=(
+            InputSetArtifactBinding("set-1", "record-b", "document", "b"),
+            InputSetArtifactBinding("set-2", "record-a", "document", "ignored"),
+            InputSetArtifactBinding("set-1", "record-a", "document", "a"),
+        ),
+        location_lookup=lambda identity: (f"z://{identity}", f"a://{identity}"),
+    )
+
+    results = service.query_input_set("set-1", include_locations=True)
+
+    assert [result.binding.artifact_identity for result in results] == ["a", "b"]
+    assert results[0].locations == ("a://a", "z://a")
+    assert service.locations("b") == ("a://b", "z://b")
