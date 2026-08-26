@@ -527,11 +527,30 @@ class _EnvironmentBackend:
         arguments: argparse.Namespace,
     ) -> CLIResult:
         import os
+        import time
+        from datetime import UTC, datetime, timedelta
+        from uuid import uuid4
 
+        from provium import ProcedureExecutor
+        from provium_pipeline.artifact.filesystem import FilesystemArtifactStore
+        from provium_pipeline.artifact.service import ArtifactImportService
         from provium_pipeline.artifact.sqlite_index import SQLiteArtifactIndex
+        from provium_pipeline.dispatch_creation import DispatchCreationService
+        from provium_pipeline.dispatch_models import RetryPolicy
+        from provium_pipeline.dispatch_worker import SerialDispatchWorker
+        from provium_pipeline.local_task_attempt import LocalTaskAttemptExecutor
+        from provium_pipeline.run_execution import LocalRunExecutor
+        from provium_pipeline.sqlite_attempts import SQLiteAttemptLeaseManager
         from provium_pipeline.sqlite_dispatch_store import SQLiteDispatchStore
         from provium_pipeline.sqlite_execution_store import SQLiteExecutionStore
         from provium_pipeline.sqlite_input_sets import SQLiteInputSetStore
+        from provium_pipeline.task_executor import (
+            PreparedProcedure,
+            PreparedProcedureCache,
+            execute_prepared_invocation,
+        )
+        from provium_pipeline.task_invocation_builder import FrozenTaskInvocationBuilder
+        from provium_pipeline.task_outputs import SQLiteTaskOutputStore
 
         database = Path(
             os.environ.get(
@@ -540,10 +559,17 @@ class _EnvironmentBackend:
             )
         )
         database.parent.mkdir(parents=True, exist_ok=True)
+        data_root = database.parent
         runs = SQLiteExecutionStore(database)
         dispatches = SQLiteDispatchStore(database)
         input_sets = SQLiteInputSetStore(database)
         artifact_index = SQLiteArtifactIndex(database)
+        outputs = SQLiteTaskOutputStore(database)
+        attempts = SQLiteAttemptLeaseManager(database)
+        artifact_store = FilesystemArtifactStore(
+            identifier="local",
+            root=data_root / "artifacts",
+        )
         artifact_catalogs, procedure_catalogs = _installed_validation_catalogs()
         run_creator = RunCreationService(
             compiler=PipelineCompiler(artifact_catalogs, procedure_catalogs),
@@ -551,17 +577,85 @@ class _EnvironmentBackend:
             artifact_index=artifact_index,
             runs=runs,
         )
-        return LocalCLIBackend(
-            cast(RunLookup, runs),
-            input_sets=cast(InputSetStore, input_sets),
-            dispatches=dispatches,
-            artifact_locations=artifact_index.get_active_locations,
-            run_creator=run_creator,
-        ).execute(
-            group,
-            action,
-            arguments,
+        invocation_builder = FrozenTaskInvocationBuilder(
+            runs=runs,
+            procedures=procedure_catalogs,
+            artifact_catalogs=artifact_catalogs,
+            artifact_index=artifact_index,
+            artifact_store=artifact_store,
+            outputs=outputs,
+            workspace=data_root / "workspaces",
         )
+        prepared_cache: PreparedProcedureCache[PreparedProcedure] = (
+            PreparedProcedureCache()
+        )
+        procedure_executor = ProcedureExecutor()
+        importer_service = ArtifactImportService(
+            store=artifact_store,
+            index=artifact_index,
+        )
+
+        class _IdentityImporter:
+            def import_artifact(self, path: Path) -> str:
+                return importer_service.import_artifact(path).identity
+
+        task_executor = LocalTaskAttemptExecutor(
+            builder=invocation_builder,
+            invoke=lambda invocation, materializations: execute_prepared_invocation(
+                invocation,
+                executor=procedure_executor,
+                cache=prepared_cache,
+                materializations=materializations,
+            ),
+            importer=_IdentityImporter(),
+            outputs=outputs,
+        )
+        def clock() -> datetime:
+            return datetime.now(UTC)
+
+        def execute_task(task: Any, lease: Any) -> None:
+            task_executor.execute(task, lease)
+
+        worker = SerialDispatchWorker(
+            executions=runs,
+            attempts=attempts,
+            execute_task=execute_task,
+            clock=clock,
+            token_factory=lambda: uuid4().hex,
+            worker_identity=f"local-{os.getpid()}",
+            lease_ttl=timedelta(minutes=5),
+            wait_for_work=lambda: time.sleep(0.01),
+            is_retryable=lambda error: True,
+            wait_until=lambda eligible_at: time.sleep(
+                max(0.0, (eligible_at - clock()).total_seconds())
+            ),
+        )
+        dispatch_creator = DispatchCreationService(
+            executions=runs,
+            dispatches=dispatches,
+            clock=clock,
+        )
+        run_executor = LocalRunExecutor(
+            creator=dispatch_creator,
+            dispatches=dispatches,
+            run_dispatch=worker.run,
+            retry_policy=RetryPolicy(max_attempts=3),
+        )
+        try:
+            return LocalCLIBackend(
+                cast(RunLookup, runs),
+                input_sets=cast(InputSetStore, input_sets),
+                dispatches=dispatches,
+                artifact_locations=artifact_index.get_active_locations,
+                run_creator=run_creator,
+                run_executor=run_executor,
+            ).execute(
+                group,
+                action,
+                arguments,
+            )
+        finally:
+            prepared_cache.close()
 
 
 _backend: ContextVar[PipelineCLIBackend] = ContextVar(
