@@ -9,6 +9,32 @@ from typing import Protocol
 from pydantic import ValidationError
 
 from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
+from provium_pipeline.compiler.models import CompiledBindingPlan
+
+
+class BindingResolutionError(RuntimeError):
+    """Resolved artifacts violate a frozen binding plan."""
+
+
+def resolve_binding_references(
+    plan: CompiledBindingPlan,
+    resolver: Callable[[str], str | None],
+) -> tuple[str, ...]:
+    """Resolve exact artifact identities in frozen reference order."""
+    identities = tuple(
+        identity
+        for reference in plan.references
+        if (identity := resolver(reference)) is not None
+    )
+    if len(identities) < plan.minimum:
+        raise BindingResolutionError(
+            f"binding {plan.field!r} requires at least {plan.minimum} artifacts"
+        )
+    if plan.maximum is not None and len(identities) > plan.maximum:
+        raise BindingResolutionError(
+            f"binding {plan.field!r} accepts at most {plan.maximum} artifacts"
+        )
+    return identities
 
 
 class ConfigurationSnapshotMismatchError(RuntimeError):
@@ -104,8 +130,10 @@ class PreparedProcedureCache[PreparedT: PreparedProcedure]:
 
 
 __all__ = [
+    "BindingResolutionError",
     "ConfigurationSnapshotMismatchError",
     "PreparedProcedureCache",
     "PreparedProcedureKey",
+    "resolve_binding_references",
     "verify_configuration_snapshot",
 ]

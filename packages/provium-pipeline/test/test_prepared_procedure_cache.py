@@ -5,10 +5,13 @@ from dataclasses import dataclass, replace
 import pytest
 
 from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
+from provium_pipeline.compiler.models import CompiledBindingPlan
 from provium_pipeline.task_executor import (
+    BindingResolutionError,
     ConfigurationSnapshotMismatchError,
     PreparedProcedureCache,
     PreparedProcedureKey,
+    resolve_binding_references,
     verify_configuration_snapshot,
 )
 
@@ -174,3 +177,67 @@ def test_configuration_snapshot_requires_matching_configuration_contract() -> No
     with pytest.raises(ConfigurationSnapshotMismatchError, match="missing"):
         verify_configuration_snapshot(None, _Config)
     assert verify_configuration_snapshot(None, None) is None
+
+
+def _binding_plan(*, minimum: int, maximum: int | None) -> CompiledBindingPlan:
+    return CompiledBindingPlan(
+        field="documents",
+        artifact_identifier="example.document.v1",
+        minimum=minimum,
+        maximum=maximum,
+        references=("input:first", "input:missing", "input:second"),
+    )
+
+
+def test_binding_references_preserve_repeated_input_order() -> None:
+    identities = {
+        "input:first": "sha256:first",
+        "input:second": "sha256:second",
+    }
+
+    resolved = resolve_binding_references(
+        _binding_plan(minimum=1, maximum=None),
+        identities.get,
+    )
+
+    assert resolved == ("sha256:first", "sha256:second")
+
+
+def test_binding_references_allow_optional_absence() -> None:
+    plan = CompiledBindingPlan(
+        field="previous",
+        artifact_identifier="example.document.v1",
+        minimum=0,
+        maximum=1,
+        references=("node:previous.output",),
+    )
+
+    assert resolve_binding_references(plan, lambda reference: None) == ()
+
+
+@pytest.mark.parametrize(
+    ("minimum", "maximum", "identities", "message"),
+    [
+        (2, None, {"input:first": "sha256:first"}, "at least 2"),
+        (
+            0,
+            1,
+            {
+                "input:first": "sha256:first",
+                "input:second": "sha256:second",
+            },
+            "at most 1",
+        ),
+    ],
+)
+def test_binding_references_enforce_frozen_cardinality(
+    minimum: int,
+    maximum: int | None,
+    identities: dict[str, str],
+    message: str,
+) -> None:
+    with pytest.raises(BindingResolutionError, match=message):
+        resolve_binding_references(
+            _binding_plan(minimum=minimum, maximum=maximum),
+            identities.get,
+        )
