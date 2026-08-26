@@ -638,6 +638,7 @@ class _EnvironmentBackend:
         run_executor = LocalRunExecutor(
             creator=dispatch_creator,
             dispatches=dispatches,
+            runs=runs,
             run_dispatch=worker.run,
             retry_policy=RetryPolicy(max_attempts=3),
         )

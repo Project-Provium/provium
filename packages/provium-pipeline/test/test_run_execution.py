@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import timedelta
+from typing import Any
 
 import pytest
 
@@ -15,8 +16,9 @@ from provium_pipeline.dispatch_models import (
 )
 from provium_pipeline.dispatch_store import InMemoryDispatchStore
 from provium_pipeline.dispatch_transitions import DispatchStateConflictError
-from provium_pipeline.identifiers import DispatchId
+from provium_pipeline.identifiers import DispatchId, RunId
 from provium_pipeline.run_execution import LocalRunExecutor
+from provium_pipeline.run_models import RunState
 from test.test_dispatch_transitions import dispatch_for_state
 
 
@@ -73,6 +75,24 @@ class _NonterminalConflictStore(InMemoryDispatchStore):
             expected=expected,
             target=target,
         )
+
+
+class _Runs:
+    def __init__(self) -> None:
+        self.state = RunState.PLANNED
+        self.transitions: list[tuple[RunState, RunState]] = []
+
+    def transition_run(
+        self,
+        identifier: RunId,
+        *,
+        expected: RunState,
+        target: RunState,
+    ) -> Any:
+        assert self.state is expected
+        self.state = target
+        self.transitions.append((expected, target))
+        return object()
 
 
 class _Creator:
@@ -143,10 +163,38 @@ def test_local_run_executor_creates_runs_and_completes_a_dispatch() -> None:
     assert dispatches.get(dispatch.identifier) == completed
 
 
+def test_local_run_executor_transitions_the_durable_run_to_success() -> None:
+    dispatch = dispatch_for_state(DispatchState.CREATED)
+    dispatches = InMemoryDispatchStore()
+    runs = _Runs()
+    executor = LocalRunExecutor(
+        creator=_Creator(dispatches, dispatch),
+        dispatches=dispatches,
+        runs=runs,
+        run_dispatch=lambda _: None,
+        retry_policy=dispatch.retry_policy,
+    )
+
+    executor.execute(
+        dispatch.run_identifier,
+        selection=dispatch.selection,
+        dependency_policy=dispatch.dependency_policy,
+    )
+
+    assert runs.transitions == [
+        (RunState.PLANNED, RunState.RUNNING),
+        (RunState.RUNNING, RunState.SUCCEEDED),
+    ]
+
+
 def test_local_run_executor_skips_an_already_terminal_dispatch() -> None:
     dispatch = dispatch_for_state(DispatchState.SUCCEEDED)
-    executor, _, _ = _executor(
-        dispatch,
+    dispatches = InMemoryDispatchStore()
+    runs = _Runs()
+    executor = LocalRunExecutor(
+        creator=_Creator(dispatches, dispatch),
+        dispatches=dispatches,
+        runs=runs,
         run_dispatch=lambda value: pytest.fail(f"unexpected dispatch: {value}"),
         retry_policy=RetryPolicy(max_attempts=1),
     )
@@ -158,6 +206,7 @@ def test_local_run_executor_skips_an_already_terminal_dispatch() -> None:
     )
 
     assert completed is dispatch
+    assert runs.state is RunState.SUCCEEDED
 
 
 def test_local_run_executor_preserves_cancellation_during_execution() -> None:
@@ -234,6 +283,7 @@ def test_local_run_executor_preserves_original_error_when_cancellation_wins() ->
 def test_failure_record_preserves_terminal_cancellation() -> None:
     dispatch = dispatch_for_state(DispatchState.CREATED)
     dispatches = InMemoryDispatchStore()
+    runs = _Runs()
 
     def cancel_and_fail(running: Dispatch) -> None:
         dispatches.cancel(running.identifier)
@@ -242,6 +292,7 @@ def test_failure_record_preserves_terminal_cancellation() -> None:
     executor = LocalRunExecutor(
         creator=_Creator(dispatches, dispatch),
         dispatches=dispatches,
+        runs=runs,
         run_dispatch=cancel_and_fail,
         retry_policy=dispatch.retry_policy,
     )
@@ -254,6 +305,7 @@ def test_failure_record_preserves_terminal_cancellation() -> None:
         )
 
     assert dispatches.get(dispatch.identifier).state is DispatchState.CANCELLED
+    assert runs.state is RunState.CANCELLED
 
 
 def test_local_run_executor_surfaces_nonterminal_failure_conflict() -> None:
@@ -303,9 +355,11 @@ def test_local_run_executor_surfaces_nonterminal_success_conflict() -> None:
 def test_local_run_executor_returns_cancellation_that_wins_after_success() -> None:
     dispatch = dispatch_for_state(DispatchState.CREATED)
     dispatches = _CancelBeforeSuccessStore()
+    runs = _Runs()
     executor = LocalRunExecutor(
         creator=_Creator(dispatches, dispatch),
         dispatches=dispatches,
+        runs=runs,
         run_dispatch=lambda _: None,
         retry_policy=dispatch.retry_policy,
     )

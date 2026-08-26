@@ -16,12 +16,23 @@ from .dispatch_models import (
 from .dispatch_store import DispatchStore
 from .dispatch_transitions import DispatchStateConflictError
 from .identifiers import DispatchId, RunId
+from .run_models import PipelineRun, RunState
 
 
 class DispatchCreator(Protocol):
     """Create and persist a dispatch from a canonical request."""
 
     def create(self, request: CreateDispatchRequest) -> Dispatch: ...
+
+
+class RunTransitions(Protocol):
+    def transition_run(
+        self,
+        identifier: RunId,
+        *,
+        expected: RunState,
+        target: RunState,
+    ) -> PipelineRun: ...
 
 
 class LocalRunExecutor:
@@ -34,11 +45,13 @@ class LocalRunExecutor:
         dispatches: DispatchStore,
         run_dispatch: Callable[[Dispatch], None],
         retry_policy: RetryPolicy,
+        runs: RunTransitions | None = None,
     ) -> None:
         self._creator = creator
         self._dispatches = dispatches
         self._run_dispatch = run_dispatch
         self._retry_policy = retry_policy
+        self._runs = runs
 
     def execute(
         self,
@@ -55,7 +68,17 @@ class LocalRunExecutor:
                 retry_policy=self._retry_policy,
             )
         )
+        self._transition_run(
+            run_identifier,
+            expected=RunState.PLANNED,
+            target=RunState.RUNNING,
+        )
         if dispatch.state.terminal:
+            self._transition_run(
+                run_identifier,
+                expected=RunState.RUNNING,
+                target=self._terminal_run_state(dispatch.state),
+            )
             return dispatch
         running = self._dispatches.transition(
             dispatch.identifier,
@@ -66,8 +89,38 @@ class LocalRunExecutor:
             self._run_dispatch(running)
         except Exception:
             self._record_failure(dispatch.identifier)
+            failed = self._dispatches.get(dispatch.identifier)
+            self._transition_run(
+                run_identifier,
+                expected=RunState.RUNNING,
+                target=self._terminal_run_state(failed.state),
+            )
             raise
-        return self._record_success(dispatch.identifier)
+        completed = self._record_success(dispatch.identifier)
+        self._transition_run(
+            run_identifier,
+            expected=RunState.RUNNING,
+            target=self._terminal_run_state(completed.state),
+        )
+        return completed
+
+    def _transition_run(
+        self,
+        identifier: RunId,
+        *,
+        expected: RunState,
+        target: RunState,
+    ) -> None:
+        if self._runs is not None:
+            self._runs.transition_run(identifier, expected=expected, target=target)
+
+    @staticmethod
+    def _terminal_run_state(state: DispatchState) -> RunState:
+        if state is DispatchState.SUCCEEDED:
+            return RunState.SUCCEEDED
+        if state is DispatchState.CANCELLED:
+            return RunState.CANCELLED
+        return RunState.FAILED
 
     def _record_failure(self, identifier: DispatchId) -> None:
         current = self._dispatches.get(identifier)
