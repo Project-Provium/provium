@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
+from provium_pipeline.artifact import MaterializationCleanup, MaterializedArtifact
 from provium_pipeline.compiler.models import CompiledBindingPlan
 from provium_pipeline.task_executor import (
+    AttemptMaterializations,
     BindingResolutionError,
     ConfigurationSnapshotMismatchError,
     PreparedProcedureCache,
@@ -241,3 +246,60 @@ def test_binding_references_enforce_frozen_cardinality(
             _binding_plan(minimum=minimum, maximum=maximum),
             identities.get,
         )
+
+
+def _materialized(path: Path, cleanup: MaterializationCleanup) -> MaterializedArtifact:
+    return cast(
+        MaterializedArtifact,
+        SimpleNamespace(path=path, cleanup=cleanup),
+    )
+
+
+def test_attempt_materializations_remove_only_caller_owned_paths(
+    tmp_path: Path,
+) -> None:
+    owned = tmp_path / "owned.pa"
+    protected = tmp_path / "protected.pa"
+    owned.touch()
+    protected.touch()
+    materializations = AttemptMaterializations()
+
+    assert (
+        materializations.track(_materialized(owned, MaterializationCleanup.REQUIRED))
+        == owned
+    )
+    assert (
+        materializations.track(
+            _materialized(protected, MaterializationCleanup.NOT_REQUIRED)
+        )
+        == protected
+    )
+
+    materializations.close()
+    materializations.close()
+
+    assert not owned.exists()
+    assert protected.exists()
+    with pytest.raises(RuntimeError, match="closed"):
+        materializations.track(_materialized(owned, MaterializationCleanup.REQUIRED))
+
+
+def test_attempt_materializations_clean_all_owned_paths_after_failure() -> None:
+    removed: list[Path] = []
+
+    def remove(path: Path) -> None:
+        removed.append(path)
+        if path.name in {"first.pa", "second.pa"}:
+            raise OSError(f"cleanup failed: {path.name}")
+
+    materializations = AttemptMaterializations(remove=remove)
+    for name in ("first.pa", "second.pa", "third.pa"):
+        materializations.track(
+            _materialized(Path(name), MaterializationCleanup.REQUIRED)
+        )
+
+    with pytest.raises(OSError, match="cleanup failed"):
+        materializations.close()
+    materializations.close()
+
+    assert removed == [Path("third.pa"), Path("second.pa"), Path("first.pa")]

@@ -4,12 +4,56 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from pydantic import ValidationError
 
 from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
+from provium_pipeline.artifact import MaterializationCleanup, MaterializedArtifact
 from provium_pipeline.compiler.models import CompiledBindingPlan
+
+
+def _remove_materialization(path: Path) -> None:
+    path.unlink(missing_ok=True)
+
+
+class AttemptMaterializations:
+    """Own caller-cleaned materialized inputs for one task attempt."""
+
+    def __init__(
+        self,
+        *,
+        remove: Callable[[Path], None] = _remove_materialization,
+    ) -> None:
+        self._remove = remove
+        self._owned: list[Path] = []
+        self._closed = False
+
+    def track(self, materialized: MaterializedArtifact) -> Path:
+        """Record cleanup ownership and return the verified local path."""
+        if self._closed:
+            raise RuntimeError("attempt materializations are closed")
+        if materialized.cleanup is MaterializationCleanup.REQUIRED:
+            self._owned.append(materialized.path)
+        return materialized.path
+
+    def close(self) -> None:
+        """Remove all caller-owned paths exactly once."""
+        if self._closed:
+            return
+        self._closed = True
+        owned = tuple(reversed(self._owned))
+        self._owned.clear()
+        failure: BaseException | None = None
+        for path in owned:
+            try:
+                self._remove(path)
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+        if failure is not None:
+            raise failure
 
 
 class BindingResolutionError(RuntimeError):
@@ -130,6 +174,7 @@ class PreparedProcedureCache[PreparedT: PreparedProcedure]:
 
 
 __all__ = [
+    "AttemptMaterializations",
     "BindingResolutionError",
     "ConfigurationSnapshotMismatchError",
     "PreparedProcedureCache",
