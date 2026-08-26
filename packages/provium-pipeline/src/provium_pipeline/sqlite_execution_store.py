@@ -24,9 +24,11 @@ from provium_pipeline.run_models import (
     PipelineRun,
     PipelineTask,
     RunPlan,
+    RunState,
     TaskState,
     plan_run,
 )
+from provium_pipeline.run_transitions import apply_run_transition
 from provium_pipeline.task_transitions import transition_task as apply_task_transition
 
 SCHEMA_VERSION = 1
@@ -110,6 +112,15 @@ _SCHEMA_STATEMENTS = (
     "sequence INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, task_id TEXT, "
     "kind TEXT NOT NULL, created_at TEXT NOT NULL, payload TEXT NOT NULL)",
 )
+
+
+def _require_run_payload(
+    row: tuple[object, ...] | None,
+    identifier: RunId,
+) -> str:
+    if row is None:
+        raise KeyError(f"unknown run identifier: {identifier}")
+    return str(row[0])
 
 
 class SQLiteExecutionStore:
@@ -280,6 +291,35 @@ class SQLiteExecutionStore:
                 (str(run_identifier),),
             ).fetchall()
         return tuple(pipeline_task_from_json(str(row[0])) for row in rows)
+
+    def transition_run(
+        self,
+        identifier: RunId,
+        *,
+        expected: RunState,
+        target: RunState,
+    ) -> PipelineRun:
+        """Atomically compare and set one durable run state."""
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT payload FROM runs WHERE id = ?", (str(identifier),)
+                ).fetchone()
+                transitioned = apply_run_transition(
+                    pipeline_run_from_json(_require_run_payload(row, identifier)),
+                    expected=expected,
+                    target=target,
+                )
+                connection.execute(
+                    "UPDATE runs SET payload = ? WHERE id = ?",
+                    (pipeline_run_json(transitioned), str(identifier)),
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+        return transitioned
 
     def transition_task(
         self,

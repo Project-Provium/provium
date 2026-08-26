@@ -11,9 +11,11 @@ from .run_models import (
     PipelineRun,
     PipelineTask,
     RunPlan,
+    RunState,
     TaskState,
     plan_run,
 )
+from .run_transitions import apply_run_transition
 from .task_transitions import transition_task as apply_task_transition
 
 
@@ -33,6 +35,14 @@ class ExecutionStore(Protocol):
     def list_tasks(self, run_identifier: RunId) -> tuple[PipelineTask, ...]: ...
 
     def get_task(self, identifier: TaskId) -> PipelineTask: ...
+
+    def transition_run(
+        self,
+        identifier: RunId,
+        *,
+        expected: RunState,
+        target: RunState,
+    ) -> PipelineRun: ...
 
     def transition_task(
         self,
@@ -104,6 +114,24 @@ class InMemoryExecutionStore:
         with self._lock:
             _, _, task = self._locate_task(identifier)
             return task
+
+    def transition_run(
+        self,
+        identifier: RunId,
+        *,
+        expected: RunState,
+        target: RunState,
+    ) -> PipelineRun:
+        with self._lock:
+            run = self._runs[identifier]
+            transitioned = apply_run_transition(
+                run,
+                expected=expected,
+                target=target,
+            )
+            if transitioned is not run:
+                self._runs[identifier] = transitioned
+            return transitioned
 
     def transition_task(
         self,
