@@ -85,6 +85,49 @@ def test_prepared_procedure_cache_separates_configuration_fingerprints() -> None
     assert first is not second
 
 
+def test_prepared_procedure_cache_evicts_least_recently_used_entry() -> None:
+    cache = PreparedProcedureCache[_Prepared](capacity=2)
+    first_key = _key()
+    second_key = _key(configuration="configuration-b")
+    third_key = _key(configuration="configuration-c")
+    first = cache.get_or_prepare(first_key, _Prepared)
+    second = cache.get_or_prepare(second_key, _Prepared)
+
+    assert cache.get_or_prepare(first_key, _Prepared) is first
+    third = cache.get_or_prepare(third_key, _Prepared)
+
+    assert second.close_count == 1
+    assert first.close_count == 0
+    assert third.close_count == 0
+    assert cache.get_or_prepare(first_key, _Prepared) is first
+
+
+def test_prepared_procedure_cache_rejects_nonpositive_capacity() -> None:
+    with pytest.raises(ValueError, match="capacity must be positive"):
+        PreparedProcedureCache[_Prepared](capacity=0)
+
+
+def test_prepared_procedure_cache_does_not_retain_entry_when_eviction_fails() -> None:
+    class _FailingPrepared(_Prepared):
+        def close(self) -> None:
+            super().close()
+            raise RuntimeError("eviction failed")
+
+    cache = PreparedProcedureCache[_Prepared](capacity=1)
+    evicted = cache.get_or_prepare(_key(), _FailingPrepared)
+    replacement = _Prepared()
+
+    with pytest.raises(RuntimeError, match="eviction failed"):
+        cache.get_or_prepare(
+            _key(configuration="configuration-b"),
+            lambda: replacement,
+        )
+
+    assert evicted.close_count == 1
+    cache.close()
+    assert replacement.close_count == 0
+
+
 def test_prepared_procedure_cache_closes_each_prepared_instance_once() -> None:
     cache = PreparedProcedureCache[_Prepared]()
     first = cache.get_or_prepare(_key(), _Prepared)

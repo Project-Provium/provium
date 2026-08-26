@@ -280,7 +280,10 @@ class PreparedInvocation:
 class PreparedProcedureCache[PreparedT: PreparedProcedure]:
     """Own and reuse prepared procedures with identical setup fingerprints."""
 
-    def __init__(self) -> None:
+    def __init__(self, capacity: int | None = None) -> None:
+        if capacity is not None and capacity <= 0:
+            raise ValueError("capacity must be positive")
+        self._capacity = capacity
         self._prepared: dict[PreparedProcedureKey, PreparedT] = {}
         self._closed = False
 
@@ -292,9 +295,14 @@ class PreparedProcedureCache[PreparedT: PreparedProcedure]:
         """Return cached prepared state or create it exactly once."""
         if self._closed:
             raise RuntimeError("prepared procedure cache is closed")
-        cached = self._prepared.get(key)
+        cached = self._prepared.pop(key, None)
         if cached is not None:
+            self._prepared[key] = cached
             return cached
+        if self._capacity is not None and len(self._prepared) >= self._capacity:
+            oldest_key = next(iter(self._prepared))
+            evicted = self._prepared.pop(oldest_key)
+            evicted.close()
         prepared = prepare()
         self._prepared[key] = prepared
         return prepared
