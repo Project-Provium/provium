@@ -1,7 +1,9 @@
 """Spawn-process lifecycle supervision for local execution."""
 
 from collections.abc import Callable
-from typing import Protocol
+from dataclasses import dataclass
+from multiprocessing import get_context
+from typing import Protocol, cast
 
 
 class WorkerProcess(Protocol):
@@ -14,6 +16,30 @@ class WorkerProcess(Protocol):
     def terminate(self) -> None: ...
 
     def join(self) -> None: ...
+
+
+def run_spawn_worker(
+    target: Callable[..., None],
+    identity: str,
+    args: tuple[object, ...],
+) -> None:
+    target(identity, *args)
+
+
+@dataclass(frozen=True, slots=True)
+class SpawnProcessFactory:
+    """Create named children through Python's spawn multiprocessing context."""
+
+    target: Callable[..., None]
+    args: tuple[object, ...] = ()
+
+    def __call__(self, identity: str) -> WorkerProcess:
+        process = get_context("spawn").Process(
+            name=identity,
+            target=run_spawn_worker,
+            args=(self.target, identity, self.args),
+        )
+        return cast(WorkerProcess, process)
 
 
 class MultiprocessSupervisor:
@@ -59,4 +85,4 @@ class MultiprocessSupervisor:
                 process.join()
 
 
-__all__ = ["MultiprocessSupervisor", "WorkerProcess"]
+__all__ = ["MultiprocessSupervisor", "SpawnProcessFactory", "WorkerProcess"]

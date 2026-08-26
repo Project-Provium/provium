@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 
-from provium_pipeline.multiprocessing import MultiprocessSupervisor
+from provium_pipeline.multiprocessing import (
+    MultiprocessSupervisor,
+    SpawnProcessFactory,
+    run_spawn_worker,
+)
+
+
+def _record_spawned_worker(identity: str, directory: str) -> None:
+    Path(directory, identity).write_text(str(os.getpid()), encoding="utf-8")
 
 
 @dataclass
@@ -26,6 +36,40 @@ class _Process:
 
     def join(self) -> None:
         self.joins += 1
+
+
+def test_spawn_worker_entry_injects_identity_before_factory_arguments() -> None:
+    received: list[tuple[str, object]] = []
+
+    def target(identity: str, value: object) -> None:
+        received.append((identity, value))
+
+    marker = object()
+    run_spawn_worker(target, "pipeline-worker-2", (marker,))
+
+    assert received == [("pipeline-worker-2", marker)]
+
+
+def test_spawn_process_factory_runs_named_workers_in_distinct_children(
+    tmp_path: Path,
+) -> None:
+    factory = SpawnProcessFactory(
+        target=_record_spawned_worker,
+        args=(str(tmp_path),),
+    )
+    processes = [factory(f"pipeline-worker-{slot}") for slot in range(4)]
+
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join()
+
+    pids = {
+        (tmp_path / f"pipeline-worker-{slot}").read_text(encoding="utf-8")
+        for slot in range(4)
+    }
+    assert len(pids) == 4
+    assert str(os.getpid()) not in pids
 
 
 def test_multiprocess_supervisor_rejects_nonpositive_slots() -> None:
