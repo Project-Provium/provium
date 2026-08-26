@@ -20,6 +20,9 @@ dependencies = [
     "PyYAML>=6,<7",
 ]
 
+[project.entry-points."provium.cli.command_catalogs"]
+pipeline = "provium_pipeline.cli:cli_plugin"
+
 [project.entry-points."provium.artifact_stores"]
 filesystem = "provium_pipeline.artifact.plugins:filesystem_artifact_store_factory"
 
