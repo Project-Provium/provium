@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -12,10 +13,42 @@ from provium_pipeline.multiprocessing import (
     run_spawn_worker,
     run_worker_runtime,
 )
+from provium_pipeline.task_executor import (
+    PreparedProcedureCache,
+    PreparedProcedureKey,
+)
 
 
 def _record_spawned_worker(identity: str, directory: str) -> None:
     Path(directory, identity).write_text(str(os.getpid()), encoding="utf-8")
+
+
+@dataclass
+class _CachedPrepared:
+    closes: list[None]
+
+    def close(self) -> None:
+        self.closes.append(None)
+
+
+def _exercise_child_prepared_cache(identity: str, directory: str) -> None:
+    cache: PreparedProcedureCache[Any] = PreparedProcedureCache()
+    preparations = 0
+    closes: list[None] = []
+
+    def prepare() -> _CachedPrepared:
+        nonlocal preparations
+        preparations += 1
+        return _CachedPrepared(closes)
+
+    key = PreparedProcedureKey("procedure", "configuration", "setup")
+    first = cache.get_or_prepare(key, prepare)
+    second = cache.get_or_prepare(key, prepare)
+    cache.close()
+    Path(directory, f"{identity}.cache").write_text(
+        f"{os.getpid()}:{preparations}:{len(closes)}:{first is second}",
+        encoding="utf-8",
+    )
 
 
 @dataclass
@@ -60,6 +93,31 @@ class _Process:
 
     def join(self) -> None:
         self.joins += 1
+
+
+def test_prepared_cache_reuses_setup_within_and_isolates_across_workers(
+    tmp_path: Path,
+) -> None:
+    factory = SpawnProcessFactory(
+        target=_exercise_child_prepared_cache,
+        args=(str(tmp_path),),
+    )
+    processes = [factory(f"pipeline-worker-{slot}") for slot in range(2)]
+
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join()
+
+    reports = [
+        (tmp_path / f"pipeline-worker-{slot}.cache").read_text(encoding="utf-8")
+        for slot in range(2)
+    ]
+    assert len({report.partition(":")[0] for report in reports}) == 2
+    assert [report.partition(":")[2] for report in reports] == [
+        "1:1:True",
+        "1:1:True",
+    ]
 
 
 def test_spawn_worker_entry_injects_identity_before_factory_arguments() -> None:
