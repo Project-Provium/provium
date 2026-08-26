@@ -7,13 +7,16 @@ import sys
 from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any, ClassVar, Protocol, cast
 
 from provium.canonical import canonical_json
 from provium.cli.catalog import CommandCatalog
 from provium.cli.command import Command
 from provium.cli.plugin import CLI_PLUGIN_API_VERSION, CLIPlugin
+
+from .identifiers import RunId
+from .run_query import RunLookup, RunQueryService
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +33,48 @@ class PipelineCLIBackend(Protocol):
         action: str,
         arguments: argparse.Namespace,
     ) -> CLIResult: ...
+
+
+class LocalCLIBackend:
+    """Read durable local run state through the execution-store contract."""
+
+    def __init__(self, store: RunLookup) -> None:
+        self._runs = RunQueryService(store)
+
+    def execute(
+        self,
+        group: str,
+        action: str,
+        arguments: argparse.Namespace,
+    ) -> CLIResult:
+        if group != "run" or action not in {"status", "tasks"}:
+            return CLIResult(
+                {"action": action, "group": group},
+                exit_code=2,
+                message=f"local backend does not support {group} {action} yet",
+            )
+        view = self._runs.get(RunId.parse(arguments.run_id))
+        if action == "status":
+            return CLIResult(
+                {
+                    "run_id": view.run_id,
+                    "status": view.status,
+                    "status_counts": dict(view.status_counts),
+                }
+            )
+        return CLIResult(
+            {
+                "tasks": [
+                    {
+                        **asdict(task),
+                        "expected_output_fields": list(
+                            task.expected_output_fields
+                        ),
+                    }
+                    for task in view.tasks
+                ]
+            }
+        )
 
 
 class _UnavailableBackend:
@@ -209,6 +254,7 @@ __all__ = [
     "CLIResult",
     "DispatchCommand",
     "InputSetCommand",
+    "LocalCLIBackend",
     "PipelineCLIBackend",
     "PipelineCommand",
     "RunCommand",

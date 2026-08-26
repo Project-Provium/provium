@@ -1,11 +1,20 @@
 import argparse
 import json
 from collections.abc import Mapping
+from types import SimpleNamespace
+from typing import cast
+from uuid import UUID
 
 from pytest import CaptureFixture
 
 from provium.cli import CLI_PLUGIN_API_VERSION
-from provium_pipeline.cli import CLIResult, cli_plugin, use_cli_backend
+from provium_pipeline.cli import (
+    CLIResult,
+    LocalCLIBackend,
+    cli_plugin,
+    use_cli_backend,
+)
+from provium_pipeline.run_query import RunLookup
 
 
 class RecordingBackend:
@@ -107,3 +116,64 @@ def test_cli_human_output_and_unconfigured_backend_exit_code(
     with use_cli_backend(backend):
         assert command.execute(arguments) == 0
     assert capsys.readouterr().out == "action: status\ngroup: run\n"
+
+
+def test_local_cli_backend_reads_durable_run_status_and_tasks() -> None:
+    run_id = str(UUID(int=1))
+
+    class Store:
+        def get_run(self, identifier: object) -> object:
+            assert str(identifier) == run_id
+            return SimpleNamespace(
+                identifier=identifier,
+                state=SimpleNamespace(value="running"),
+                inputs=SimpleNamespace(records=()),
+                expected_outputs=(SimpleNamespace(name="result"),),
+            )
+
+        def list_tasks(self, identifier: object) -> tuple[object, ...]:
+            return (
+                SimpleNamespace(
+                    identifier=UUID(int=3),
+                    record_key="record-1",
+                    node_identifier="detect",
+                    state=SimpleNamespace(value="ready"),
+                    expected_output_fields=("detections",),
+                ),
+            )
+
+    backend = LocalCLIBackend(cast(RunLookup, Store()))
+    status = backend.execute(
+        "run",
+        "status",
+        argparse.Namespace(run_id=run_id),
+    )
+    tasks = backend.execute(
+        "run",
+        "tasks",
+        argparse.Namespace(run_id=run_id),
+    )
+
+    assert status.data == {
+        "run_id": run_id,
+        "status": "running",
+        "status_counts": {"ready": 1},
+    }
+    unsupported = backend.execute(
+        "pipeline",
+        "list",
+        argparse.Namespace(),
+    )
+
+    assert unsupported.exit_code == 2
+    assert unsupported.message == "local backend does not support pipeline list yet"
+    assert tasks.data["tasks"] == [
+        {
+            "cache_disposition": None,
+            "expected_output_fields": ["detections"],
+            "node_id": "detect",
+            "record_key": "record-1",
+            "status": "ready",
+            "task_id": str(UUID(int=3)),
+        }
+    ]
