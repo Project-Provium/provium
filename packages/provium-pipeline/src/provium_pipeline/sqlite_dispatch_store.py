@@ -121,23 +121,52 @@ class SQLiteDispatchStore:
     ) -> Dispatch:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            row = connection.execute(
-                "SELECT payload FROM dispatches WHERE identifier = ?",
-                (str(identifier),),
-            ).fetchone()
-            if row is None:
-                raise KeyError(f"unknown dispatch: {identifier}")
             transitioned = apply_dispatch_transition(
-                dispatch_from_json(cast(str, row[0])),
+                self._for_update(connection, identifier),
                 expected=expected,
                 target=target,
                 transitioned_at=self._clock(),
             )
-            connection.execute(
-                "UPDATE dispatches SET payload = ? WHERE identifier = ?",
-                (dispatch_json(transitioned), str(identifier)),
-            )
+            self._update(connection, transitioned)
         return transitioned
+
+    def cancel(self, identifier: DispatchId) -> Dispatch:
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            dispatch = self._for_update(connection, identifier)
+            if dispatch.state is DispatchState.CANCELLED:
+                return dispatch
+            cancelled = apply_dispatch_transition(
+                dispatch,
+                expected=dispatch.state,
+                target=DispatchState.CANCELLED,
+                transitioned_at=self._clock(),
+            )
+            self._update(connection, cancelled)
+        return cancelled
+
+    def _for_update(
+        self,
+        connection: sqlite3.Connection,
+        identifier: DispatchId,
+    ) -> Dispatch:
+        row = connection.execute(
+            "SELECT payload FROM dispatches WHERE identifier = ?",
+            (str(identifier),),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"unknown dispatch: {identifier}")
+        return dispatch_from_json(cast(str, row[0]))
+
+    def _update(
+        self,
+        connection: sqlite3.Connection,
+        dispatch: Dispatch,
+    ) -> None:
+        connection.execute(
+            "UPDATE dispatches SET payload = ? WHERE identifier = ?",
+            (dispatch_json(dispatch), str(dispatch.identifier)),
+        )
 
     def get(self, identifier: DispatchId) -> Dispatch:
         with self._connection() as connection:

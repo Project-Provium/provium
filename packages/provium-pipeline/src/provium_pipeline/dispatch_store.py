@@ -29,6 +29,8 @@ class DispatchStore(Protocol):
         target: DispatchState,
     ) -> Dispatch: ...
 
+    def cancel(self, identifier: DispatchId) -> Dispatch: ...
+
 
 class InMemoryDispatchStore:
     """Thread-safe deterministic reference dispatch store."""
@@ -93,6 +95,20 @@ class InMemoryDispatchStore:
             )
             self._dispatches[identifier] = transitioned
             return transitioned
+
+    def cancel(self, identifier: DispatchId) -> Dispatch:
+        with self._lock:
+            dispatch = self.get(identifier)
+            if dispatch.state is DispatchState.CANCELLED:
+                return dispatch
+            cancelled = apply_dispatch_transition(
+                dispatch,
+                expected=dispatch.state,
+                target=DispatchState.CANCELLED,
+                transitioned_at=self._clock(),
+            )
+            self._dispatches[identifier] = cancelled
+            return cancelled
 
 
 __all__ = [

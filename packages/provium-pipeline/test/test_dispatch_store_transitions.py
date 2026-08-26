@@ -158,3 +158,108 @@ def test_dispatch_stores_reject_unknown_transition(
             expected=DispatchState.CREATED,
             target=DispatchState.RUNNING,
         )
+    with pytest.raises(KeyError):
+        active_store.cancel(missing)
+
+
+@pytest.mark.parametrize(
+    "state",
+    (DispatchState.CREATED, DispatchState.RUNNING),
+)
+def test_in_memory_dispatch_store_cancels_active_dispatches(
+    state: DispatchState,
+) -> None:
+    store = InMemoryDispatchStore(clock=lambda: NOW)
+    dispatch = store.create(dispatch_for_state(state))
+
+    cancelled = store.cancel(dispatch.identifier)
+
+    assert cancelled.state is DispatchState.CANCELLED
+    assert cancelled.terminal_at == NOW
+    assert store.get(dispatch.identifier) is cancelled
+
+
+def test_in_memory_dispatch_store_cancellation_is_idempotent() -> None:
+    store = InMemoryDispatchStore(clock=lambda: NOW)
+    dispatch = store.create(dispatch_for_state(DispatchState.CANCELLED))
+
+    assert store.cancel(dispatch.identifier) is dispatch
+    assert dispatch.terminal_at != NOW
+
+
+@pytest.mark.parametrize(
+    "state",
+    (DispatchState.SUCCEEDED, DispatchState.FAILED),
+)
+def test_in_memory_dispatch_store_rejects_completed_cancellation(
+    state: DispatchState,
+) -> None:
+    store = InMemoryDispatchStore(clock=lambda: NOW)
+    dispatch = store.create(dispatch_for_state(state))
+
+    with pytest.raises(InvalidDispatchTransitionError):
+        store.cancel(dispatch.identifier)
+    assert store.get(dispatch.identifier) is dispatch
+
+
+@pytest.mark.parametrize(
+    "state",
+    (DispatchState.CREATED, DispatchState.RUNNING),
+)
+def test_sqlite_dispatch_store_cancels_active_dispatches_durably(
+    tmp_path: Path,
+    state: DispatchState,
+) -> None:
+    database = tmp_path / "state.sqlite3"
+    store = SQLiteDispatchStore(database, clock=lambda: NOW)
+    dispatch = store.create(dispatch_for_state(state))
+
+    cancelled = store.cancel(dispatch.identifier)
+
+    assert cancelled.state is DispatchState.CANCELLED
+    assert cancelled.terminal_at == NOW
+    assert SQLiteDispatchStore(database).get(dispatch.identifier) == cancelled
+
+
+def test_sqlite_dispatch_store_cancellation_is_idempotent(tmp_path: Path) -> None:
+    store = SQLiteDispatchStore(tmp_path / "state.sqlite3", clock=lambda: NOW)
+    dispatch = store.create(dispatch_for_state(DispatchState.CANCELLED))
+
+    assert store.cancel(dispatch.identifier) == dispatch
+    assert store.get(dispatch.identifier).terminal_at != NOW
+
+
+@pytest.mark.parametrize(
+    "state",
+    (DispatchState.SUCCEEDED, DispatchState.FAILED),
+)
+def test_sqlite_dispatch_store_rejects_completed_cancellation(
+    tmp_path: Path,
+    state: DispatchState,
+) -> None:
+    store = SQLiteDispatchStore(tmp_path / "state.sqlite3", clock=lambda: NOW)
+    dispatch = store.create(dispatch_for_state(state))
+
+    with pytest.raises(InvalidDispatchTransitionError):
+        store.cancel(dispatch.identifier)
+    assert store.get(dispatch.identifier) == dispatch
+
+
+def test_sqlite_dispatch_store_serializes_concurrent_cancellation(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "state.sqlite3"
+    dispatch = SQLiteDispatchStore(database).create(
+        dispatch_for_state(DispatchState.RUNNING)
+    )
+
+    def cancel(_: int):
+        return SQLiteDispatchStore(database, clock=lambda: NOW).cancel(
+            dispatch.identifier
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = tuple(executor.map(cancel, range(2)))
+
+    assert results[0] == results[1]
+    assert results[0].terminal_at == NOW
