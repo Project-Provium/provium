@@ -1,6 +1,6 @@
 import argparse
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -17,6 +17,7 @@ from provium_pipeline.cli import (
     cli_plugin,
     use_cli_backend,
 )
+from provium_pipeline.definition.models import PipelineDefinition
 from provium_pipeline.run_query import RunLookup
 
 
@@ -241,12 +242,12 @@ def test_local_cli_backend_reads_durable_run_status_and_tasks(
     }
     unsupported = backend.execute(
         "pipeline",
-        "show",
+        "validate",
         argparse.Namespace(),
     )
 
     assert unsupported.exit_code == 2
-    assert unsupported.message == "local backend does not support pipeline show yet"
+    assert unsupported.message == "local backend does not support pipeline validate yet"
     assert tasks.data["tasks"] == [
         {
             "cache_disposition": None,
@@ -257,6 +258,89 @@ def test_local_cli_backend_reads_durable_run_status_and_tasks(
             "task_id": str(UUID(int=3)),
         }
     ]
+
+
+def test_pipeline_source_loader_supports_catalog_json_yaml_and_rejects_other(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    catalog_definition = cast(
+        PipelineDefinition, SimpleNamespace(identifier="catalog")
+    )
+    json_definition = cast(PipelineDefinition, SimpleNamespace(identifier="json"))
+    yaml_definition = cast(PipelineDefinition, SimpleNamespace(identifier="yaml"))
+
+    def get_definition(source: str) -> PipelineDefinition:
+        assert source == "example"
+        return catalog_definition
+
+    def load_json(content: str, *, source: str) -> PipelineDefinition:
+        assert content == "{}"
+        assert source.endswith("pipeline.json")
+        return json_definition
+
+    def load_yaml(content: str, *, source: str) -> PipelineDefinition:
+        assert content == "id: example"
+        assert source.endswith("pipeline.yaml")
+        return yaml_definition
+
+    monkeypatch.setattr(
+        pipeline_cli,
+        "discover_pipeline_catalogs",
+        lambda: SimpleNamespace(catalog=SimpleNamespace(get=get_definition)),
+    )
+    monkeypatch.setattr(pipeline_cli, "load_pipeline_json", load_json)
+    monkeypatch.setattr(pipeline_cli, "load_pipeline_yaml", load_yaml)
+    json_path = tmp_path / "pipeline.json"
+    yaml_path = tmp_path / "pipeline.yaml"
+    unsupported_path = tmp_path / "pipeline.txt"
+    json_path.write_text("{}")
+    yaml_path.write_text("id: example")
+    unsupported_path.write_text("example")
+
+    loader = cast(
+        Callable[[str], PipelineDefinition],
+        getattr(pipeline_cli, "_load_pipeline_source"),
+    )
+    assert loader("example") is catalog_definition
+    assert loader(str(json_path)) is json_definition
+    assert loader(str(yaml_path)) is yaml_definition
+    try:
+        loader(str(unsupported_path))
+    except ValueError as error:
+        assert str(error) == "unsupported pipeline source extension: .txt"
+    else:
+        raise AssertionError("unsupported extension was accepted")
+
+
+def test_local_cli_backend_shows_canonical_pipeline(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    definition = cast(PipelineDefinition, object())
+
+    def load_source(source: str) -> PipelineDefinition:
+        assert source == "example.pipeline"
+        return definition
+
+    def definition_document(value: PipelineDefinition) -> dict[str, object]:
+        assert value is definition
+        return {"id": "example.pipeline"}
+
+    monkeypatch.setattr(pipeline_cli, "_load_pipeline_source", load_source)
+    monkeypatch.setattr(
+        pipeline_cli,
+        "canonical_definition_document",
+        definition_document,
+    )
+    backend = LocalCLIBackend(cast(RunLookup, object()))
+
+    response = backend.execute(
+        "pipeline",
+        "show",
+        argparse.Namespace(source="example.pipeline"),
+    )
+
+    assert response.data == {"pipeline": {"id": "example.pipeline"}}
 
 
 def test_local_cli_backend_lists_discovered_pipelines(

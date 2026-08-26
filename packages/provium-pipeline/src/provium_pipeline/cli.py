@@ -17,6 +17,12 @@ from provium.cli.catalog import CommandCatalog
 from provium.cli.command import Command
 from provium.cli.plugin import CLI_PLUGIN_API_VERSION, CLIPlugin
 
+from .definition.codec import (
+    canonical_definition_document,
+    load_pipeline_json,
+    load_pipeline_yaml,
+)
+from .definition.models import PipelineDefinition
 from .discovery import discover_pipeline_catalogs
 from .execution_codec import pipeline_run_document
 from .exports import RunExportService
@@ -47,6 +53,18 @@ class RunExporter(Protocol):
     def run_bundle_json(self, identifier: RunId) -> str: ...
 
 
+def _load_pipeline_source(source: str) -> PipelineDefinition:
+    path = Path(source)
+    if not path.exists():
+        return discover_pipeline_catalogs().catalog.get(source)
+    content = path.read_text()
+    if path.suffix == ".json":
+        return load_pipeline_json(content, source=str(path))
+    if path.suffix in {".yaml", ".yml"}:
+        return load_pipeline_yaml(content, source=str(path))
+    raise ValueError(f"unsupported pipeline source extension: {path.suffix}")
+
+
 class LocalCLIBackend:
     """Read durable local run state through the execution-store contract."""
 
@@ -68,6 +86,11 @@ class LocalCLIBackend:
     ) -> CLIResult:
         if group == "pipeline" and action == "list":
             return self._list_pipelines()
+        if group == "pipeline" and action == "show":
+            definition = _load_pipeline_source(arguments.source)
+            return CLIResult(
+                {"pipeline": canonical_definition_document(definition)}
+            )
         if group == "run" and action in {"configuration export", "export"}:
             return self._export(action, arguments)
         if group != "run" or action not in {
