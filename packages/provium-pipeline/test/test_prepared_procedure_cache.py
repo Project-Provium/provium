@@ -3,13 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
 from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
 from provium.procedure.definition import (
     ProcedureContractMetadata,
+    ProcedureDefinition,
     ProcedureIOFieldMetadata,
 )
 from provium_pipeline.artifact import (
@@ -27,12 +28,14 @@ from provium_pipeline.task_executor import (
     ConfigurationSnapshotMismatchError,
     PreparedProcedureCache,
     PreparedProcedureKey,
+    ProcedureContractMismatchError,
     StoredArtifact,
     build_output_bindings,
     build_read_binding_value,
     materialize_binding_inputs,
     resolve_binding_references,
     verify_configuration_snapshot,
+    verify_procedure_contract,
 )
 
 
@@ -567,6 +570,35 @@ def test_build_output_bindings_rejects_frozen_contract_drift(tmp_path: Path) -> 
             tmp_path,
             binding_factory=lambda resolved, path: (resolved, path),
         )
+
+
+def test_verify_procedure_contract_accepts_the_frozen_digest() -> None:
+    metadata = _output_metadata()
+
+    class _Contract:
+        metadata = _output_metadata()
+
+    class _Definition:
+        def resolve_contract(self) -> type[_Contract]:
+            return _Contract
+
+    definition = cast(ProcedureDefinition[Any], _Definition())
+
+    assert verify_procedure_contract(definition, metadata.digest) is _Contract
+
+
+def test_verify_procedure_contract_rejects_installed_drift() -> None:
+    class _Contract:
+        metadata = _output_metadata()
+
+    class _Definition:
+        def resolve_contract(self) -> type[_Contract]:
+            return _Contract
+
+    definition = cast(ProcedureDefinition[Any], _Definition())
+
+    with pytest.raises(ProcedureContractMismatchError, match="digest"):
+        verify_procedure_contract(definition, "sha256:frozen")
 
 
 def test_materialize_binding_inputs_rejects_unknown_identity(tmp_path: Path) -> None:

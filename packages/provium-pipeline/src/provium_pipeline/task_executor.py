@@ -12,7 +12,11 @@ from pydantic import ValidationError
 from provium.artifact.binding import ArtifactReadBinding, ArtifactWriteBinding
 from provium.artifact.definition import Artifact
 from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
-from provium.procedure.definition import ProcedureContractMetadata
+from provium.procedure.definition import (
+    ProcedureContract,
+    ProcedureContractMetadata,
+    ProcedureDefinition,
+)
 from provium_pipeline.artifact import (
     ArtifactLocation,
     ArtifactStore,
@@ -76,6 +80,23 @@ class AttemptMaterializations:
 
 class BindingResolutionError(RuntimeError):
     """Resolved artifacts violate a frozen binding plan."""
+
+
+class ProcedureContractMismatchError(RuntimeError):
+    """An installed procedure contract differs from the frozen task."""
+
+
+def verify_procedure_contract(
+    definition: ProcedureDefinition[Any],
+    expected_digest: str,
+) -> type[ProcedureContract[Any]]:
+    """Resolve and verify the installed procedure contract."""
+    contract = definition.resolve_contract()
+    if contract.metadata.digest != expected_digest:
+        raise ProcedureContractMismatchError(
+            "installed procedure contract digest does not match the frozen task"
+        )
+    return contract
 
 
 def _build_write_binding(
@@ -289,10 +310,12 @@ __all__ = [
     "ConfigurationSnapshotMismatchError",
     "PreparedProcedureCache",
     "PreparedProcedureKey",
+    "ProcedureContractMismatchError",
     "StoredArtifact",
     "build_output_bindings",
     "build_read_binding_value",
     "materialize_binding_inputs",
     "resolve_binding_references",
     "verify_configuration_snapshot",
+    "verify_procedure_contract",
 ]
