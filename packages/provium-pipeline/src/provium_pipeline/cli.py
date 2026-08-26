@@ -22,6 +22,7 @@ from provium.procedure.discovery import discover_procedure_catalogs
 
 from .artifact.query import ArtifactQueryService, InputSetArtifactBinding
 from .compiler.catalogs import ArtifactCatalogCollection, ProcedureCatalogCollection
+from .compiler.compiler import PipelineCompiler
 from .compiler.diagnostics import PipelineCompilationError
 from .compiler.validation import validate_pipeline_definition
 from .definition.codec import (
@@ -37,6 +38,8 @@ from .exports import RunLookup as ExportRunLookup
 from .identifiers import InputSetIdentifier, RunId
 from .input_codec import load_input_records_ndjson
 from .inputs import InputRecord, InputSet
+from .run_creation import RunCreationService
+from .run_models import PipelineRun
 from .run_query import RunLookup, RunQueryService
 
 
@@ -54,6 +57,16 @@ class PipelineCLIBackend(Protocol):
         action: str,
         arguments: argparse.Namespace,
     ) -> CLIResult: ...
+
+
+class RunCreator(Protocol):
+    def create(
+        self,
+        definition: PipelineDefinition,
+        *,
+        input_set: str,
+        metadata: Mapping[str, JsonValue] | None = None,
+    ) -> PipelineRun: ...
 
 
 class InputSetStore(Protocol):
@@ -112,6 +125,19 @@ def _labels(values: list[str]) -> dict[str, JsonValue]:
     return labels
 
 
+def _selection_document(arguments: argparse.Namespace) -> dict[str, JsonValue]:
+    return {
+        "all": arguments.all,
+        "all_remaining": arguments.all_remaining,
+        "include_missing_upstream": arguments.include_missing_upstream,
+        "labels": list(arguments.label),
+        "nodes": list(arguments.node),
+        "only_failed": arguments.only_failed,
+        "procedures": list(arguments.procedure),
+        "records": list(arguments.record),
+    }
+
+
 def _input_record_document(record: InputRecord) -> dict[str, JsonValue]:
     return {
         "inputs": {name: list(values) for name, values in record.inputs.items()},
@@ -148,12 +174,14 @@ class LocalCLIBackend:
         exporter: RunExporter | None = None,
         input_sets: InputSetStore | None = None,
         artifact_locations: Callable[[str], Iterable[object]] | None = None,
+        run_creator: RunCreator | None = None,
     ) -> None:
         self._store = cast(ExportRunLookup, store)
         self._runs = RunQueryService(store)
         self._exporter = exporter or RunExportService(self._store)
         self._input_sets = input_sets
         self._artifact_locations = artifact_locations or _no_locations
+        self._run_creator = run_creator
 
     def execute(
         self,
@@ -172,6 +200,8 @@ class LocalCLIBackend:
             return CLIResult(
                 {"pipeline": canonical_definition_document(definition)}
             )
+        if group == "run" and action == "create" and self._run_creator is not None:
+            return self._create_run(arguments)
         if group == "run" and action in {"configuration export", "export"}:
             return self._export(action, arguments)
         if group != "run" or action not in {
@@ -186,6 +216,19 @@ class LocalCLIBackend:
                 message=f"local backend does not support {group} {action} yet",
             )
         return self._read_run(action, arguments)
+
+    def _create_run(self, arguments: argparse.Namespace) -> CLIResult:
+        if arguments.input_set is None:
+            raise ValueError("run create requires --input-set")
+        creator = cast(RunCreator, self._run_creator)
+        run = creator.create(
+            _load_pipeline_source(arguments.source),
+            input_set=arguments.input_set,
+            metadata={"selection": _selection_document(arguments)},
+        )
+        return CLIResult(
+            {"run_id": str(run.identifier), "status": run.state.value}
+        )
 
     def _input_set(
         self,
@@ -409,10 +452,21 @@ class _EnvironmentBackend:
             )
         )
         database.parent.mkdir(parents=True, exist_ok=True)
+        runs = SQLiteExecutionStore(database)
+        input_sets = SQLiteInputSetStore(database)
+        artifact_index = SQLiteArtifactIndex(database)
+        artifact_catalogs, procedure_catalogs = _installed_validation_catalogs()
+        run_creator = RunCreationService(
+            compiler=PipelineCompiler(artifact_catalogs, procedure_catalogs),
+            input_sets=input_sets,
+            artifact_index=artifact_index,
+            runs=runs,
+        )
         return LocalCLIBackend(
-            cast(RunLookup, SQLiteExecutionStore(database)),
-            input_sets=cast(InputSetStore, SQLiteInputSetStore(database)),
-            artifact_locations=SQLiteArtifactIndex(database).get_active_locations,
+            cast(RunLookup, runs),
+            input_sets=cast(InputSetStore, input_sets),
+            artifact_locations=artifact_index.get_active_locations,
+            run_creator=run_creator,
         ).execute(
             group,
             action,
@@ -541,6 +595,7 @@ class RunCommand(_PipelineCommand):
         actions = parser.add_subparsers(dest="run_action", required=True)
         create = actions.add_parser("create")
         create.add_argument("source")
+        create.add_argument("--input-set")
         _add_selection_flags(create)
         _finish(create, "create")
         execute = actions.add_parser("execute")

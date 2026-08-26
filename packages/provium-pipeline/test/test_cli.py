@@ -187,6 +187,77 @@ def test_cli_reports_missing_run_and_storage_failures(
     assert capsys.readouterr().out.startswith("pipeline storage unavailable: ")
 
 
+def test_local_cli_backend_creates_run_with_selection_metadata(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    definition = cast(PipelineDefinition, object())
+    run_id = UUID(int=7)
+
+    class Creator:
+        def create(
+            self,
+            value: PipelineDefinition,
+            *,
+            input_set: str,
+            metadata: Mapping[str, object] | None = None,
+        ) -> object:
+            assert value is definition
+            assert input_set == "evaluation-v1"
+            assert metadata == {
+                "selection": {
+                    "all": False,
+                    "all_remaining": True,
+                    "include_missing_upstream": True,
+                    "labels": ["split=evaluation"],
+                    "nodes": ["detect"],
+                    "only_failed": False,
+                    "procedures": ["example.detect.v1"],
+                    "records": ["record-1"],
+                }
+            }
+            return SimpleNamespace(
+                identifier=run_id,
+                state=SimpleNamespace(value="pending"),
+            )
+
+    def load_source(source: str) -> PipelineDefinition:
+        assert source == "example.pipeline"
+        return definition
+
+    monkeypatch.setattr(pipeline_cli, "_load_pipeline_source", load_source)
+    backend = LocalCLIBackend(
+        cast(RunLookup, object()),
+        run_creator=cast(pipeline_cli.RunCreator, Creator()),
+    )
+    arguments = command_arguments(
+        "run",
+        [
+            "create",
+            "example.pipeline",
+            "--input-set",
+            "evaluation-v1",
+            "--all-remaining",
+            "--node",
+            "detect",
+            "--procedure",
+            "example.detect.v1",
+            "--record",
+            "record-1",
+            "--label",
+            "split=evaluation",
+            "--include-missing-upstream",
+        ],
+    )
+
+    result = backend.execute("run", "create", arguments)
+
+    assert result.data == {"run_id": str(run_id), "status": "pending"}
+
+    arguments.input_set = None
+    with raises(ValueError, match="run create requires --input-set"):
+        backend.execute("run", "create", arguments)
+
+
 def test_local_cli_backend_reads_durable_run_status_and_tasks(
     monkeypatch: MonkeyPatch,
 ) -> None:
