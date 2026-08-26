@@ -16,6 +16,7 @@ from provium.cli.catalog import CommandCatalog
 from provium.cli.command import Command
 from provium.cli.plugin import CLI_PLUGIN_API_VERSION, CLIPlugin
 
+from .execution_codec import pipeline_run_document
 from .exports import RunExportService
 from .exports import RunLookup as ExportRunLookup
 from .identifiers import RunId
@@ -53,10 +54,9 @@ class LocalCLIBackend:
         *,
         exporter: RunExporter | None = None,
     ) -> None:
+        self._store = cast(ExportRunLookup, store)
         self._runs = RunQueryService(store)
-        self._exporter = exporter or RunExportService(
-            cast(ExportRunLookup, store)
-        )
+        self._exporter = exporter or RunExportService(self._store)
 
     def execute(
         self,
@@ -66,19 +66,42 @@ class LocalCLIBackend:
     ) -> CLIResult:
         if group == "run" and action in {"configuration export", "export"}:
             return self._export(action, arguments)
-        if group != "run" or action not in {"status", "tasks"}:
+        if group != "run" or action not in {
+            "inputs",
+            "outputs",
+            "status",
+            "tasks",
+        }:
             return CLIResult(
                 {"action": action, "group": group},
                 exit_code=2,
                 message=f"local backend does not support {group} {action} yet",
             )
-        view = self._runs.get(RunId.parse(arguments.run_id))
+        return self._read_run(action, arguments)
+
+    def _read_run(
+        self,
+        action: str,
+        arguments: argparse.Namespace,
+    ) -> CLIResult:
+        identifier = RunId.parse(arguments.run_id)
+        view = self._runs.get(identifier)
         if action == "status":
             return CLIResult(
                 {
                     "run_id": view.run_id,
                     "status": view.status,
                     "status_counts": dict(view.status_counts),
+                }
+            )
+        if action in {"inputs", "outputs"}:
+            document = pipeline_run_document(self._store.get_run(identifier))
+            if action == "inputs":
+                return CLIResult({"inputs": document["inputs"]})
+            return CLIResult(
+                {
+                    "expected": document["expected_outputs"],
+                    "produced": list(view.outputs),
                 }
             )
         return CLIResult(

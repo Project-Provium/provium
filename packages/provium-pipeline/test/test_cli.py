@@ -6,9 +6,10 @@ from types import SimpleNamespace
 from typing import cast
 from uuid import UUID
 
-from pytest import CaptureFixture
+from pytest import CaptureFixture, MonkeyPatch
 
 from provium.cli import CLI_PLUGIN_API_VERSION
+from provium_pipeline import cli as pipeline_cli
 from provium_pipeline.cli import (
     CLIResult,
     LocalCLIBackend,
@@ -120,7 +121,9 @@ def test_cli_human_output_and_unconfigured_backend_exit_code(
     assert capsys.readouterr().out == "action: status\ngroup: run\n"
 
 
-def test_local_cli_backend_reads_durable_run_status_and_tasks() -> None:
+def test_local_cli_backend_reads_durable_run_status_and_tasks(
+    monkeypatch: MonkeyPatch,
+) -> None:
     run_id = str(UUID(int=1))
 
     class Store:
@@ -144,6 +147,13 @@ def test_local_cli_backend_reads_durable_run_status_and_tasks() -> None:
                 ),
             )
 
+    def run_document(run: object) -> dict[str, object]:
+        return {
+            "inputs": {"records": [{"key": "record-1"}]},
+            "expected_outputs": [{"name": "result"}],
+        }
+
+    monkeypatch.setattr(pipeline_cli, "pipeline_run_document", run_document)
     backend = LocalCLIBackend(cast(RunLookup, Store()))
     status = backend.execute(
         "run",
@@ -155,7 +165,22 @@ def test_local_cli_backend_reads_durable_run_status_and_tasks() -> None:
         "tasks",
         argparse.Namespace(run_id=run_id),
     )
+    inputs = backend.execute(
+        "run",
+        "inputs",
+        argparse.Namespace(run_id=run_id),
+    )
+    outputs = backend.execute(
+        "run",
+        "outputs",
+        argparse.Namespace(run_id=run_id),
+    )
 
+    assert inputs.data == {"inputs": {"records": [{"key": "record-1"}]}}
+    assert outputs.data == {
+        "expected": [{"name": "result"}],
+        "produced": [],
+    }
     assert status.data == {
         "run_id": run_id,
         "status": "running",
