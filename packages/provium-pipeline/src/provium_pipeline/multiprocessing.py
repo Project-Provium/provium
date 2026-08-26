@@ -18,6 +18,31 @@ class WorkerProcess(Protocol):
     def join(self) -> None: ...
 
 
+class WorkerRuntime(Protocol):
+    """Child-owned runtime for one local worker process."""
+
+    def run(self) -> None: ...
+
+    def close(self) -> None: ...
+
+
+def run_worker_runtime(
+    identity: str,
+    runtime_factory: Callable[[str], WorkerRuntime],
+) -> None:
+    """Construct, run, and close all worker-owned state inside the child."""
+    runtime = runtime_factory(identity)
+    try:
+        runtime.run()
+    except BaseException as error:
+        try:
+            runtime.close()
+        except BaseException as cleanup_error:
+            raise error from cleanup_error
+        raise
+    runtime.close()
+
+
 def run_spawn_worker(
     target: Callable[..., None],
     identity: str,
@@ -85,4 +110,10 @@ class MultiprocessSupervisor:
                 process.join()
 
 
-__all__ = ["MultiprocessSupervisor", "SpawnProcessFactory", "WorkerProcess"]
+__all__ = [
+    "MultiprocessSupervisor",
+    "SpawnProcessFactory",
+    "WorkerProcess",
+    "WorkerRuntime",
+    "run_worker_runtime",
+]

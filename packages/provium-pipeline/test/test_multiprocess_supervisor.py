@@ -10,11 +10,35 @@ from provium_pipeline.multiprocessing import (
     MultiprocessSupervisor,
     SpawnProcessFactory,
     run_spawn_worker,
+    run_worker_runtime,
 )
 
 
 def _record_spawned_worker(identity: str, directory: str) -> None:
     Path(directory, identity).write_text(str(os.getpid()), encoding="utf-8")
+
+
+@dataclass
+class _OwnedRuntime:
+    path: str
+
+    def run(self) -> None:
+        with Path(self.path).open("a", encoding="utf-8") as stream:
+            stream.write(f"run:{os.getpid()}\n")
+
+    def close(self) -> None:
+        with Path(self.path).open("a", encoding="utf-8") as stream:
+            stream.write(f"close:{os.getpid()}\n")
+
+
+@dataclass(frozen=True)
+class _OwnedRuntimeFactory:
+    directory: str
+
+    def __call__(self, identity: str) -> _OwnedRuntime:
+        path = str(Path(self.directory, f"{identity}.runtime"))
+        Path(path).write_text(f"create:{os.getpid()}\n", encoding="utf-8")
+        return _OwnedRuntime(path)
 
 
 @dataclass
@@ -48,6 +72,81 @@ def test_spawn_worker_entry_injects_identity_before_factory_arguments() -> None:
     run_spawn_worker(target, "pipeline-worker-2", (marker,))
 
     assert received == [("pipeline-worker-2", marker)]
+
+
+def test_worker_runtime_is_created_run_and_closed_inside_spawned_child(
+    tmp_path: Path,
+) -> None:
+    factory = SpawnProcessFactory(
+        target=run_worker_runtime,
+        args=(_OwnedRuntimeFactory(str(tmp_path)),),
+    )
+    process = factory("pipeline-worker-3")
+
+    process.start()
+    process.join()
+
+    events = (
+        (tmp_path / "pipeline-worker-3.runtime")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    )
+    child_pids = {event.partition(":")[2] for event in events}
+    assert [event.partition(":")[0] for event in events] == ["create", "run", "close"]
+    assert len(child_pids) == 1
+    assert str(os.getpid()) not in child_pids
+
+
+def test_worker_runtime_runs_and_closes_in_order() -> None:
+    events: list[str] = []
+
+    class _Runtime:
+        def run(self) -> None:
+            events.append("run")
+
+        def close(self) -> None:
+            events.append("close")
+
+    run_worker_runtime("pipeline-worker-0", lambda _identity: _Runtime())
+
+    assert events == ["run", "close"]
+
+
+def test_worker_runtime_closes_then_reraises_run_error() -> None:
+    run_error = RuntimeError("run failed")
+    closed = False
+
+    class _FailingRuntime:
+        def run(self) -> None:
+            raise run_error
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    with pytest.raises(RuntimeError, match="run failed") as caught:
+        run_worker_runtime("pipeline-worker-0", lambda _identity: _FailingRuntime())
+
+    assert caught.value is run_error
+    assert closed
+
+
+def test_worker_runtime_preserves_run_error_when_close_also_fails() -> None:
+    run_error = RuntimeError("run failed")
+    close_error = OSError("close failed")
+
+    class _FailingRuntime:
+        def run(self) -> None:
+            raise run_error
+
+        def close(self) -> None:
+            raise close_error
+
+    with pytest.raises(RuntimeError, match="run failed") as caught:
+        run_worker_runtime("pipeline-worker-0", lambda _identity: _FailingRuntime())
+
+    assert caught.value is run_error
+    assert caught.value.__cause__ is close_error
 
 
 def test_spawn_process_factory_runs_named_workers_in_distinct_children(
