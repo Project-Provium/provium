@@ -19,7 +19,7 @@ from provium_pipeline.identifiers import DispatchId, RunId
 NOW = datetime(2026, 1, 2, tzinfo=UTC)
 
 
-def _dispatch(state: DispatchState) -> Dispatch:
+def dispatch_for_state(state: DispatchState) -> Dispatch:
     return Dispatch(
         identifier=DispatchId.parse("00000000-0000-0000-0000-000000000001"),
         run_identifier=RunId.parse("00000000-0000-0000-0000-000000000002"),
@@ -48,7 +48,7 @@ def test_dispatch_transition_applies_each_legal_edge(
     target: DispatchState,
 ) -> None:
     transitioned = apply_dispatch_transition(
-        _dispatch(expected),
+        dispatch_for_state(expected),
         expected=expected,
         target=target,
         transitioned_at=NOW,
@@ -60,7 +60,7 @@ def test_dispatch_transition_applies_each_legal_edge(
 
 @pytest.mark.parametrize("state", tuple(DispatchState))
 def test_dispatch_transition_replays_same_state(state: DispatchState) -> None:
-    dispatch = _dispatch(state)
+    dispatch = dispatch_for_state(state)
 
     assert apply_dispatch_transition(
         dispatch,
@@ -73,7 +73,7 @@ def test_dispatch_transition_replays_same_state(state: DispatchState) -> None:
 def test_dispatch_transition_rejects_stale_expected_state() -> None:
     with pytest.raises(DispatchStateConflictError, match="expected running"):
         apply_dispatch_transition(
-            _dispatch(DispatchState.CREATED),
+            dispatch_for_state(DispatchState.CREATED),
             expected=DispatchState.RUNNING,
             target=DispatchState.SUCCEEDED,
             transitioned_at=NOW,
@@ -97,7 +97,7 @@ def test_dispatch_transition_rejects_illegal_edges(
 ) -> None:
     with pytest.raises(InvalidDispatchTransitionError, match="invalid dispatch"):
         apply_dispatch_transition(
-            _dispatch(expected),
+            dispatch_for_state(expected),
             expected=expected,
             target=target,
             transitioned_at=NOW,
@@ -107,7 +107,7 @@ def test_dispatch_transition_rejects_illegal_edges(
 def test_dispatch_transition_requires_aware_terminal_timestamp() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         apply_dispatch_transition(
-            _dispatch(DispatchState.RUNNING),
+            dispatch_for_state(DispatchState.RUNNING),
             expected=DispatchState.RUNNING,
             target=DispatchState.SUCCEEDED,
             transitioned_at=datetime(2026, 1, 2),

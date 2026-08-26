@@ -1,7 +1,10 @@
+from collections.abc import Callable
+from datetime import UTC, datetime
 from threading import RLock
 from typing import Protocol
 
-from provium_pipeline.dispatch_models import Dispatch
+from provium_pipeline.dispatch_models import Dispatch, DispatchState
+from provium_pipeline.dispatch_transitions import apply_dispatch_transition
 from provium_pipeline.identifiers import DispatchId, RunId
 
 
@@ -18,12 +21,25 @@ class DispatchStore(Protocol):
 
     def list_for_run(self, run_identifier: RunId) -> tuple[Dispatch, ...]: ...
 
+    def transition(
+        self,
+        identifier: DispatchId,
+        *,
+        expected: DispatchState,
+        target: DispatchState,
+    ) -> Dispatch: ...
+
 
 class InMemoryDispatchStore:
     """Thread-safe deterministic reference dispatch store."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         self._lock = RLock()
+        self._clock = clock or (lambda: datetime.now(UTC))
         self._dispatches: dict[DispatchId, Dispatch] = {}
 
     def create(self, dispatch: Dispatch) -> Dispatch:
@@ -60,6 +76,23 @@ class InMemoryDispatchStore:
                     key=lambda dispatch: str(dispatch.identifier),
                 )
             )
+
+    def transition(
+        self,
+        identifier: DispatchId,
+        *,
+        expected: DispatchState,
+        target: DispatchState,
+    ) -> Dispatch:
+        with self._lock:
+            transitioned = apply_dispatch_transition(
+                self.get(identifier),
+                expected=expected,
+                target=target,
+                transitioned_at=self._clock(),
+            )
+            self._dispatches[identifier] = transitioned
+            return transitioned
 
 
 __all__ = [

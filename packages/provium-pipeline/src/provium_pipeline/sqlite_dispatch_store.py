@@ -1,18 +1,26 @@
 import sqlite3
-from datetime import UTC
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
 from provium_pipeline.dispatch_codec import dispatch_from_json, dispatch_json
-from provium_pipeline.dispatch_models import Dispatch
+from provium_pipeline.dispatch_models import Dispatch, DispatchState
+from provium_pipeline.dispatch_transitions import apply_dispatch_transition
 from provium_pipeline.identifiers import DispatchId, RunId
 
 
 class SQLiteDispatchStore:
     """Persist dispatches with transactional run-scoped idempotency."""
 
-    def __init__(self, database: Path) -> None:
+    def __init__(
+        self,
+        database: Path,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         self._database = database
+        self._clock = clock or (lambda: datetime.now(UTC))
         database.parent.mkdir(parents=True, exist_ok=True)
         with self._connection() as connection:
             connection.execute(
@@ -103,6 +111,33 @@ class SQLiteDispatchStore:
                 dispatch_json(dispatch),
             ),
         )
+
+    def transition(
+        self,
+        identifier: DispatchId,
+        *,
+        expected: DispatchState,
+        target: DispatchState,
+    ) -> Dispatch:
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT payload FROM dispatches WHERE identifier = ?",
+                (str(identifier),),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"unknown dispatch: {identifier}")
+            transitioned = apply_dispatch_transition(
+                dispatch_from_json(cast(str, row[0])),
+                expected=expected,
+                target=target,
+                transitioned_at=self._clock(),
+            )
+            connection.execute(
+                "UPDATE dispatches SET payload = ? WHERE identifier = ?",
+                (dispatch_json(transitioned), str(identifier)),
+            )
+        return transitioned
 
     def get(self, identifier: DispatchId) -> Dispatch:
         with self._connection() as connection:
