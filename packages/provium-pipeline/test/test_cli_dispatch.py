@@ -35,20 +35,20 @@ def test_local_cli_backend_shows_canonical_dispatch() -> None:
     assert result.data == {"dispatch": dispatch_document(dispatch)["dispatch"]}
 
 
-def test_local_cli_backend_reports_unsupported_dispatch_action() -> None:
+def test_local_cli_backend_reports_unsupported_dispatch_retry_action() -> None:
     dispatches = InMemoryDispatchStore()
     dispatch = dispatches.create(dispatch_for_state(DispatchState.RUNNING))
     backend = _backend(dispatches)
 
     result = backend.execute(
         "dispatch",
-        "wait",
+        "retry",
         Namespace(dispatch_id=str(dispatch.identifier)),
     )
 
     assert result.exit_code == 2
-    assert result.data == {"action": "wait", "group": "dispatch"}
-    assert result.message == "local backend does not support dispatch wait yet"
+    assert result.data == {"action": "retry", "group": "dispatch"}
+    assert result.message == "local backend does not support dispatch retry yet"
 
 
 def test_local_cli_backend_cancels_dispatch_idempotently() -> None:

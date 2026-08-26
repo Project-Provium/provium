@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from time import sleep
 from typing import Any, ClassVar, Protocol, cast
 
 from provium import JsonValue
@@ -243,6 +244,12 @@ class LocalCLIBackend:
             return CLIResult({"dispatch": dispatch_document(value)["dispatch"]})
         if action == "cancel":
             value = dispatches.cancel(identifier)
+            return CLIResult({"dispatch": dispatch_document(value)["dispatch"]})
+        if action == "wait":
+            value = dispatches.get(identifier)
+            while not value.state.terminal:
+                sleep(0.05)
+                value = dispatches.get(identifier)
             return CLIResult({"dispatch": dispatch_document(value)["dispatch"]})
         return CLIResult(
             {"action": action, "group": "dispatch"},
