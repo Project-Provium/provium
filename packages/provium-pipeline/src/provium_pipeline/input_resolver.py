@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from importlib.metadata import entry_points as installed_entry_points
 from types import MappingProxyType
-from typing import Protocol
+from typing import Protocol, cast
 
 from provium import JsonValue
 
@@ -14,6 +15,18 @@ from .inputs import (
     InputSourceKind,
     RunInputSnapshot,
 )
+
+INPUT_RECORD_RESOLVER_ENTRY_POINT_GROUP = "provium.input_record_resolvers"
+
+
+class _EntryPoint(Protocol):
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def value(self) -> str: ...
+
+    def load(self) -> object: ...
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -61,6 +74,59 @@ class InputRecordResolver(Protocol):
     ) -> tuple[InputRecord, ...]: ...
 
 
+class InputRecordResolverCatalog:
+    """Deterministic registry of discovered input-record resolvers."""
+
+    def __init__(self) -> None:
+        self._resolvers: dict[str, InputRecordResolver] = {}
+
+    def register(self, resolver: InputRecordResolver) -> None:
+        identifier = resolver.identifier
+        if not isinstance(identifier, str) or not identifier:
+            raise TypeError("input-record resolver identifier must be non-empty text")
+        if not callable(getattr(resolver, "resolve", None)):
+            raise TypeError(
+                f"input-record resolver {identifier!r} has no resolve method"
+            )
+        if identifier in self._resolvers:
+            raise ValueError(
+                f"input-record resolver {identifier!r} is already registered"
+            )
+        self._resolvers[identifier] = resolver
+
+    def names(self) -> tuple[str, ...]:
+        return tuple(sorted(self._resolvers))
+
+    def get(self, identifier: str) -> InputRecordResolver:
+        try:
+            return self._resolvers[identifier]
+        except KeyError as error:
+            raise KeyError(f"unknown input-record resolver: {identifier}") from error
+
+
+def discover_input_record_resolvers(
+    *,
+    entry_points: Iterable[_EntryPoint] | None = None,
+) -> InputRecordResolverCatalog:
+    """Load installed resolver objects and validate entry-point identities."""
+    selected = (
+        installed_entry_points(group=INPUT_RECORD_RESOLVER_ENTRY_POINT_GROUP)
+        if entry_points is None
+        else entry_points
+    )
+    catalog = InputRecordResolverCatalog()
+    for entry_point in sorted(selected, key=lambda value: (value.name, value.value)):
+        resolver = entry_point.load()
+        identifier = getattr(resolver, "identifier", None)
+        if identifier != entry_point.name:
+            raise ValueError(
+                f"input-record resolver entry point {entry_point.name!r} "
+                f"loaded identifier {identifier!r}"
+            )
+        catalog.register(cast(InputRecordResolver, resolver))
+    return catalog
+
+
 def resolve_input_snapshot(
     resolver: InputRecordResolver,
     *,
@@ -88,8 +154,11 @@ def resolve_input_snapshot(
 
 
 __all__ = [
+    "INPUT_RECORD_RESOLVER_ENTRY_POINT_GROUP",
     "InputRecordResolver",
+    "InputRecordResolverCatalog",
     "InputResolutionContext",
     "ResolveInputRecordsRequest",
+    "discover_input_record_resolvers",
     "resolve_input_snapshot",
 ]
