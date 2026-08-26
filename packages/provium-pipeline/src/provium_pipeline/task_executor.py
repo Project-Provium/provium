@@ -264,6 +264,19 @@ class PreparedProcedureKey:
     setup: str
 
 
+@dataclass(frozen=True)
+class PreparedInvocation:
+    """All frozen setup and per-attempt values needed for one invocation."""
+
+    key: PreparedProcedureKey
+    definition: Any
+    configuration_layers: tuple[Mapping[str, object], ...]
+    setup_inputs: Any
+    inputs: Any
+    outputs: Any
+    cancellation: Any
+
+
 class PreparedProcedureCache[PreparedT: PreparedProcedure]:
     """Own and reuse prepared procedures with identical setup fingerprints."""
 
@@ -304,11 +317,45 @@ class PreparedProcedureCache[PreparedT: PreparedProcedure]:
             raise failure
 
 
+def execute_prepared_invocation(
+    request: PreparedInvocation,
+    *,
+    executor: Any,
+    cache: PreparedProcedureCache[Any],
+    materializations: AttemptMaterializations,
+) -> Any:
+    """Execute one invocation while retaining reusable prepared setup state."""
+    prepared = cache.get_or_prepare(
+        request.key,
+        lambda: executor.prepare(
+            request.definition,
+            configuration_layers=request.configuration_layers,
+            setup_inputs=request.setup_inputs,
+        ),
+    )
+    try:
+        result = prepared.execute(
+            inputs=request.inputs,
+            outputs=request.outputs,
+            cancellation=request.cancellation,
+        )
+    except BaseException as error:
+        try:
+            materializations.close()
+        except BaseException as cleanup_error:
+            raise error from cleanup_error
+        raise
+    materializations.close()
+    return result
+
+
 __all__ = [
     "AttemptMaterializations",
     "BindingResolutionError",
     "ConfigurationSnapshotMismatchError",
+    "PreparedInvocation",
     "PreparedProcedureCache",
+    "execute_prepared_invocation",
     "PreparedProcedureKey",
     "ProcedureContractMismatchError",
     "StoredArtifact",
