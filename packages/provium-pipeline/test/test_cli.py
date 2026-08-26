@@ -8,7 +8,9 @@ from uuid import UUID
 
 from pytest import CaptureFixture, MonkeyPatch
 
+from provium.artifact.catalog import ArtifactCatalog
 from provium.cli import CLI_PLUGIN_API_VERSION
+from provium.procedure.catalog import ProcedureCatalog
 from provium_pipeline import cli as pipeline_cli
 from provium_pipeline.cli import (
     CLIResult,
@@ -16,6 +18,14 @@ from provium_pipeline.cli import (
     RunExporter,
     cli_plugin,
     use_cli_backend,
+)
+from provium_pipeline.compiler.catalogs import (
+    ArtifactCatalogCollection,
+    ProcedureCatalogCollection,
+)
+from provium_pipeline.compiler.diagnostics import (
+    PipelineCompilationDiagnostic,
+    PipelineCompilationError,
 )
 from provium_pipeline.definition.models import PipelineDefinition
 from provium_pipeline.run_query import RunLookup
@@ -242,12 +252,12 @@ def test_local_cli_backend_reads_durable_run_status_and_tasks(
     }
     unsupported = backend.execute(
         "pipeline",
-        "validate",
+        "execute",
         argparse.Namespace(),
     )
 
     assert unsupported.exit_code == 2
-    assert unsupported.message == "local backend does not support pipeline validate yet"
+    assert unsupported.message == "local backend does not support pipeline execute yet"
     assert tasks.data["tasks"] == [
         {
             "cache_disposition": None,
@@ -311,6 +321,117 @@ def test_pipeline_source_loader_supports_catalog_json_yaml_and_rejects_other(
         assert str(error) == "unsupported pipeline source extension: .txt"
     else:
         raise AssertionError("unsupported extension was accepted")
+
+
+def test_installed_validation_catalogs_wrap_core_discovery(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    artifact_catalog = ArtifactCatalog()
+    procedure_catalog = ProcedureCatalog()
+    monkeypatch.setattr(
+        pipeline_cli,
+        "discover_artifact_catalogs",
+        lambda: artifact_catalog,
+    )
+    monkeypatch.setattr(
+        pipeline_cli,
+        "discover_procedure_catalogs",
+        lambda: procedure_catalog,
+    )
+    discover = cast(
+        Callable[
+            [],
+            tuple[ArtifactCatalogCollection, ProcedureCatalogCollection],
+        ],
+        getattr(pipeline_cli, "_installed_validation_catalogs"),
+    )
+
+    artifacts, procedures = discover()
+
+    assert artifacts.catalogs == (artifact_catalog,)
+    assert procedures.catalogs == (procedure_catalog,)
+
+
+def test_local_cli_backend_validates_pipeline_and_reports_diagnostics(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    definition = cast(PipelineDefinition, object())
+    def load_definition(source: str) -> PipelineDefinition:
+        assert source == "example"
+        return definition
+
+    monkeypatch.setattr(
+        pipeline_cli,
+        "_load_pipeline_source",
+        load_definition,
+    )
+    monkeypatch.setattr(
+        pipeline_cli,
+        "_installed_validation_catalogs",
+        lambda: (object(), object()),
+        raising=False,
+    )
+    calls: list[PipelineDefinition] = []
+
+    def validate_valid(
+        value: PipelineDefinition,
+        artifact_catalogs: object,
+        procedure_catalogs: object,
+    ) -> None:
+        calls.append(value)
+
+    monkeypatch.setattr(
+        pipeline_cli,
+        "validate_pipeline_definition",
+        validate_valid,
+        raising=False,
+    )
+    backend = LocalCLIBackend(cast(RunLookup, object()))
+
+    valid = backend.execute(
+        "pipeline",
+        "validate",
+        argparse.Namespace(source="example"),
+    )
+    assert valid.data == {"diagnostics": [], "valid": True}
+    assert calls == [definition]
+
+    def validate_invalid(
+        value: PipelineDefinition,
+        artifact_catalogs: object,
+        procedure_catalogs: object,
+    ) -> None:
+        raise PipelineCompilationError(
+            (
+                PipelineCompilationDiagnostic(
+                    code="unknown-node",
+                    path="outputs.result",
+                    message="node 'missing' does not exist",
+                ),
+            )
+        )
+
+    monkeypatch.setattr(
+        pipeline_cli,
+        "validate_pipeline_definition",
+        validate_invalid,
+    )
+    invalid = backend.execute(
+        "pipeline",
+        "validate",
+        argparse.Namespace(source="example"),
+    )
+    assert invalid.exit_code == 2
+    assert invalid.data == {
+        "diagnostics": [
+            {
+                "code": "unknown-node",
+                "message": "node 'missing' does not exist",
+                "path": "outputs.result",
+            }
+        ],
+        "valid": False,
+    }
 
 
 def test_local_cli_backend_shows_canonical_pipeline(

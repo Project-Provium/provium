@@ -12,11 +12,16 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, cast
 
+from provium.artifact.discovery import discover_artifact_catalogs
 from provium.canonical import canonical_json
 from provium.cli.catalog import CommandCatalog
 from provium.cli.command import Command
 from provium.cli.plugin import CLI_PLUGIN_API_VERSION, CLIPlugin
+from provium.procedure.discovery import discover_procedure_catalogs
 
+from .compiler.catalogs import ArtifactCatalogCollection, ProcedureCatalogCollection
+from .compiler.diagnostics import PipelineCompilationError
+from .compiler.validation import validate_pipeline_definition
 from .definition.codec import (
     canonical_definition_document,
     load_pipeline_json,
@@ -53,6 +58,16 @@ class RunExporter(Protocol):
     def run_bundle_json(self, identifier: RunId) -> str: ...
 
 
+def _installed_validation_catalogs() -> tuple[
+    ArtifactCatalogCollection,
+    ProcedureCatalogCollection,
+]:
+    return (
+        ArtifactCatalogCollection((discover_artifact_catalogs(),)),
+        ProcedureCatalogCollection((discover_procedure_catalogs(),)),
+    )
+
+
 def _load_pipeline_source(source: str) -> PipelineDefinition:
     path = Path(source)
     if not path.exists():
@@ -86,6 +101,8 @@ class LocalCLIBackend:
     ) -> CLIResult:
         if group == "pipeline" and action == "list":
             return self._list_pipelines()
+        if group == "pipeline" and action == "validate":
+            return self._validate_pipeline(arguments.source)
         if group == "pipeline" and action == "show":
             definition = _load_pipeline_source(arguments.source)
             return CLIResult(
@@ -105,6 +122,30 @@ class LocalCLIBackend:
                 message=f"local backend does not support {group} {action} yet",
             )
         return self._read_run(action, arguments)
+
+    def _validate_pipeline(self, source: str) -> CLIResult:
+        definition = _load_pipeline_source(source)
+        artifact_catalogs, procedure_catalogs = _installed_validation_catalogs()
+        try:
+            validate_pipeline_definition(
+                definition,
+                artifact_catalogs,
+                procedure_catalogs,
+            )
+        except PipelineCompilationError as error:
+            diagnostics = [
+                {
+                    "code": diagnostic.code,
+                    "message": diagnostic.message,
+                    "path": diagnostic.path,
+                }
+                for diagnostic in error.diagnostics
+            ]
+            return CLIResult(
+                {"diagnostics": diagnostics, "valid": False},
+                exit_code=2,
+            )
+        return CLIResult({"diagnostics": [], "valid": True})
 
     def _list_pipelines(self) -> CLIResult:
         discovery = discover_pipeline_catalogs()
