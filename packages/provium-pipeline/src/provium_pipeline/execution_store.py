@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime
 from threading import RLock
 from typing import Protocol
 
+from .cancellation import cancelled_task_state
 from .identifiers import RunId, TaskId
 from .run_models import (
     CreateRunRequest,
@@ -35,6 +37,8 @@ class ExecutionStore(Protocol):
     def list_tasks(self, run_identifier: RunId) -> tuple[PipelineTask, ...]: ...
 
     def get_task(self, identifier: TaskId) -> PipelineTask: ...
+
+    def cancel_run(self, identifier: RunId) -> PipelineRun: ...
 
     def transition_run(
         self,
@@ -114,6 +118,26 @@ class InMemoryExecutionStore:
         with self._lock:
             _, _, task = self._locate_task(identifier)
             return task
+
+    def cancel_run(self, identifier: RunId) -> PipelineRun:
+        with self._lock:
+            run = self._runs[identifier]
+            cancelled = (
+                run
+                if run.state is RunState.CANCELLED
+                else apply_run_transition(
+                    run,
+                    expected=run.state,
+                    target=RunState.CANCELLED,
+                )
+            )
+            tasks = tuple(
+                replace(task, state=cancelled_task_state(task.state))
+                for task in self._tasks[identifier]
+            )
+            self._runs[identifier] = cancelled
+            self._tasks[identifier] = tasks
+            return cancelled
 
     def transition_run(
         self,

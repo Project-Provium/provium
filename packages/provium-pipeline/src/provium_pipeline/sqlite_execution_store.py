@@ -6,11 +6,12 @@ import hashlib
 import sqlite3
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from provium_pipeline.cancellation import cancelled_task_state
 from provium_pipeline.execution_codec import (
     pipeline_run_from_json,
     pipeline_run_json,
@@ -291,6 +292,59 @@ class SQLiteExecutionStore:
                 (str(run_identifier),),
             ).fetchall()
         return tuple(pipeline_task_from_json(str(row[0])) for row in rows)
+
+    def cancel_run(self, identifier: RunId) -> PipelineRun:
+        """Atomically cancel a run and all of its cancellable tasks."""
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                run_row = connection.execute(
+                    "SELECT payload FROM runs WHERE id = ?", (str(identifier),)
+                ).fetchone()
+                run = pipeline_run_from_json(
+                    _require_run_payload(run_row, identifier)
+                )
+                cancelled = (
+                    run
+                    if run.state is RunState.CANCELLED
+                    else apply_run_transition(
+                        run,
+                        expected=run.state,
+                        target=RunState.CANCELLED,
+                    )
+                )
+                task_rows = connection.execute(
+                    "SELECT payload FROM tasks WHERE run_id = ? ORDER BY id",
+                    (str(identifier),),
+                ).fetchall()
+                tasks = tuple(
+                    replace(
+                        task,
+                        state=cancelled_task_state(task.state),
+                    )
+                    for row in task_rows
+                    for task in (pipeline_task_from_json(str(row[0])),)
+                )
+                connection.execute(
+                    "UPDATE runs SET payload = ? WHERE id = ?",
+                    (pipeline_run_json(cancelled), str(identifier)),
+                )
+                connection.executemany(
+                    "UPDATE tasks SET state = ?, payload = ? WHERE id = ?",
+                    (
+                        (
+                            task.state.value,
+                            pipeline_task_json(task),
+                            str(task.identifier),
+                        )
+                        for task in tasks
+                    ),
+                )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+        return cancelled
 
     def transition_run(
         self,
