@@ -75,6 +75,8 @@ class SerialDispatchWorker:
         worker_identity: str,
         lease_ttl: timedelta,
         wait_for_work: Callable[[], None],
+        is_retryable: Callable[[Exception], bool],
+        wait_until: Callable[[datetime], None],
     ) -> None:
         if lease_ttl <= timedelta(0):
             raise ValueError("lease ttl must be positive")
@@ -86,11 +88,13 @@ class SerialDispatchWorker:
         self._worker_identity = worker_identity
         self._lease_ttl = lease_ttl
         self._wait_for_work = wait_for_work
+        self._is_retryable = is_retryable
+        self._wait_until = wait_until
 
     def run(self, dispatch: Dispatch) -> None:
         SerialRunner(
             claim=lambda: self._claim(dispatch),
-            execute=self._execute,
+            execute=lambda claimed: self._execute(claimed, dispatch),
             is_terminal=lambda: self._is_terminal(dispatch),
             wait_for_work=self._wait_for_work,
         ).run()
@@ -141,28 +145,44 @@ class SerialDispatchWorker:
             target=target,
         )
 
-    def _execute(self, claimed: _ClaimedTask) -> None:
+    def _execute(self, claimed: _ClaimedTask, dispatch: Dispatch) -> None:
+        retry_at: datetime | None = None
         try:
             self._execute_task(claimed.task, claimed.lease)
-        except Exception:
+        except Exception as error:
+            decision = dispatch.retry_policy.after_failure(
+                attempt_number=claimed.lease.attempt_number,
+                retryable=self._is_retryable(error),
+                now=self._clock(),
+            )
             self._executions.transition_task(
                 claimed.task.identifier,
                 expected=TaskState.LEASED,
-                target=TaskState.FAILED,
+                target=decision.state,
             )
-            raise
+            retry_at = decision.eligible_at
+            if decision.state is not TaskState.RETRY_WAIT:
+                raise
         else:
             self._executions.transition_task(
                 claimed.task.identifier,
                 expected=TaskState.LEASED,
                 target=TaskState.SUCCEEDED,
             )
+            return
         finally:
             self._attempts.release(
                 claimed.task.identifier,
                 token=claimed.lease.token,
                 ended_at=self._clock(),
             )
+        assert retry_at is not None
+        self._wait_until(retry_at)
+        self._executions.transition_task(
+            claimed.task.identifier,
+            expected=TaskState.RETRY_WAIT,
+            target=TaskState.READY,
+        )
 
     def _is_terminal(self, dispatch: Dispatch) -> bool:
         return all(

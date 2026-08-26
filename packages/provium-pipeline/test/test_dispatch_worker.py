@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from provium_pipeline.attempts import TaskAttemptLease
+from provium_pipeline.attempts import RetryPolicy, TaskAttemptLease
 from provium_pipeline.dispatch_models import Dispatch, DispatchState
 from provium_pipeline.dispatch_worker import SerialDispatchWorker
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
@@ -96,7 +96,7 @@ class _Attempts:
         self.claims.append((task, state, worker_identity, token, now, ttl))
         return TaskAttemptLease(
             task_identifier=task,
-            attempt_number=1,
+            attempt_number=len(self.claims),
             worker_identity=worker_identity,
             token=token,
             started_at=now,
@@ -137,10 +137,21 @@ def _succeed(_: PipelineTask, __: TaskAttemptLease) -> None:
     pass
 
 
+def _retryable(_: Exception) -> bool:
+    return True
+
+
+def _no_wait_until(_: datetime) -> None:
+    pass
+
+
 def _worker(
     executions: _Executions,
     attempts: _Attempts,
     execute_task: Callable[[PipelineTask, TaskAttemptLease], None],
+    *,
+    is_retryable: Callable[[Exception], bool] = _retryable,
+    wait_until: Callable[[datetime], None] = _no_wait_until,
 ) -> SerialDispatchWorker:
     return SerialDispatchWorker(
         executions=executions,
@@ -151,6 +162,8 @@ def _worker(
         worker_identity="serial-1",
         lease_ttl=timedelta(seconds=30),
         wait_for_work=lambda: pytest.fail("unexpected wait"),
+        is_retryable=is_retryable,
+        wait_until=wait_until,
     )
 
 
@@ -243,6 +256,8 @@ def test_serial_dispatch_worker_waits_and_rescans_nonclaimable_tasks() -> None:
         worker_identity="serial-1",
         lease_ttl=timedelta(seconds=30),
         wait_for_work=make_ready,
+        is_retryable=_retryable,
+        wait_until=_no_wait_until,
     ).run(_dispatch(selected))
 
     assert waits == [None]
@@ -292,12 +307,91 @@ def test_serial_dispatch_worker_cancels_task_with_failed_dependency() -> None:
         worker_identity="serial-1",
         lease_ttl=timedelta(seconds=30),
         wait_for_work=lambda: waits.append(None),
+        is_retryable=_retryable,
+        wait_until=_no_wait_until,
     )
 
     worker.run(_dispatch(upstream, downstream))
 
     assert executions.get_task(downstream.identifier).state is TaskState.CANCELLED
     assert waits == [None]
+
+
+def test_serial_dispatch_worker_retries_at_canonical_eligibility_time() -> None:
+    selected = _task()
+    executions = _Executions(selected)
+    attempts = _Attempts()
+    calls: list[int] = []
+    waits: list[datetime] = []
+
+    def fail_once(_: PipelineTask, lease: TaskAttemptLease) -> None:
+        calls.append(lease.attempt_number)
+        if lease.attempt_number == 1:
+            raise RuntimeError("retryable failure")
+
+    def record_wait(eligible_at: datetime) -> None:
+        assert attempts.releases
+        waits.append(eligible_at)
+
+    worker = _worker(
+        executions,
+        attempts,
+        fail_once,
+        wait_until=record_wait,
+    )
+    dispatch = replace(
+        _dispatch(selected),
+        retry_policy=RetryPolicy(
+            max_attempts=2,
+            initial_backoff=timedelta(seconds=5),
+        ),
+    )
+
+    worker.run(dispatch)
+
+    assert calls == [1, 2]
+    assert waits == [NOW + timedelta(seconds=5)]
+    assert executions.get_task(selected.identifier).state is TaskState.SUCCEEDED
+    assert (
+        selected.identifier,
+        TaskState.LEASED,
+        TaskState.RETRY_WAIT,
+    ) in executions.transitions
+    assert (
+        selected.identifier,
+        TaskState.RETRY_WAIT,
+        TaskState.READY,
+    ) in executions.transitions
+
+
+def test_serial_dispatch_worker_does_not_retry_non_retryable_failure() -> None:
+    selected = _task()
+    executions = _Executions(selected)
+    attempts = _Attempts()
+    waits: list[datetime] = []
+
+    def fail(_: PipelineTask, __: TaskAttemptLease) -> None:
+        raise ValueError("permanent failure")
+
+    worker = _worker(
+        executions,
+        attempts,
+        fail,
+        is_retryable=lambda _: False,
+        wait_until=waits.append,
+    )
+    dispatch = replace(
+        _dispatch(selected),
+        retry_policy=RetryPolicy(max_attempts=3),
+    )
+
+    with pytest.raises(ValueError, match="permanent failure"):
+        worker.run(dispatch)
+
+    assert executions.get_task(selected.identifier).state is TaskState.FAILED
+    assert len(attempts.claims) == 1
+    assert len(attempts.releases) == 1
+    assert waits == []
 
 
 def test_serial_dispatch_worker_requires_positive_lease_ttl() -> None:
@@ -311,4 +405,6 @@ def test_serial_dispatch_worker_requires_positive_lease_ttl() -> None:
             worker_identity="serial-1",
             lease_ttl=timedelta(0),
             wait_for_work=lambda: None,
+            is_retryable=_retryable,
+            wait_until=_no_wait_until,
         )
