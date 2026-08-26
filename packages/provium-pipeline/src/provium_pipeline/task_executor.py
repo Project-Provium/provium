@@ -6,6 +6,46 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
+from pydantic import ValidationError
+
+from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
+
+
+class ConfigurationSnapshotMismatchError(RuntimeError):
+    """A frozen configuration no longer matches the installed contract."""
+
+
+def verify_configuration_snapshot(
+    snapshot: ConfigurationSnapshot | None,
+    configuration_type: type[ProcedureConfig] | None,
+) -> ProcedureConfig | None:
+    """Revalidate a frozen configuration and verify its canonical fingerprints."""
+    if snapshot is None:
+        if configuration_type is None:
+            return None
+        raise ConfigurationSnapshotMismatchError("configuration snapshot is missing")
+    if configuration_type is None:
+        raise ConfigurationSnapshotMismatchError(
+            "installed procedure does not accept configuration"
+        )
+    expected_target = (
+        f"{configuration_type.__module__}:{configuration_type.__qualname__}"
+    )
+    if snapshot.model_target != expected_target:
+        raise ConfigurationSnapshotMismatchError("configuration model target mismatch")
+    try:
+        configuration = configuration_type.model_validate(snapshot.value)
+    except ValidationError as error:
+        raise ConfigurationSnapshotMismatchError(
+            "configuration snapshot value is invalid"
+        ) from error
+    verified = ConfigurationSnapshot.from_configuration(configuration)
+    if snapshot.schema_digest != verified.schema_digest:
+        raise ConfigurationSnapshotMismatchError("configuration schema digest mismatch")
+    if snapshot.value_digest != verified.value_digest:
+        raise ConfigurationSnapshotMismatchError("configuration value digest mismatch")
+    return configuration
+
 
 class PreparedProcedure(Protocol):
     """Reusable prepared procedure lifecycle required by the cache."""
@@ -63,4 +103,9 @@ class PreparedProcedureCache[PreparedT: PreparedProcedure]:
             raise failure
 
 
-__all__ = ["PreparedProcedureCache", "PreparedProcedureKey"]
+__all__ = [
+    "ConfigurationSnapshotMismatchError",
+    "PreparedProcedureCache",
+    "PreparedProcedureKey",
+    "verify_configuration_snapshot",
+]

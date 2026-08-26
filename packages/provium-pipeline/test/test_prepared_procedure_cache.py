@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pytest
 
-from provium_pipeline.task_executor import PreparedProcedureCache, PreparedProcedureKey
+from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
+from provium_pipeline.task_executor import (
+    ConfigurationSnapshotMismatchError,
+    PreparedProcedureCache,
+    PreparedProcedureKey,
+    verify_configuration_snapshot,
+)
 
 
 @dataclass
@@ -111,3 +117,60 @@ def test_prepared_procedure_cache_preserves_first_of_multiple_close_failures() -
 
     with pytest.raises(RuntimeError, match="second inserted"):
         cache.close()
+
+
+class _Config(ProcedureConfig):
+    count: int
+
+
+def test_configuration_snapshot_is_revalidated_into_installed_model() -> None:
+    snapshot = ConfigurationSnapshot.from_configuration(_Config(count=3))
+
+    configuration = verify_configuration_snapshot(snapshot, _Config)
+
+    assert isinstance(configuration, _Config)
+    assert configuration.count == 3
+
+
+def test_configuration_snapshot_rejects_value_digest_drift() -> None:
+    snapshot = ConfigurationSnapshot.from_configuration(_Config(count=3))
+    tampered = replace(snapshot, value={"count": 4})
+
+    with pytest.raises(ConfigurationSnapshotMismatchError, match="value digest"):
+        verify_configuration_snapshot(tampered, _Config)
+
+
+def test_configuration_snapshot_rejects_invalid_frozen_value() -> None:
+    snapshot = ConfigurationSnapshot.from_configuration(_Config(count=3))
+    invalid = replace(snapshot, value={"count": "not-an-integer"})
+
+    with pytest.raises(ConfigurationSnapshotMismatchError, match="value is invalid"):
+        verify_configuration_snapshot(invalid, _Config)
+
+
+def test_configuration_snapshot_rejects_recorded_schema_digest_drift() -> None:
+    snapshot = ConfigurationSnapshot.from_configuration(_Config(count=3))
+    tampered = replace(snapshot, schema_digest="tampered")
+
+    with pytest.raises(ConfigurationSnapshotMismatchError, match="schema digest"):
+        verify_configuration_snapshot(tampered, _Config)
+
+
+def test_configuration_snapshot_rejects_installed_schema_drift() -> None:
+    snapshot = ConfigurationSnapshot.from_configuration(_Config(count=3))
+
+    class _ChangedConfig(ProcedureConfig):
+        count: str
+
+    with pytest.raises(ConfigurationSnapshotMismatchError, match="model target"):
+        verify_configuration_snapshot(snapshot, _ChangedConfig)
+
+
+def test_configuration_snapshot_requires_matching_configuration_contract() -> None:
+    snapshot = ConfigurationSnapshot.from_configuration(_Config(count=3))
+
+    with pytest.raises(ConfigurationSnapshotMismatchError, match="does not accept"):
+        verify_configuration_snapshot(snapshot, None)
+    with pytest.raises(ConfigurationSnapshotMismatchError, match="missing"):
+        verify_configuration_snapshot(None, _Config)
+    assert verify_configuration_snapshot(None, None) is None
