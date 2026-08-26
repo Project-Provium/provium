@@ -1,6 +1,7 @@
 import argparse
 import json
 from collections.abc import Mapping
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 from uuid import UUID
@@ -11,6 +12,7 @@ from provium.cli import CLI_PLUGIN_API_VERSION
 from provium_pipeline.cli import (
     CLIResult,
     LocalCLIBackend,
+    RunExporter,
     cli_plugin,
     use_cli_backend,
 )
@@ -177,3 +179,39 @@ def test_local_cli_backend_reads_durable_run_status_and_tasks() -> None:
             "task_id": str(UUID(int=3)),
         }
     ]
+
+
+def test_local_cli_backend_writes_configuration_and_bundle_exports(
+    tmp_path: Path,
+) -> None:
+    class Exporter:
+        def configuration_json(self, identifier: object) -> str:
+            return '{"setting":1}'
+
+        def run_bundle_json(self, identifier: object) -> str:
+            return '{"schema":"provium.run-bundle/v1"}'
+
+    store = cast(RunLookup, object())
+    backend = LocalCLIBackend(
+        store,
+        exporter=cast(RunExporter, Exporter()),
+    )
+    run_id = str(UUID(int=1))
+    configuration = tmp_path / "configuration.json"
+    bundle = tmp_path / "bundle.json"
+
+    configuration_result = backend.execute(
+        "run",
+        "configuration export",
+        argparse.Namespace(run_id=run_id, output=str(configuration)),
+    )
+    bundle_result = backend.execute(
+        "run",
+        "export",
+        argparse.Namespace(run_id=run_id, output=str(bundle)),
+    )
+
+    assert configuration_result.data == {"output": str(configuration)}
+    assert bundle_result.data == {"output": str(bundle)}
+    assert configuration.read_text() == '{"setting":1}\n'
+    assert bundle.read_text() == '{"schema":"provium.run-bundle/v1"}\n'

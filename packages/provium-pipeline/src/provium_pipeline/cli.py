@@ -8,6 +8,7 @@ from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any, ClassVar, Protocol, cast
 
 from provium.canonical import canonical_json
@@ -15,6 +16,8 @@ from provium.cli.catalog import CommandCatalog
 from provium.cli.command import Command
 from provium.cli.plugin import CLI_PLUGIN_API_VERSION, CLIPlugin
 
+from .exports import RunExportService
+from .exports import RunLookup as ExportRunLookup
 from .identifiers import RunId
 from .run_query import RunLookup, RunQueryService
 
@@ -35,11 +38,25 @@ class PipelineCLIBackend(Protocol):
     ) -> CLIResult: ...
 
 
+class RunExporter(Protocol):
+    def configuration_json(self, identifier: RunId) -> str: ...
+
+    def run_bundle_json(self, identifier: RunId) -> str: ...
+
+
 class LocalCLIBackend:
     """Read durable local run state through the execution-store contract."""
 
-    def __init__(self, store: RunLookup) -> None:
+    def __init__(
+        self,
+        store: RunLookup,
+        *,
+        exporter: RunExporter | None = None,
+    ) -> None:
         self._runs = RunQueryService(store)
+        self._exporter = exporter or RunExportService(
+            cast(ExportRunLookup, store)
+        )
 
     def execute(
         self,
@@ -47,6 +64,8 @@ class LocalCLIBackend:
         action: str,
         arguments: argparse.Namespace,
     ) -> CLIResult:
+        if group == "run" and action in {"configuration export", "export"}:
+            return self._export(action, arguments)
         if group != "run" or action not in {"status", "tasks"}:
             return CLIResult(
                 {"action": action, "group": group},
@@ -75,6 +94,21 @@ class LocalCLIBackend:
                 ]
             }
         )
+
+    def _export(
+        self,
+        action: str,
+        arguments: argparse.Namespace,
+    ) -> CLIResult:
+        identifier = RunId.parse(arguments.run_id)
+        payload = (
+            self._exporter.configuration_json(identifier)
+            if action == "configuration export"
+            else self._exporter.run_bundle_json(identifier)
+        )
+        output = Path(arguments.output)
+        output.write_text(payload.rstrip("\n") + "\n", encoding="utf-8")
+        return CLIResult({"output": str(output)})
 
 
 class _UnavailableBackend:
@@ -258,6 +292,7 @@ __all__ = [
     "PipelineCLIBackend",
     "PipelineCommand",
     "RunCommand",
+    "RunExporter",
     "cli_plugin",
     "use_cli_backend",
 ]
