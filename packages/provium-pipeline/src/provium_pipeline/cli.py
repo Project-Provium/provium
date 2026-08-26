@@ -17,6 +17,7 @@ from provium.cli.catalog import CommandCatalog
 from provium.cli.command import Command
 from provium.cli.plugin import CLI_PLUGIN_API_VERSION, CLIPlugin
 
+from .discovery import discover_pipeline_catalogs
 from .execution_codec import pipeline_run_document
 from .exports import RunExportService
 from .exports import RunLookup as ExportRunLookup
@@ -65,6 +66,8 @@ class LocalCLIBackend:
         action: str,
         arguments: argparse.Namespace,
     ) -> CLIResult:
+        if group == "pipeline" and action == "list":
+            return self._list_pipelines()
         if group == "run" and action in {"configuration export", "export"}:
             return self._export(action, arguments)
         if group != "run" or action not in {
@@ -79,6 +82,33 @@ class LocalCLIBackend:
                 message=f"local backend does not support {group} {action} yet",
             )
         return self._read_run(action, arguments)
+
+    def _list_pipelines(self) -> CLIResult:
+        discovery = discover_pipeline_catalogs()
+        pipelines = [
+            {
+                "identifier": registration.identifier,
+                "kind": registration.kind,
+                "location": registration.location,
+            }
+            for registration in sorted(
+                discovery.catalog.registrations,
+                key=lambda item: item.identifier,
+            )
+        ]
+        diagnostics = [
+            {
+                "definition_identifier": diagnostic.definition_identifier,
+                "distribution": diagnostic.distribution,
+                "distribution_version": diagnostic.distribution_version,
+                "entry_point": diagnostic.entry_point,
+                "error_chain": list(diagnostic.error_chain),
+                "location": diagnostic.location,
+                "registration_kind": diagnostic.registration_kind,
+            }
+            for diagnostic in discovery.diagnostics
+        ]
+        return CLIResult({"diagnostics": diagnostics, "pipelines": pipelines})
 
     def _read_run(
         self,

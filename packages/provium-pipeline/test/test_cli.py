@@ -116,10 +116,8 @@ def test_cli_uses_environment_database_and_human_output(
     pipeline_command = cli_plugin.catalog.resolve("pipeline")()
     list_arguments = command_arguments("pipeline", ["list"])
 
-    assert pipeline_command.execute(list_arguments) == 2
-    assert capsys.readouterr().out == (
-        "local backend does not support pipeline list yet\n"
-    )
+    assert pipeline_command.execute(list_arguments) == 0
+    assert capsys.readouterr().out == "diagnostics: []\npipelines: []\n"
     assert database.exists()
 
     backend = RecordingBackend()
@@ -243,12 +241,12 @@ def test_local_cli_backend_reads_durable_run_status_and_tasks(
     }
     unsupported = backend.execute(
         "pipeline",
-        "list",
+        "show",
         argparse.Namespace(),
     )
 
     assert unsupported.exit_code == 2
-    assert unsupported.message == "local backend does not support pipeline list yet"
+    assert unsupported.message == "local backend does not support pipeline show yet"
     assert tasks.data["tasks"] == [
         {
             "cache_disposition": None,
@@ -259,6 +257,72 @@ def test_local_cli_backend_reads_durable_run_status_and_tasks(
             "task_id": str(UUID(int=3)),
         }
     ]
+
+
+def test_local_cli_backend_lists_discovered_pipelines(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    registrations = (
+        SimpleNamespace(
+            identifier="example.second",
+            kind="python",
+            location="example:second",
+        ),
+        SimpleNamespace(
+            identifier="example.first",
+            kind="yaml",
+            location="first.yaml",
+        ),
+    )
+    result = SimpleNamespace(
+        catalog=SimpleNamespace(registrations=registrations),
+        diagnostics=(
+            SimpleNamespace(
+                definition_identifier=None,
+                distribution="broken",
+                distribution_version="1.0",
+                entry_point="broken",
+                error_chain=("broken plugin",),
+                location="broken:catalog",
+                registration_kind="catalog",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline_cli,
+        "discover_pipeline_catalogs",
+        lambda: result,
+        raising=False,
+    )
+    backend = LocalCLIBackend(cast(RunLookup, object()))
+
+    response = backend.execute("pipeline", "list", argparse.Namespace())
+
+    assert response.data == {
+        "diagnostics": [
+            {
+                "definition_identifier": None,
+                "distribution": "broken",
+                "distribution_version": "1.0",
+                "entry_point": "broken",
+                "error_chain": ["broken plugin"],
+                "location": "broken:catalog",
+                "registration_kind": "catalog",
+            }
+        ],
+        "pipelines": [
+            {
+                "identifier": "example.first",
+                "kind": "yaml",
+                "location": "first.yaml",
+            },
+            {
+                "identifier": "example.second",
+                "kind": "python",
+                "location": "example:second",
+            },
+        ],
+    }
 
 
 def test_local_cli_backend_writes_configuration_and_bundle_exports(
