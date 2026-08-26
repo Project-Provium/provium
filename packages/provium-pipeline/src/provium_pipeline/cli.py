@@ -59,6 +59,10 @@ class PipelineCLIBackend(Protocol):
     ) -> CLIResult: ...
 
 
+class RunCanceller(Protocol):
+    def cancel_run(self, identifier: RunId) -> PipelineRun: ...
+
+
 class RunCreator(Protocol):
     def create(
         self,
@@ -177,6 +181,7 @@ class LocalCLIBackend:
         run_creator: RunCreator | None = None,
     ) -> None:
         self._store = cast(ExportRunLookup, store)
+        self._canceller = cast(RunCanceller, store)
         self._runs = RunQueryService(store)
         self._exporter = exporter or RunExportService(self._store)
         self._input_sets = input_sets
@@ -202,6 +207,8 @@ class LocalCLIBackend:
             )
         if group == "run" and action == "create" and self._run_creator is not None:
             return self._create_run(arguments)
+        if group == "run" and action == "cancel":
+            return self._cancel_run(arguments)
         if group == "run" and action in {"configuration export", "export"}:
             return self._export(action, arguments)
         if group != "run" or action not in {
@@ -216,6 +223,12 @@ class LocalCLIBackend:
                 message=f"local backend does not support {group} {action} yet",
             )
         return self._read_run(action, arguments)
+
+    def _cancel_run(self, arguments: argparse.Namespace) -> CLIResult:
+        run = self._canceller.cancel_run(RunId.parse(arguments.run_id))
+        return CLIResult(
+            {"run_id": str(run.identifier), "status": run.state.value}
+        )
 
     def _create_run(self, arguments: argparse.Namespace) -> CLIResult:
         if arguments.input_set is None:

@@ -1,8 +1,10 @@
+from argparse import Namespace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+from provium_pipeline.cli import LocalCLIBackend
 from provium_pipeline.execution_store import InMemoryExecutionStore
 from provium_pipeline.run_models import RunState
 from provium_pipeline.run_transitions import (
@@ -180,3 +182,26 @@ def test_cancellation_rejects_terminal_runs_without_changing_tasks(
     with pytest.raises(InvalidRunTransitionError, match="failed -> cancelled"):
         sqlite.cancel_run(sqlite_run.identifier)
     assert sqlite.list_tasks(sqlite_run.identifier) == sqlite_tasks
+
+
+def test_local_cli_backend_cancels_a_durable_run(tmp_path: Path) -> None:
+    database = tmp_path / "pipeline.sqlite3"
+    store = SQLiteExecutionStore(database)
+    run = store.create_run(request())
+    backend = LocalCLIBackend(store)  # type: ignore[arg-type]
+
+    result = backend.execute(
+        "run",
+        "cancel",
+        Namespace(run_id=str(run.identifier)),
+    )
+
+    assert result.exit_code == 0
+    assert result.data == {
+        "run_id": str(run.identifier),
+        "status": "cancelled",
+    }
+    assert (
+        SQLiteExecutionStore(database).get_run(run.identifier).state
+        is RunState.CANCELLED
+    )
