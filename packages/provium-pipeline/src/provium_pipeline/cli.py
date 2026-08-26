@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import sys
 from collections.abc import Generator, Mapping
 from contextlib import contextmanager
@@ -134,23 +135,36 @@ class LocalCLIBackend:
         return CLIResult({"output": str(output)})
 
 
-class _UnavailableBackend:
+class _EnvironmentBackend:
     def execute(
         self,
         group: str,
         action: str,
         arguments: argparse.Namespace,
     ) -> CLIResult:
-        return CLIResult(
-            {"action": action, "group": group},
-            exit_code=2,
-            message="pipeline CLI backend is not configured",
+        import os
+
+        from provium_pipeline.sqlite_execution_store import SQLiteExecutionStore
+
+        database = Path(
+            os.environ.get(
+                "PROVIUM_PIPELINE_DATABASE",
+                ".provium/pipeline.sqlite3",
+            )
+        )
+        database.parent.mkdir(parents=True, exist_ok=True)
+        return LocalCLIBackend(
+            cast(RunLookup, SQLiteExecutionStore(database))
+        ).execute(
+            group,
+            action,
+            arguments,
         )
 
 
 _backend: ContextVar[PipelineCLIBackend] = ContextVar(
     "provium_pipeline_cli_backend",
-    default=_UnavailableBackend(),
+    default=_EnvironmentBackend(),
 )
 
 
@@ -164,11 +178,40 @@ def use_cli_backend(backend: PipelineCLIBackend) -> Generator[None, None, None]:
         _backend.reset(token)
 
 
+def _error_result(error_type: str, message: str) -> CLIResult:
+    return CLIResult(
+        {"error": {"message": message, "type": error_type}},
+        exit_code=2,
+        message=message,
+    )
+
+
+def _execute_backend(
+    group: str,
+    arguments: argparse.Namespace,
+) -> CLIResult:
+    try:
+        return _backend.get().execute(group, arguments.cli_action, arguments)
+    except ValueError:
+        value = getattr(arguments, "run_id", "")
+        return _error_result(
+            "invalid_argument",
+            f"invalid run identifier: {value}",
+        )
+    except KeyError as error:
+        return _error_result("not_found", str(error.args[0]))
+    except (OSError, sqlite3.Error) as error:
+        return _error_result(
+            "storage_error",
+            f"pipeline storage unavailable: {error}",
+        )
+
+
 class _PipelineCommand(Command):
     group: ClassVar[str]
 
     def execute(self, arguments: argparse.Namespace) -> int:
-        result = _backend.get().execute(self.group, arguments.cli_action, arguments)
+        result = _execute_backend(self.group, arguments)
         if arguments.output_format == "json":
             sys.stdout.write(
                 canonical_json(

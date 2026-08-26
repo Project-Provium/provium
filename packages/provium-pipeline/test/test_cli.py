@@ -106,19 +106,74 @@ def test_cli_executes_backend_and_emits_versioned_json(
     assert backend.calls == [("run", "status")]
 
 
-def test_cli_human_output_and_unconfigured_backend_exit_code(
+def test_cli_uses_environment_database_and_human_output(
+    capsys: CaptureFixture[str],
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "state" / "pipeline.sqlite3"
+    monkeypatch.setenv("PROVIUM_PIPELINE_DATABASE", str(database))
+    pipeline_command = cli_plugin.catalog.resolve("pipeline")()
+    list_arguments = command_arguments("pipeline", ["list"])
+
+    assert pipeline_command.execute(list_arguments) == 2
+    assert capsys.readouterr().out == (
+        "local backend does not support pipeline list yet\n"
+    )
+    assert database.exists()
+
+    backend = RecordingBackend()
+    run_command = cli_plugin.catalog.resolve("run")()
+    status_arguments = command_arguments("run", ["status", str(UUID(int=1))])
+    with use_cli_backend(backend):
+        assert run_command.execute(status_arguments) == 0
+    assert capsys.readouterr().out == "action: status\ngroup: run\n"
+
+
+def test_cli_reports_invalid_run_identifier_as_versioned_json(
     capsys: CaptureFixture[str],
 ) -> None:
     command = cli_plugin.catalog.resolve("run")()
-    arguments = command_arguments("run", ["status", "run-1"])
+    arguments = command_arguments(
+        "run",
+        ["status", "not-a-uuid", "--format", "json"],
+    )
 
     assert command.execute(arguments) == 2
-    assert capsys.readouterr().out == "pipeline CLI backend is not configured\n"
+    assert json.loads(capsys.readouterr().out) == {
+        "data": {
+            "error": {
+                "message": "invalid run identifier: not-a-uuid",
+                "type": "invalid_argument",
+            }
+        },
+        "schema": "provium.pipeline-cli/v1",
+    }
 
-    backend = RecordingBackend()
-    with use_cli_backend(backend):
-        assert command.execute(arguments) == 0
-    assert capsys.readouterr().out == "action: status\ngroup: run\n"
+
+def test_cli_reports_missing_run_and_storage_failures(
+    capsys: CaptureFixture[str],
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    command = cli_plugin.catalog.resolve("run")()
+    missing_id = str(UUID(int=9))
+    database = tmp_path / "pipeline.sqlite3"
+    monkeypatch.setenv("PROVIUM_PIPELINE_DATABASE", str(database))
+
+    missing = command_arguments("run", ["status", missing_id, "--format", "json"])
+    assert command.execute(missing) == 2
+    assert json.loads(capsys.readouterr().out)["data"] == {
+        "error": {
+            "message": f"unknown run identifier: {missing_id}",
+            "type": "not_found",
+        }
+    }
+
+    monkeypatch.setenv("PROVIUM_PIPELINE_DATABASE", str(tmp_path))
+    unavailable = command_arguments("run", ["status", missing_id])
+    assert command.execute(unavailable) == 2
+    assert capsys.readouterr().out.startswith("pipeline storage unavailable: ")
 
 
 def test_local_cli_backend_reads_durable_run_status_and_tasks(
