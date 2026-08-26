@@ -53,6 +53,21 @@ class TaskSelection:
 
 
 @dataclass(frozen=True, slots=True)
+class CreateDispatchRequest:
+    """Immutable caller intent for one dispatch creation."""
+
+    run_identifier: RunId
+    selection: TaskSelection
+    dependency_policy: DependencyPolicy
+    retry_policy: RetryPolicy
+    idempotency_key: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.idempotency_key == "":
+            raise ValueError("idempotency_key cannot be empty")
+
+
+@dataclass(frozen=True, slots=True)
 class Dispatch:
     """Immutable durable dispatch snapshot."""
 
@@ -90,6 +105,7 @@ def _require_aware(value: datetime, *, field: str) -> None:
 
 
 __all__ = [
+    "CreateDispatchRequest",
     "DependencyPolicy",
     "Dispatch",
     "DispatchState",

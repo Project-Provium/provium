@@ -4,6 +4,7 @@ import pytest
 
 from provium_pipeline.attempts import RetryPolicy
 from provium_pipeline.dispatch_models import (
+    CreateDispatchRequest,
     DependencyPolicy,
     Dispatch,
     DispatchState,
@@ -45,6 +46,17 @@ def test_task_selection_rejects_conflicting_full_run_modes() -> None:
         match="all and all_remaining are mutually exclusive",
     ):
         TaskSelection(all=True, all_remaining=True)
+
+
+def test_create_dispatch_request_rejects_empty_idempotency_key() -> None:
+    with pytest.raises(ValueError, match="idempotency_key cannot be empty"):
+        CreateDispatchRequest(
+            run_identifier=RUN_ID,
+            selection=TaskSelection(all=True),
+            dependency_policy=DependencyPolicy.SELECTED_ONLY,
+            retry_policy=RetryPolicy(max_attempts=1),
+            idempotency_key="",
+        )
 
 
 def test_dispatch_freezes_expanded_tasks_and_lifecycle_policy() -> None:
