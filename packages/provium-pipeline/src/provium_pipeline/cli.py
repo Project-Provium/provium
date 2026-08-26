@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, cast
 
+from provium import JsonValue
 from provium.artifact.discovery import discover_artifact_catalogs
 from provium.canonical import canonical_json
 from provium.cli.catalog import CommandCatalog
@@ -32,7 +33,9 @@ from .discovery import discover_pipeline_catalogs
 from .execution_codec import pipeline_run_document
 from .exports import RunExportService
 from .exports import RunLookup as ExportRunLookup
-from .identifiers import RunId
+from .identifiers import InputSetIdentifier, RunId
+from .input_codec import load_input_records_ndjson
+from .inputs import InputRecord, InputSet
 from .run_query import RunLookup, RunQueryService
 
 
@@ -50,6 +53,20 @@ class PipelineCLIBackend(Protocol):
         action: str,
         arguments: argparse.Namespace,
     ) -> CLIResult: ...
+
+
+class InputSetStore(Protocol):
+    def create(
+        self,
+        *,
+        identifier: InputSetIdentifier,
+        records: tuple[InputRecord, ...],
+        metadata: Mapping[str, JsonValue],
+    ) -> InputSet: ...
+
+    def get(self, identity: str | InputSetIdentifier) -> InputSet: ...
+
+    def list(self) -> tuple[InputSet, ...]: ...
 
 
 class RunExporter(Protocol):
@@ -80,6 +97,42 @@ def _load_pipeline_source(source: str) -> PipelineDefinition:
     raise ValueError(f"unsupported pipeline source extension: {path.suffix}")
 
 
+def _labels(values: list[str]) -> dict[str, JsonValue]:
+    labels: dict[str, JsonValue] = {}
+    for value in values:
+        key, separator, item = value.partition("=")
+        if not separator or not key:
+            raise ValueError(f"invalid label, expected KEY=VALUE: {value}")
+        labels[key] = item
+    return labels
+
+
+def _input_record_document(record: InputRecord) -> dict[str, JsonValue]:
+    return {
+        "inputs": {name: list(values) for name, values in record.inputs.items()},
+        "key": str(record.key),
+        "labels": dict(record.labels),
+    }
+
+
+def _input_set_summary(value: InputSet) -> dict[str, JsonValue]:
+    return {
+        "created_at": value.created_at.isoformat(),
+        "digest": value.digest,
+        "identifier": str(value.identifier),
+        "identity": value.identity,
+        "metadata": dict(value.metadata),
+        "record_count": len(value.records),
+    }
+
+
+def _input_set_document(value: InputSet) -> dict[str, JsonValue]:
+    return {
+        "input_set": _input_set_summary(value),
+        "records": [_input_record_document(record) for record in value.records],
+    }
+
+
 class LocalCLIBackend:
     """Read durable local run state through the execution-store contract."""
 
@@ -88,10 +141,12 @@ class LocalCLIBackend:
         store: RunLookup,
         *,
         exporter: RunExporter | None = None,
+        input_sets: InputSetStore | None = None,
     ) -> None:
         self._store = cast(ExportRunLookup, store)
         self._runs = RunQueryService(store)
         self._exporter = exporter or RunExportService(self._store)
+        self._input_sets = input_sets
 
     def execute(
         self,
@@ -99,6 +154,8 @@ class LocalCLIBackend:
         action: str,
         arguments: argparse.Namespace,
     ) -> CLIResult:
+        if group == "input-set" and self._input_sets is not None:
+            return self._input_set(action, arguments)
         if group == "pipeline" and action == "list":
             return self._list_pipelines()
         if group == "pipeline" and action == "validate":
@@ -122,6 +179,61 @@ class LocalCLIBackend:
                 message=f"local backend does not support {group} {action} yet",
             )
         return self._read_run(action, arguments)
+
+    def _input_set(
+        self,
+        action: str,
+        arguments: argparse.Namespace,
+    ) -> CLIResult:
+        store = cast(InputSetStore, self._input_sets)
+        if action == "create":
+            return self._create_input_set(store, arguments)
+        if action == "list":
+            return CLIResult(
+                {
+                    "input_sets": [
+                        _input_set_summary(value) for value in store.list()
+                    ]
+                }
+            )
+        value = store.get(arguments.input_set_id)
+        if action == "show":
+            return CLIResult(_input_set_document(value))
+        if action == "export":
+            return self._export_input_set(value, arguments.output)
+        return CLIResult(
+            {"action": action, "group": "input-set"},
+            exit_code=2,
+            message=f"local backend does not support input-set {action} yet",
+        )
+
+    def _create_input_set(
+        self,
+        store: InputSetStore,
+        arguments: argparse.Namespace,
+    ) -> CLIResult:
+        if arguments.identifier is None:
+            raise ValueError("input-set create requires --identifier")
+        source = arguments.source
+        content = sys.stdin.read() if source is None else Path(source).read_text()
+        value = store.create(
+            identifier=InputSetIdentifier(arguments.identifier),
+            records=load_input_records_ndjson(
+                content,
+                source="<stdin>" if source is None else source,
+            ),
+            metadata=_labels(arguments.label),
+        )
+        return CLIResult(_input_set_summary(value))
+
+    def _export_input_set(self, value: InputSet, destination: str) -> CLIResult:
+        payload = "".join(
+            canonical_json(cast(Any, _input_record_document(record))) + "\n"
+            for record in value.records
+        )
+        output = Path(destination)
+        output.write_text(payload, encoding="utf-8")
+        return CLIResult({"output": str(output)})
 
     def _validate_pipeline(self, source: str) -> CLIResult:
         definition = _load_pipeline_source(source)
@@ -239,6 +351,7 @@ class _EnvironmentBackend:
         import os
 
         from provium_pipeline.sqlite_execution_store import SQLiteExecutionStore
+        from provium_pipeline.sqlite_input_sets import SQLiteInputSetStore
 
         database = Path(
             os.environ.get(
@@ -248,7 +361,8 @@ class _EnvironmentBackend:
         )
         database.parent.mkdir(parents=True, exist_ok=True)
         return LocalCLIBackend(
-            cast(RunLookup, SQLiteExecutionStore(database))
+            cast(RunLookup, SQLiteExecutionStore(database)),
+            input_sets=cast(InputSetStore, SQLiteInputSetStore(database)),
         ).execute(
             group,
             action,
@@ -286,12 +400,14 @@ def _execute_backend(
 ) -> CLIResult:
     try:
         return _backend.get().execute(group, arguments.cli_action, arguments)
-    except ValueError:
-        value = getattr(arguments, "run_id", "")
-        return _error_result(
-            "invalid_argument",
-            f"invalid run identifier: {value}",
+    except ValueError as error:
+        run_id = getattr(arguments, "run_id", None)
+        message = (
+            str(error)
+            if run_id is None
+            else f"invalid run identifier: {run_id}"
         )
+        return _error_result("invalid_argument", message)
     except KeyError as error:
         return _error_result("not_found", str(error.args[0]))
     except (OSError, sqlite3.Error) as error:
@@ -352,6 +468,8 @@ class InputSetCommand(_PipelineCommand):
         actions = parser.add_subparsers(dest="input_set_action", required=True)
         create = actions.add_parser("create")
         create.add_argument("source", nargs="?")
+        create.add_argument("--identifier")
+        create.add_argument("--label", action="append", default=[])
         _finish(create, "create")
         _finish(actions.add_parser("list"), "list")
         for action in ("show", "export", "artifacts"):

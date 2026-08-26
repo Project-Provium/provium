@@ -1,12 +1,13 @@
 import argparse
 import json
 from collections.abc import Callable, Mapping
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 from uuid import UUID
 
-from pytest import CaptureFixture, MonkeyPatch
+from pytest import CaptureFixture, MonkeyPatch, raises
 
 from provium.artifact.catalog import ArtifactCatalog
 from provium.cli import CLI_PLUGIN_API_VERSION
@@ -29,6 +30,7 @@ from provium_pipeline.compiler.diagnostics import (
 )
 from provium_pipeline.definition.models import PipelineDefinition
 from provium_pipeline.run_query import RunLookup
+from provium_pipeline.sqlite_input_sets import SQLiteInputSetStore
 
 
 class RecordingBackend:
@@ -528,6 +530,110 @@ def test_local_cli_backend_lists_discovered_pipelines(
             },
         ],
     }
+
+
+def test_local_cli_backend_input_set_creation_validates_and_reads_stdin(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    input_sets = SQLiteInputSetStore(tmp_path / "pipeline.sqlite3")
+    backend = LocalCLIBackend(
+        cast(RunLookup, object()),
+        input_sets=input_sets,
+    )
+    content = (
+        '{"inputs":{"document":["artifact-1"]},'
+        '"key":"record-1","labels":{}}\n'
+    )
+    monkeypatch.setattr(pipeline_cli.sys, "stdin", StringIO(content))
+
+    created = backend.execute(
+        "input-set",
+        "create",
+        argparse.Namespace(
+            identifier="stdin-v1",
+            label=[],
+            source=None,
+        ),
+    )
+    assert created.data["identifier"] == "stdin-v1"
+
+    with raises(ValueError, match="requires --identifier"):
+        backend.execute(
+            "input-set",
+            "create",
+            argparse.Namespace(identifier=None, label=[], source=None),
+        )
+    with raises(ValueError, match="expected KEY=VALUE"):
+        backend.execute(
+            "input-set",
+            "create",
+            argparse.Namespace(
+                identifier="invalid-label",
+                label=["invalid"],
+                source=None,
+            ),
+        )
+    unsupported = backend.execute(
+        "input-set",
+        "artifacts",
+        argparse.Namespace(input_set_id="stdin-v1"),
+    )
+    assert unsupported.exit_code == 2
+    assert unsupported.message == (
+        "local backend does not support input-set artifacts yet"
+    )
+
+
+def test_local_cli_backend_creates_lists_shows_and_exports_input_sets(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "records.ndjson"
+    source.write_text(
+        '{"inputs":{"document":["artifact-1"]},'
+        '"key":"record-1","labels":{"split":"evaluation"}}\n'
+    )
+    output = tmp_path / "export.ndjson"
+    input_sets = SQLiteInputSetStore(tmp_path / "pipeline.sqlite3")
+    backend = LocalCLIBackend(
+        cast(RunLookup, object()),
+        input_sets=input_sets,
+    )
+
+    created = backend.execute(
+        "input-set",
+        "create",
+        argparse.Namespace(
+            identifier="evaluation-v1",
+            label=["owner=quality"],
+            source=str(source),
+        ),
+    )
+    listed = backend.execute("input-set", "list", argparse.Namespace())
+    shown = backend.execute(
+        "input-set",
+        "show",
+        argparse.Namespace(input_set_id="evaluation-v1"),
+    )
+    exported = backend.execute(
+        "input-set",
+        "export",
+        argparse.Namespace(input_set_id="evaluation-v1", output=str(output)),
+    )
+
+    assert created.data["identifier"] == "evaluation-v1"
+    assert listed.data["input_sets"] == [created.data]
+    shown_header = cast(Mapping[str, object], shown.data["input_set"])
+    assert shown_header["metadata"] == {"owner": "quality"}
+    assert shown.data["records"] == [
+        {
+            "inputs": {"document": ["artifact-1"]},
+            "key": "record-1",
+            "labels": {"split": "evaluation"},
+        }
+    ]
+    assert exported.data == {"output": str(output)}
+    assert output.read_text() == source.read_text()
 
 
 def test_local_cli_backend_writes_configuration_and_bundle_exports(
