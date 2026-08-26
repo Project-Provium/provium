@@ -235,10 +235,14 @@ class LocalCLIBackend:
         action: str,
         arguments: argparse.Namespace,
     ) -> CLIResult:
+        dispatches = self._dispatches
+        assert dispatches is not None
+        identifier = DispatchId.parse(arguments.dispatch_id)
         if action == "show":
-            dispatch = self._dispatches
-            assert dispatch is not None
-            value = dispatch.get(DispatchId.parse(arguments.dispatch_id))
+            value = dispatches.get(identifier)
+            return CLIResult({"dispatch": dispatch_document(value)["dispatch"]})
+        if action == "cancel":
+            value = dispatches.cancel(identifier)
             return CLIResult({"dispatch": dispatch_document(value)["dispatch"]})
         return CLIResult(
             {"action": action, "group": "dispatch"},
