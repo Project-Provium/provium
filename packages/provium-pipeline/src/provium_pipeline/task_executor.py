@@ -26,6 +26,7 @@ from provium_pipeline.artifact import (
 )
 from provium_pipeline.compiler.catalogs import ArtifactCatalogCollection
 from provium_pipeline.compiler.models import CompiledBindingPlan
+from provium_pipeline.inputs import InputRecord
 
 
 def _remove_materialization(path: Path) -> None:
@@ -189,6 +190,36 @@ def materialize_binding_inputs(
         )
         paths.append(ownership.track(materialized))
     return tuple(paths)
+
+
+def resolve_runtime_binding_identities(
+    plan: CompiledBindingPlan,
+    *,
+    record: InputRecord,
+    shared_inputs: Mapping[str, Sequence[str]],
+    resolve_upstream: Callable[[str], Sequence[str]],
+) -> tuple[str, ...]:
+    """Expand frozen references into exact ordered artifact identities."""
+    identities: list[str] = []
+    for reference in plan.references:
+        if reference.startswith("$inputs."):
+            name = reference.removeprefix("$inputs.")
+            identities.extend(record.inputs.get(name, shared_inputs.get(name, ())))
+        elif reference.startswith("$nodes."):
+            identities.extend(resolve_upstream(reference))
+        else:
+            raise BindingResolutionError(
+                f"binding {plan.field!r} has unsupported reference {reference!r}"
+            )
+    if len(identities) < plan.minimum:
+        raise BindingResolutionError(
+            f"binding {plan.field!r} requires at least {plan.minimum} artifacts"
+        )
+    if plan.maximum is not None and len(identities) > plan.maximum:
+        raise BindingResolutionError(
+            f"binding {plan.field!r} accepts at most {plan.maximum} artifacts"
+        )
+    return tuple(identities)
 
 
 def resolve_binding_references(
@@ -371,6 +402,7 @@ __all__ = [
     "build_read_binding_value",
     "materialize_binding_inputs",
     "resolve_binding_references",
+    "resolve_runtime_binding_identities",
     "verify_configuration_snapshot",
     "verify_procedure_contract",
 ]
