@@ -1,6 +1,7 @@
 """Exports generated from durable frozen run snapshots."""
 
 import json
+from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
@@ -68,11 +69,20 @@ def parse_run_bundle_json(payload: str) -> RunBundle:
     )
 
 
+DispatchSummaryProvider = Callable[[RunId], Iterable[Mapping[str, object]]]
+
+
 class RunExportService:
     """Export reproducible values from stored run state only."""
 
-    def __init__(self, runs: RunLookup) -> None:
+    def __init__(
+        self,
+        runs: RunLookup,
+        *,
+        dispatch_summaries: DispatchSummaryProvider | None = None,
+    ) -> None:
         self._runs = runs
+        self._dispatch_summaries = dispatch_summaries or _empty_dispatch_summaries
 
     def configuration_document(self, identifier: RunId) -> dict[str, Any]:
         """Return an isolated copy of the run's resolved configuration."""
@@ -115,12 +125,46 @@ class RunExportService:
             "schema": "provium.run-bundle/v1",
             "run": pipeline_run_document(run),
             "tasks": [pipeline_task_document(task) for task in tasks],
-            "dispatches": [],
+            "dispatches": self._dispatch_documents(identifier),
         }
+
+    def _dispatch_documents(self, identifier: RunId) -> list[dict[str, Any]]:
+        documents = (
+            cast(dict[str, Any], _redact_secrets(dict(summary)))
+            for summary in self._dispatch_summaries(identifier)
+        )
+        return sorted(documents, key=canonical_json)
 
     def run_bundle_json(self, identifier: RunId) -> str:
         """Return canonical JSON for the complete local run export."""
         return canonical_json(cast(Any, self.run_bundle_document(identifier)))
+
+
+def _empty_dispatch_summaries(
+    identifier: RunId,
+) -> tuple[Mapping[str, object], ...]:
+    return ()
+
+
+def _redact_secrets(value: Any) -> Any:
+    if isinstance(value, dict):
+        mapping = cast(dict[object, Any], value)
+        return {
+            str(key): _redact_secrets(item)
+            for key, item in mapping.items()
+            if not _secret_key(str(key))
+        }
+    if isinstance(value, list):
+        return [_redact_secrets(item) for item in cast(list[Any], value)]
+    return value
+
+
+def _secret_key(key: str) -> bool:
+    normalized = key.lower()
+    return any(
+        marker in normalized
+        for marker in ("secret", "password", "token", "credential")
+    )
 
 
 __all__ = [
