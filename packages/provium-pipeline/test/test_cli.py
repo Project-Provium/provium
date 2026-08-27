@@ -101,6 +101,55 @@ def test_cli_plugin_registers_complete_top_level_command_matrix() -> None:
             command_arguments(group, invocation)
 
 
+def test_cli_group_help_describes_every_action(
+    capsys: CaptureFixture[str],
+) -> None:
+    expected = {
+        "pipeline": (
+            "Validate a pipeline definition",
+            "Show a canonical pipeline definition",
+            "Execute a pipeline from resolved input records",
+            "Create a run from resolved input records",
+            "List installed pipelines",
+        ),
+        "input-set": (
+            "Create an immutable input set",
+            "List immutable input sets",
+            "Show an immutable input set",
+            "Export frozen input records",
+            "List artifacts bound to an input set",
+        ),
+        "run": (
+            "Create a reproducible run",
+            "Execute selected run tasks",
+            "Show run status",
+            "List tasks in a run",
+            "List frozen run inputs",
+            "List produced run outputs",
+            "List artifacts bound to a run",
+            "Cancel a nonterminal run",
+            "Export a complete run bundle",
+            "Inspect resolved run configuration",
+        ),
+        "dispatch": (
+            "Show dispatch state",
+            "Wait for terminal state",
+            "Cancel a nonterminal dispatch",
+            "Retry failed tasks",
+        ),
+    }
+    for group, descriptions in expected.items():
+        command = cli_plugin.catalog.resolve(group)()
+        parser = argparse.ArgumentParser()
+        command.configure(parser)
+        with raises(SystemExit) as stopped:
+            parser.parse_args(["--help"])
+        assert stopped.value.code == 0
+        output = capsys.readouterr().out
+        for description in descriptions:
+            assert description in output
+
+
 def test_cli_executes_backend_and_emits_versioned_json(
     capsys: CaptureFixture[str],
 ) -> None:
@@ -347,9 +396,7 @@ def test_pipeline_source_loader_supports_catalog_json_yaml_and_rejects_other(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    catalog_definition = cast(
-        PipelineDefinition, SimpleNamespace(identifier="catalog")
-    )
+    catalog_definition = cast(PipelineDefinition, SimpleNamespace(identifier="catalog"))
     json_definition = cast(PipelineDefinition, SimpleNamespace(identifier="json"))
     yaml_definition = cast(PipelineDefinition, SimpleNamespace(identifier="yaml"))
 
@@ -429,6 +476,7 @@ def test_local_cli_backend_validates_pipeline_and_reports_diagnostics(
     monkeypatch: MonkeyPatch,
 ) -> None:
     definition = cast(PipelineDefinition, object())
+
     def load_definition(source: str) -> PipelineDefinition:
         assert source == "example"
         return definition
@@ -613,10 +661,7 @@ def test_local_cli_backend_input_set_creation_validates_and_reads_stdin(
         input_sets=input_sets,
         artifact_locations=lambda identity: (f"location:{identity}",),
     )
-    content = (
-        '{"inputs":{"document":["artifact-1"]},'
-        '"key":"record-1","labels":{}}\n'
-    )
+    content = '{"inputs":{"document":["artifact-1"]},"key":"record-1","labels":{}}\n'
     monkeypatch.setattr(pipeline_cli.sys, "stdin", StringIO(content))
 
     created = backend.execute(

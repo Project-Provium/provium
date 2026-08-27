@@ -25,7 +25,9 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install lint and type-check dependencies
-        run: python -m pip install -e "./packages/provium[test]"
+        run: |
+          python -m pip install -e "./packages/provium[test]"
+          python -m pip install -e "./packages/provium-pipeline[test]"
       - name: Lint Provium
         working-directory: packages/provium
         run: ruff check src test typecheck
@@ -34,6 +36,12 @@ jobs:
         run: ruff format --check src test typecheck
       - name: Check Provium types
         working-directory: packages/provium
+        run: python -m pyright
+      - name: Lint pipeline package
+        working-directory: packages/provium-pipeline
+        run: ruff check .
+      - name: Check pipeline package types
+        working-directory: packages/provium-pipeline
         run: python -m pyright
       - name: Lint example pipeline
         working-directory: examples/provium-text-pipeline
@@ -65,10 +73,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e "./packages/provium[test]"
+          python -m pip install -e "./packages/provium-pipeline[test]"
           python -m pip install -e "./examples/provium-text-pipeline[test]"
       - name: Run package tests
         working-directory: packages/provium
         run: pytest --cov-report=xml
+      - name: Run pipeline package tests
+        working-directory: packages/provium-pipeline
+        run: PYTHONPATH=. pytest -m "not testcontainers"
       - name: Run example pipeline tests
         working-directory: examples/provium-text-pipeline
         run: pytest
@@ -81,3 +93,25 @@ jobs:
           files: packages/provium/coverage.xml
           flags: provium
           use_oidc: true
+
+  pipeline-testcontainers:
+    name: Pipeline clean-wheel Testcontainers acceptance
+    runs-on: ubuntu-latest
+    needs: lint-format
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install pipeline test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "./packages/provium[test]"
+          python -m pip install -e "./packages/provium-pipeline[test]"
+          python -m pip install -e "./examples/provium-text-pipeline[test]"
+      - name: Run mandatory clean-wheel container workflow
+        working-directory: packages/provium-pipeline
+        run: PYTHONPATH=. pytest -m testcontainers -q --no-cov

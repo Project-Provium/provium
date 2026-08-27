@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
-from collections.abc import Callable, Generator, Iterable, Mapping
+from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
@@ -23,7 +23,12 @@ from provium.cli.command import Command
 from provium.cli.plugin import CLI_PLUGIN_API_VERSION, CLIPlugin
 from provium.procedure.discovery import discover_procedure_catalogs
 
-from .artifact.query import ArtifactQueryService, InputSetArtifactBinding
+from .artifact.query import (
+    ArtifactQuery,
+    ArtifactQueryService,
+    InputSetArtifactBinding,
+    RunArtifactBinding,
+)
 from .compiler.catalogs import ArtifactCatalogCollection, ProcedureCatalogCollection
 from .compiler.compiler import PipelineCompiler
 from .compiler.diagnostics import PipelineCompilationError
@@ -211,10 +216,12 @@ class LocalCLIBackend:
         run_creator: RunCreator | None = None,
         resolved_run_creator: ResolvedRunCreator | None = None,
         run_executor: RunExecutor | None = None,
+        run_outputs: Callable[[object], Sequence[object]] | None = None,
+        run_artifacts: Callable[[str, bool], Sequence[object]] | None = None,
     ) -> None:
         self._store = cast(ExportRunLookup, store)
         self._canceller = cast(RunCanceller, store)
-        self._runs = RunQueryService(store)
+        self._runs = RunQueryService(store, outputs=run_outputs)
         self._exporter = exporter or RunExportService(self._store)
         self._input_sets = input_sets
         self._dispatches = dispatches
@@ -222,6 +229,7 @@ class LocalCLIBackend:
         self._run_creator = run_creator
         self._resolved_run_creator = resolved_run_creator
         self._run_executor = run_executor
+        self._run_artifacts = run_artifacts
 
     def execute(
         self,
@@ -239,9 +247,7 @@ class LocalCLIBackend:
             return self._validate_pipeline(arguments.source)
         if group == "pipeline" and action == "show":
             definition = _load_pipeline_source(arguments.source)
-            return CLIResult(
-                {"pipeline": canonical_definition_document(definition)}
-            )
+            return CLIResult({"pipeline": canonical_definition_document(definition)})
         if (
             group == "pipeline"
             and action == "enqueue"
@@ -263,6 +269,10 @@ class LocalCLIBackend:
             return self._cancel_run(arguments)
         if group == "run" and action in {"configuration export", "export"}:
             return self._export(action, arguments)
+        if group == "run" and action == "artifacts" and self._run_artifacts is not None:
+            identifier = str(RunId.parse(arguments.run_id))
+            artifacts = self._run_artifacts(identifier, arguments.locations)
+            return CLIResult({"artifacts": list(artifacts)})
         if group != "run" or action not in {
             "inputs",
             "outputs",
@@ -296,6 +306,22 @@ class LocalCLIBackend:
                 sleep(0.05)
                 value = dispatches.get(identifier)
             return CLIResult({"dispatch": dispatch_document(value)["dispatch"]})
+        if action == "retry" and self._run_executor is not None:
+            original = dispatches.get(identifier)
+            retried = self._run_executor.execute(
+                original.run_identifier,
+                selection=TaskSelection(
+                    all=original.selection.all,
+                    all_remaining=original.selection.all_remaining,
+                    labels=original.selection.labels,
+                    nodes=original.selection.nodes,
+                    only_failed=True,
+                    procedures=original.selection.procedures,
+                    records=original.selection.records,
+                ),
+                dependency_policy=original.dependency_policy,
+            )
+            return CLIResult({"dispatch": dispatch_document(retried)["dispatch"]})
         return CLIResult(
             {"action": action, "group": "dispatch"},
             exit_code=2,
@@ -304,9 +330,7 @@ class LocalCLIBackend:
 
     def _cancel_run(self, arguments: argparse.Namespace) -> CLIResult:
         run = self._canceller.cancel_run(RunId.parse(arguments.run_id))
-        return CLIResult(
-            {"run_id": str(run.identifier), "status": run.state.value}
-        )
+        return CLIResult({"run_id": str(run.identifier), "status": run.state.value})
 
     def _execute_run(self, arguments: argparse.Namespace) -> CLIResult:
         return self._execute_run_identifier(
@@ -344,9 +368,7 @@ class LocalCLIBackend:
 
     def _enqueue_pipeline(self, arguments: argparse.Namespace) -> CLIResult:
         run = self._create_resolved_run(arguments)
-        return CLIResult(
-            {"run_id": str(run.identifier), "status": run.state.value}
-        )
+        return CLIResult({"run_id": str(run.identifier), "status": run.state.value})
 
     def _execute_pipeline(self, arguments: argparse.Namespace) -> CLIResult:
         run = self._create_resolved_run(arguments)
@@ -354,9 +376,7 @@ class LocalCLIBackend:
 
     def _create_resolved_run(self, arguments: argparse.Namespace) -> PipelineRun:
         if arguments.records_from is None or arguments.config is None:
-            raise ValueError(
-                "pipeline execution requires --records-from and --config"
-            )
+            raise ValueError("pipeline execution requires --records-from and --config")
         payload = yaml.safe_load(Path(arguments.config).read_text(encoding="utf-8"))
         configuration = to_json_value(payload)
         if not isinstance(configuration, dict):
@@ -378,9 +398,7 @@ class LocalCLIBackend:
             input_set=arguments.input_set,
             metadata={"selection": _selection_document(arguments)},
         )
-        return CLIResult(
-            {"run_id": str(run.identifier), "status": run.state.value}
-        )
+        return CLIResult({"run_id": str(run.identifier), "status": run.state.value})
 
     def _input_set(
         self,
@@ -392,11 +410,7 @@ class LocalCLIBackend:
             return self._create_input_set(store, arguments)
         if action == "list":
             return CLIResult(
-                {
-                    "input_sets": [
-                        _input_set_summary(value) for value in store.list()
-                    ]
-                }
+                {"input_sets": [_input_set_summary(value) for value in store.list()]}
             )
         value = store.get(arguments.input_set_id)
         if action == "artifacts":
@@ -438,8 +452,7 @@ class LocalCLIBackend:
                     {
                         **asdict(result.binding),
                         "locations": [
-                            to_json_value(location)
-                            for location in result.locations
+                            to_json_value(location) for location in result.locations
                         ],
                     }
                     for result in query.query_input_set(
@@ -559,9 +572,7 @@ class LocalCLIBackend:
                 "tasks": [
                     {
                         **asdict(task),
-                        "expected_output_fields": list(
-                            task.expected_output_fields
-                        ),
+                        "expected_output_fields": list(task.expected_output_fields),
                     }
                     for task in view.tasks
                 ]
@@ -633,6 +644,46 @@ class _EnvironmentBackend:
         artifact_index = SQLiteArtifactIndex(database)
         outputs = SQLiteTaskOutputStore(database)
         attempts = SQLiteAttemptLeaseManager(database)
+
+        def output_observations(run_identifier: object) -> Sequence[object]:
+            return tuple(
+                to_json_value(value)
+                for value in outputs.list_for_run(cast(RunId, run_identifier))
+            )
+
+        def run_artifact_observations(
+            run_identifier: str,
+            include_locations: bool,
+        ) -> Sequence[object]:
+            bindings = tuple(
+                RunArtifactBinding(
+                    artifact_identity=artifact_identity,
+                    run_id=str(output.run_identifier),
+                    record_key=str(output.record_key),
+                    node_id=output.node_identifier,
+                    output_field=output_field,
+                    disposition="produced",
+                    origin_run_id=str(output.run_identifier),
+                    origin_task_id=str(output.task_identifier),
+                )
+                for output in outputs.list_for_run(RunId.parse(run_identifier))
+                for output_field, artifact_identity in output.outputs.items()
+                if artifact_identity is not None
+            )
+            service = ArtifactQueryService(
+                bindings=bindings,
+                location_lookup=artifact_index.get_active_locations,
+            )
+            return tuple(
+                to_json_value(result)
+                for result in service.query(
+                    ArtifactQuery(
+                        run_id=run_identifier,
+                        include_locations=include_locations,
+                    )
+                )
+            )
+
         artifact_store = FilesystemArtifactStore(
             identifier="local",
             root=data_root / "artifacts",
@@ -682,6 +733,7 @@ class _EnvironmentBackend:
             importer=_IdentityImporter(),
             outputs=outputs,
         )
+
         def clock() -> datetime:
             return datetime.now(UTC)
 
@@ -723,6 +775,8 @@ class _EnvironmentBackend:
                 run_creator=run_creator,
                 resolved_run_creator=resolved_run_creator,
                 run_executor=run_executor,
+                run_outputs=output_observations,
+                run_artifacts=run_artifact_observations,
             ).execute(
                 group,
                 action,
@@ -764,11 +818,7 @@ def _execute_backend(
         return _backend.get().execute(group, arguments.cli_action, arguments)
     except ValueError as error:
         run_id = getattr(arguments, "run_id", None)
-        message = (
-            str(error)
-            if run_id is None
-            else f"invalid run identifier: {run_id}"
-        )
+        message = str(error) if run_id is None else f"invalid run identifier: {run_id}"
         return _error_result("invalid_argument", message)
     except KeyError as error:
         return _error_result("not_found", str(error.args[0]))
@@ -812,15 +862,21 @@ class PipelineCommand(_PipelineCommand):
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
         actions = parser.add_subparsers(dest="pipeline_action", required=True)
+        descriptions = {
+            "validate": "Validate a pipeline definition",
+            "show": "Show a canonical pipeline definition",
+            "execute": "Execute a pipeline from resolved input records",
+            "enqueue": "Create a run from resolved input records",
+        }
         for action in ("validate", "show", "execute", "enqueue"):
-            command = actions.add_parser(action)
+            command = actions.add_parser(action, help=descriptions[action])
             command.add_argument("source")
             if action in {"execute", "enqueue"}:
                 command.add_argument("--records-from")
                 command.add_argument("--config")
                 _add_selection_flags(command)
             _finish(command, action)
-        _finish(actions.add_parser("list"), "list")
+        _finish(actions.add_parser("list", help="List installed pipelines"), "list")
 
 
 class InputSetCommand(_PipelineCommand):
@@ -830,14 +886,19 @@ class InputSetCommand(_PipelineCommand):
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
         actions = parser.add_subparsers(dest="input_set_action", required=True)
-        create = actions.add_parser("create")
+        create = actions.add_parser("create", help="Create an immutable input set")
         create.add_argument("source", nargs="?")
         create.add_argument("--identifier")
         create.add_argument("--label", action="append", default=[])
         _finish(create, "create")
-        _finish(actions.add_parser("list"), "list")
+        _finish(actions.add_parser("list", help="List immutable input sets"), "list")
+        descriptions = {
+            "show": "Show an immutable input set",
+            "export": "Export frozen input records",
+            "artifacts": "List artifacts bound to an input set",
+        }
         for action in ("show", "export", "artifacts"):
-            command = actions.add_parser(action)
+            command = actions.add_parser(action, help=descriptions[action])
             command.add_argument("input_set_id")
             if action == "export":
                 command.add_argument("--output", required=True)
@@ -853,30 +914,44 @@ class RunCommand(_PipelineCommand):
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
         actions = parser.add_subparsers(dest="run_action", required=True)
-        create = actions.add_parser("create")
+        create = actions.add_parser("create", help="Create a reproducible run")
         create.add_argument("source")
         create.add_argument("--input-set")
         _add_selection_flags(create)
         _finish(create, "create")
-        execute = actions.add_parser("execute")
+        execute = actions.add_parser("execute", help="Execute selected run tasks")
         execute.add_argument("run_id")
         _add_selection_flags(execute)
         _finish(execute, "execute")
+        descriptions = {
+            "status": "Show run status",
+            "tasks": "List tasks in a run",
+            "inputs": "List frozen run inputs",
+            "outputs": "List produced run outputs",
+            "artifacts": "List artifacts bound to a run",
+            "cancel": "Cancel a nonterminal run",
+        }
         for action in ("status", "tasks", "inputs", "outputs", "artifacts", "cancel"):
-            command = actions.add_parser(action)
+            command = actions.add_parser(action, help=descriptions[action])
             command.add_argument("run_id")
             if action == "artifacts":
                 command.add_argument("--locations", action="store_true")
             _finish(command, action)
-        export = actions.add_parser("export")
+        export = actions.add_parser("export", help="Export a complete run bundle")
         export.add_argument("run_id")
         export.add_argument("--output", required=True)
         _finish(export, "export")
-        configuration = actions.add_parser("configuration")
+        configuration = actions.add_parser(
+            "configuration",
+            help="Inspect resolved run configuration",
+        )
         configuration_actions = configuration.add_subparsers(
             dest="configuration_action", required=True
         )
-        configuration_export = configuration_actions.add_parser("export")
+        configuration_export = configuration_actions.add_parser(
+            "export",
+            help="Export resolved run configuration",
+        )
         configuration_export.add_argument("run_id")
         configuration_export.add_argument("--output", required=True)
         _finish(configuration_export, "configuration export")
@@ -889,8 +964,14 @@ class DispatchCommand(_PipelineCommand):
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
         actions = parser.add_subparsers(dest="dispatch_action", required=True)
+        descriptions = {
+            "show": "Show dispatch state",
+            "wait": "Wait for terminal state",
+            "cancel": "Cancel a nonterminal dispatch",
+            "retry": "Retry failed tasks",
+        }
         for action in ("show", "wait", "cancel", "retry"):
-            command = actions.add_parser(action)
+            command = actions.add_parser(action, help=descriptions[action])
             command.add_argument("dispatch_id")
             _finish(command, action)
 

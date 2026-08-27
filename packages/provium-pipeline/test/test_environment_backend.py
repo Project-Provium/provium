@@ -80,9 +80,15 @@ def test_environment_backend_wires_run_executor(
 
     assert isinstance(result, cli.CLIResult)
     run_executor = cast(Any, captured["run_executor"])
+    from provium_pipeline.identifiers import RunId
+
     resolved_run_creator = cast(Any, captured["resolved_run_creator"])
+    run_outputs = cast(Any, captured["run_outputs"])
+    run_artifacts = cast(Any, captured["run_artifacts"])
     assert run_executor._runs is not None
     assert resolved_run_creator._runs is not None
+    assert run_outputs(RunId.new()) == ()
+    assert run_artifacts(str(RunId.new()), False) == ()
     assert closed
 
     clock = runtime["clock"]
