@@ -6,7 +6,7 @@ from provium_pipeline.artifact.index import ArtifactIndex
 from provium_pipeline.compiler.models import CompiledPipeline
 from provium_pipeline.definition.models import PipelineDefinition
 from provium_pipeline.identifiers import InputRecordKey, InputSetIdentifier
-from provium_pipeline.inputs import InputRecord, InputSet, InputSourceKind
+from provium_pipeline.input.models import InputRecord, InputSet, InputSourceKind
 from provium_pipeline.run_creation import RunCreationService
 from provium_pipeline.run_models import CreateRunRequest, PipelineRun
 
@@ -76,7 +76,7 @@ def test_run_creation_compiles_freezes_validates_and_persists_named_input_set() 
 
 
 def test_run_creation_persists_a_resolver_snapshot_without_an_input_set() -> None:
-    from provium_pipeline.inputs import RunInputSnapshot
+    from provium_pipeline.input.models import RunInputSnapshot
 
     pipeline_definition = cast(PipelineDefinition, object())
     compiled = cast(CompiledPipeline, SimpleNamespace(inputs=()))

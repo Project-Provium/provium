@@ -7,7 +7,7 @@ from provium_pipeline.artifact import InMemoryArtifactIndex
 from provium_pipeline.compiler import CompiledPipelineInput
 from provium_pipeline.definition import PipelineInputScope
 from provium_pipeline.identifiers import InputRecordKey
-from provium_pipeline.input_validation import validate_input_snapshot
+from provium_pipeline.input.validation import validate_input_snapshot
 from test.artifact.test_index import descriptor, location
 
 

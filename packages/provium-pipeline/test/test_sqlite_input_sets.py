@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from provium_pipeline.identifiers import InputRecordKey, InputSetIdentifier
-from provium_pipeline.inputs import InputRecord
-from provium_pipeline.sqlite_input_sets import SQLiteInputSetStore
+from provium_pipeline.input.models import InputRecord
+from provium_pipeline.input.sqlite import SQLiteInputSetStore
 
 
 def record(key: str, artifact: str) -> InputRecord:

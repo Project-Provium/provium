@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from .artifact import ArtifactIndex, ArtifactIndexNotFoundError
-from .compiler import CompiledPipelineInput
-from .definition import PipelineInputScope
-from .inputs import RunInputSnapshot
+from ..artifact import ArtifactIndex, ArtifactIndexNotFoundError
+from ..compiler import CompiledPipelineInput
+from ..definition import PipelineInputScope
+from .models import RunInputSnapshot
 
 
 class InputValidationError(ValueError):

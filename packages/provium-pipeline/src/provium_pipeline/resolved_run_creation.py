@@ -9,13 +9,13 @@ from provium import JsonValue
 
 from .artifact.index import ArtifactIndex
 from .definition.models import PipelineDefinition
-from .input_resolver import (
+from .input.models import RunInputSnapshot
+from .input.resolver import (
     InputRecordResolverCatalog,
     InputResolutionContext,
     ResolveInputRecordsRequest,
     resolve_input_snapshot,
 )
-from .inputs import RunInputSnapshot
 from .run_models import PipelineRun
 
 

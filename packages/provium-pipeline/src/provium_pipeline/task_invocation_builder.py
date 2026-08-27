@@ -11,7 +11,7 @@ from provium_pipeline.attempts import TaskAttemptLease
 from provium_pipeline.canonical import canonical_digest
 from provium_pipeline.compiler.models import CompiledBindingPlan
 from provium_pipeline.identifiers import InputRecordKey, RunId
-from provium_pipeline.inputs import RunInputSnapshot
+from provium_pipeline.input.models import RunInputSnapshot
 from provium_pipeline.local_task_attempt import BuiltTaskInvocation
 from provium_pipeline.run_models import PipelineRun, PipelineTask
 from provium_pipeline.task_executor import (

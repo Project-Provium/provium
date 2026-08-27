@@ -5,8 +5,8 @@ from typing import Any, cast
 
 from pytest import MonkeyPatch, raises
 
-import provium_pipeline.input_resolver as resolver_module
-from provium_pipeline.input_resolver import (
+import provium_pipeline.input.resolver as resolver_module
+from provium_pipeline.input.resolver import (
     INPUT_RECORD_RESOLVER_ENTRY_POINT_GROUP,
     InputRecordResolverCatalog,
     discover_input_record_resolvers,

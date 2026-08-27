@@ -38,7 +38,7 @@ Dependencies mostly point downward. Core Provium is adjacent rather than below e
 
 ### Run planning layer
 
-`inputs.py`, `input_validation.py`, `input_resolver.py`, `run_models.py`, and `run_creation.py` turn an input source and compiled pipeline into a durable semantic snapshot and task graph.
+The singular `input` package owns input models, strict codecs, validation, resolver discovery, and SQLite input-set persistence. Run planning consumes its frozen snapshots to create a durable semantic task graph.
 
 ### Dispatch and execution layer
 

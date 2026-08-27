@@ -11,13 +11,13 @@ from .artifact.index import ArtifactIndex
 from .compiler.models import CompiledPipeline
 from .definition.models import PipelineDefinition
 from .identifiers import InputSetIdentifier
-from .input_validation import validate_input_snapshot
-from .inputs import (
+from .input.models import (
     InputSet,
     InputSourceDescriptor,
     InputSourceKind,
     RunInputSnapshot,
 )
+from .input.validation import validate_input_snapshot
 from .run_models import CreateRunRequest, PipelineRun
 
 

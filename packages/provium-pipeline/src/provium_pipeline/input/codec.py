@@ -7,8 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from provium import JsonValue
 
-from .identifiers import InputRecordKey
-from .inputs import InputRecord
+from ..identifiers import InputRecordKey
+from .models import InputRecord
 
 
 class InputRecordDecodeError(ValueError):

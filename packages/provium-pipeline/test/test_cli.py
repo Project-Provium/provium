@@ -29,8 +29,8 @@ from provium_pipeline.compiler.diagnostics import (
     PipelineCompilationError,
 )
 from provium_pipeline.definition.models import PipelineDefinition
+from provium_pipeline.input.sqlite import SQLiteInputSetStore
 from provium_pipeline.run_query import RunLookup
-from provium_pipeline.sqlite_input_sets import SQLiteInputSetStore
 
 
 class RecordingBackend:

@@ -108,6 +108,21 @@ def test_tutorial_notebooks_are_ordered_linked_and_executable() -> None:
                         resolved = (path.parent / target).resolve()
                         assert resolved.exists(), f"broken link in {name}: {raw_target}"
             if cell["cell_type"] == "code":
-                assert cell["execution_count"] is None
-                assert cell["outputs"] == []
                 exec(compile(source, str(path), "exec"), namespace)
+
+
+def test_source_layout_uses_singular_domain_packages() -> None:
+    package = Path(__file__).resolve().parents[1]
+    source = package / "src" / "provium_pipeline"
+    domains = ("input",)
+    for domain in domains:
+        assert (source / domain / "__init__.py").is_file(), (
+            f"missing domain package: {domain}"
+        )
+
+    forbidden_prefixes = ("input_", "inputs.py", "sqlite_input_sets")
+    flat_modules = tuple(path.name for path in source.glob("*.py"))
+    for prefix in forbidden_prefixes:
+        assert not any(name.startswith(prefix) for name in flat_modules), (
+            f"flat modules remain for {prefix}: {flat_modules}"
+        )

@@ -5,7 +5,7 @@ import pytest
 
 from provium_pipeline.execution_store import InMemoryExecutionStore
 from provium_pipeline.exports import RunExportService, parse_run_bundle_json
-from provium_pipeline.input_codec import load_input_records_ndjson
+from provium_pipeline.input.codec import load_input_records_ndjson
 from test.test_execution_store import request
 
 

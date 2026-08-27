@@ -8,7 +8,7 @@ from types import MappingProxyType
 
 from provium import JsonValue, canonical_digest
 
-from .identifiers import InputRecordKey, InputSetIdentifier
+from ..identifiers import InputRecordKey, InputSetIdentifier
 
 
 @dataclass(frozen=True, slots=True, init=False)

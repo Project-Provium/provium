@@ -47,8 +47,7 @@ from .execution_codec import pipeline_run_document, to_json_value
 from .exports import RunExportService
 from .exports import RunLookup as ExportRunLookup
 from .identifiers import DispatchId, InputSetIdentifier, RunId
-from .input_codec import load_input_records_ndjson
-from .inputs import InputRecord, InputSet
+from .input import InputRecord, InputSet, load_input_records_ndjson
 from .run_creation import RunCreationService
 from .run_models import PipelineRun
 from .run_query import RunLookup, RunQueryService
@@ -614,14 +613,16 @@ class _EnvironmentBackend:
         from provium_pipeline.dispatch_creation import DispatchCreationService
         from provium_pipeline.dispatch_models import RetryPolicy
         from provium_pipeline.dispatch_worker import SerialDispatchWorker
-        from provium_pipeline.input_resolver import discover_input_record_resolvers
+        from provium_pipeline.input import (
+            SQLiteInputSetStore,
+            discover_input_record_resolvers,
+        )
         from provium_pipeline.local_task_attempt import LocalTaskAttemptExecutor
         from provium_pipeline.resolved_run_creation import ResolvedRunCreationService
         from provium_pipeline.run_execution import LocalRunExecutor
         from provium_pipeline.sqlite_attempts import SQLiteAttemptLeaseManager
         from provium_pipeline.sqlite_dispatch_store import SQLiteDispatchStore
         from provium_pipeline.sqlite_execution_store import SQLiteExecutionStore
-        from provium_pipeline.sqlite_input_sets import SQLiteInputSetStore
         from provium_pipeline.task_executor import (
             PreparedProcedure,
             PreparedProcedureCache,

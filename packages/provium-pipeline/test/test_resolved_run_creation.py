@@ -5,10 +5,11 @@ from types import SimpleNamespace
 from typing import cast
 
 from provium import JsonValue
+from provium_pipeline import InputRecordKey
 from provium_pipeline.artifact.index import ArtifactIndex
 from provium_pipeline.definition.models import PipelineDefinition
-from provium_pipeline.input_resolver import InputRecordResolverCatalog
-from provium_pipeline.inputs import InputRecord, InputRecordKey, RunInputSnapshot
+from provium_pipeline.input.models import InputRecord, RunInputSnapshot
+from provium_pipeline.input.resolver import InputRecordResolverCatalog
 from provium_pipeline.resolved_run_creation import ResolvedRunCreationService
 from provium_pipeline.run_models import PipelineRun
 

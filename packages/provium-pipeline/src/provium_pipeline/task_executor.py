@@ -26,7 +26,7 @@ from provium_pipeline.artifact import (
 )
 from provium_pipeline.compiler.catalogs import ArtifactCatalogCollection
 from provium_pipeline.compiler.models import CompiledBindingPlan
-from provium_pipeline.inputs import InputRecord
+from provium_pipeline.input.models import InputRecord
 
 
 def _remove_materialization(path: Path) -> None:

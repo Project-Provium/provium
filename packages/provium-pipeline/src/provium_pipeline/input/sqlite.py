@@ -11,8 +11,8 @@ from typing import Any, cast
 
 from provium import JsonValue, canonical_digest, canonical_json
 
-from .identifiers import InputRecordKey, InputSetIdentifier
-from .inputs import InputRecord, InputSet
+from ..identifiers import InputRecordKey, InputSetIdentifier
+from .models import InputRecord, InputSet
 
 
 class SQLiteInputSetStore:

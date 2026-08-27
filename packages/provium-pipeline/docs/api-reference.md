@@ -40,10 +40,11 @@ This is a responsibility map, not generated signature documentation. It answers 
 
 | Module | Responsibility and principal API |
 | --- | --- |
-| `provium_pipeline.inputs` | `InputRecord`, immutable `InputSet`, source descriptors, and digest-bearing `RunInputSnapshot`. |
-| `provium_pipeline.input_codec` | Strict NDJSON record decoding and line/path diagnostics. |
-| `provium_pipeline.input_validation` | Validates frozen record/shared inputs and concrete cardinality against compiled contracts. |
-| `provium_pipeline.input_resolver` | Resolver request/context/protocol/catalog/discovery plus `resolve_input_snapshot()`. |
+| `provium_pipeline.input` | Stable input-domain exports spanning models, codecs, resolvers, validation, and local persistence. |
+| `provium_pipeline.input.models` | `InputRecord`, immutable `InputSet`, source descriptors, and digest-bearing `RunInputSnapshot`. |
+| `provium_pipeline.input.codec` | Strict NDJSON record decoding and line/path diagnostics. |
+| `provium_pipeline.input.validation` | Validates frozen record/shared inputs and concrete cardinality against compiled contracts. |
+| `provium_pipeline.input.resolver` | Resolver request/context/protocol/catalog/discovery plus `resolve_input_snapshot()`. |
 | `provium_pipeline.resolved_run_creation` | `ResolvedRunCreationService` resolves once, verifies artifacts, then creates from the frozen snapshot. |
 | `provium_pipeline.run_models` | Run/task states, create request, run/task/output expectation models, fingerprinting, and deterministic `plan_run()`. |
 | `provium_pipeline.run_creation` | `RunCreationService` compiles, freezes, validates, plans, and atomically persists a run. |
@@ -56,7 +57,7 @@ This is a responsibility map, not generated signature documentation. It answers 
 | `provium_pipeline.execution_store` | `ExecutionStore`, `InMemoryExecutionStore`, atomic run/task persistence and compare-and-set transitions. |
 | `provium_pipeline.sqlite_execution_store` | SQLite implementation for durable runs/tasks, schema creation, idempotency, and transitions. |
 | `provium_pipeline.execution_codec` | Versioned canonical run/task/compiled/input serialization, decoding, and JSON-domain conversion. |
-| `provium_pipeline.sqlite_input_sets` | Durable immutable named input sets and canonical record persistence. |
+| `provium_pipeline.input.sqlite` | Durable immutable named input sets and canonical record persistence. |
 | `provium_pipeline.task_outputs` | Complete task output-set models, in-memory/SQLite stores, conflict detection, and upstream reference resolution. |
 | `provium_pipeline.task_transitions` | Legal task-state transitions and transition errors. |
 

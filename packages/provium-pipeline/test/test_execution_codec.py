@@ -387,7 +387,7 @@ def test_run_input_snapshot_decoder_rejects_malformed_nested_values() -> None:
 
 
 def test_run_input_snapshot_decoder_reconstructs_source_descriptors() -> None:
-    from provium_pipeline.inputs import InputSourceKind
+    from provium_pipeline.input.models import InputSourceKind
 
     kind = next(iter(InputSourceKind))
     value: dict[str, JsonValue] = {

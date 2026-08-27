@@ -30,7 +30,7 @@ from provium_pipeline.compiler.resolution import (
 )
 from provium_pipeline.definition.models import PipelineInputScope
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
-from provium_pipeline.inputs import (
+from provium_pipeline.input.models import (
     InputRecord,
     InputSourceDescriptor,
     InputSourceKind,

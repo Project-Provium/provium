@@ -4,7 +4,7 @@ import pytest
 
 from provium_pipeline.compiler.models import CompiledBindingPlan
 from provium_pipeline.identifiers import InputRecordKey
-from provium_pipeline.inputs import InputRecord
+from provium_pipeline.input.models import InputRecord
 from provium_pipeline.task_executor import (
     BindingResolutionError,
     resolve_runtime_binding_identities,

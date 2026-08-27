@@ -10,7 +10,7 @@ from provium import ConfigurationSnapshot, JsonValue, canonical_digest
 
 from .compiler import CompiledBindingPlan, CompiledPipeline
 from .identifiers import InputRecordKey, RunId, TaskId
-from .inputs import RunInputSnapshot
+from .input.models import RunInputSnapshot
 
 
 class TaskState(StrEnum):

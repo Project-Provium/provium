@@ -8,8 +8,8 @@ from typing import Protocol, cast
 
 from provium import JsonValue
 
-from .artifact import ArtifactIndex
-from .inputs import (
+from ..artifact import ArtifactIndex
+from .models import (
     InputRecord,
     InputSourceDescriptor,
     InputSourceKind,
