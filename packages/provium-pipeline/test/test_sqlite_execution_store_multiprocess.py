@@ -8,7 +8,7 @@ from multiprocessing import get_context
 from pathlib import Path
 
 from provium_pipeline.identifiers import TaskId
-from provium_pipeline.run_models import TaskState
+from provium_pipeline.run.models import TaskState
 from provium_pipeline.sqlite_execution_store import SQLiteExecutionStore
 from provium_pipeline.task_transitions import TaskStateConflictError
 from test.test_execution_store import request

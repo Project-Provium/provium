@@ -3,20 +3,20 @@ from datetime import UTC, datetime
 
 import pytest
 
-from provium_pipeline.attempts import RetryPolicy
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.models import (
     CreateDispatchRequest,
     DependencyPolicy,
     DispatchState,
     TaskSelection,
 )
-from provium_pipeline.dispatch_planner import (
+from provium_pipeline.dispatch.planning import (
     UnsatisfiedDispatchDependencyError,
     plan_dispatch,
 )
+from provium_pipeline.execution.attempts import RetryPolicy
 from provium_pipeline.execution_store import InMemoryExecutionStore
 from provium_pipeline.identifiers import DispatchId, InputRecordKey, TaskId
-from provium_pipeline.run_models import PipelineTask, TaskState
+from provium_pipeline.run.models import PipelineTask, TaskState
 from test.test_execution_store import request
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)

@@ -38,7 +38,7 @@ from provium_pipeline.execution_codec import (
 from provium_pipeline.execution_codec import to_json_value as _to_json_value
 from provium_pipeline.execution_store import InMemoryExecutionStore
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
-from provium_pipeline.run_models import PipelineTask, TaskState
+from provium_pipeline.run.models import PipelineTask, TaskState
 from test.test_execution_store import request as _execution_request
 
 

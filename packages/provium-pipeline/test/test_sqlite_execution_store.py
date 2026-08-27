@@ -246,7 +246,7 @@ def test_sqlite_store_transitions_tasks_with_compare_and_set(tmp_path: Path) -> 
     from datetime import UTC, datetime
 
     from provium_pipeline.execution_store import InMemoryExecutionStore
-    from provium_pipeline.run_models import TaskState
+    from provium_pipeline.run.models import TaskState
     from provium_pipeline.task_transitions import TaskStateConflictError
     from test.test_execution_store import request
 
@@ -315,7 +315,7 @@ def test_sqlite_store_rejects_unknown_task_operations(tmp_path: Path) -> None:
     from uuid import UUID
 
     from provium_pipeline.identifiers import TaskId
-    from provium_pipeline.run_models import TaskState
+    from provium_pipeline.run.models import TaskState
 
     store = SQLiteExecutionStore(tmp_path / "execution.sqlite3")
     missing = TaskId(UUID(int=999))

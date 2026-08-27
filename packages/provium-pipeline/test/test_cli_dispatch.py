@@ -5,12 +5,12 @@ from typing import cast
 import pytest
 
 from provium_pipeline.cli import LocalCLIBackend
-from provium_pipeline.dispatch_codec import dispatch_document
-from provium_pipeline.dispatch_models import DispatchState
-from provium_pipeline.dispatch_store import InMemoryDispatchStore
-from provium_pipeline.dispatch_transitions import InvalidDispatchTransitionError
+from provium_pipeline.dispatch.codec import dispatch_document
+from provium_pipeline.dispatch.models import DispatchState
+from provium_pipeline.dispatch.store import InMemoryDispatchStore
+from provium_pipeline.dispatch.transitions import InvalidDispatchTransitionError
 from provium_pipeline.execution_store import InMemoryExecutionStore
-from provium_pipeline.run_query import RunLookup
+from provium_pipeline.run.query import RunLookup
 from test.test_dispatch_transitions import dispatch_for_state
 
 

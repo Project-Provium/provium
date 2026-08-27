@@ -138,8 +138,7 @@ def test_empty_successful_output_contract_can_be_reused() -> None:
     cache.complete(_KEY, _OWNER, entry)
 
     assert (
-        cache.reserve(_KEY, _WAITER, now=_NOW, ttl=timedelta(minutes=1)).entry
-        == entry
+        cache.reserve(_KEY, _WAITER, now=_NOW, ttl=timedelta(minutes=1)).entry == entry
     )
 
 

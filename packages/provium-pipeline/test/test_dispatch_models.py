@@ -2,14 +2,14 @@ from datetime import UTC, datetime
 
 import pytest
 
-from provium_pipeline.attempts import RetryPolicy
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.models import (
     CreateDispatchRequest,
     DependencyPolicy,
     Dispatch,
     DispatchState,
     TaskSelection,
 )
+from provium_pipeline.execution.attempts import RetryPolicy
 from provium_pipeline.identifiers import DispatchId, RunId, TaskId
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)

@@ -53,8 +53,7 @@ def test_ndjson_loader_rejects_invalid_shape_and_duplicate_keys() -> None:
         )
 
     duplicate = (
-        '{"key":"same","inputs":{},"labels":{}}\n'
-        '{"key":"same","inputs":{},"labels":{}}'
+        '{"key":"same","inputs":{},"labels":{}}\n{"key":"same","inputs":{},"labels":{}}'
     )
     with pytest.raises(
         InputRecordDecodeError,

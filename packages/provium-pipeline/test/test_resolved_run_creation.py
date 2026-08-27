@@ -10,8 +10,8 @@ from provium_pipeline.artifact.index import ArtifactIndex
 from provium_pipeline.definition.models import PipelineDefinition
 from provium_pipeline.input.models import InputRecord, RunInputSnapshot
 from provium_pipeline.input.resolver import InputRecordResolverCatalog
-from provium_pipeline.resolved_run_creation import ResolvedRunCreationService
-from provium_pipeline.run_models import PipelineRun
+from provium_pipeline.run.models import PipelineRun
+from provium_pipeline.run.resolved_creation import ResolvedRunCreationService
 
 
 def test_resolved_run_creation_freezes_resolver_records_and_persists_run() -> None:

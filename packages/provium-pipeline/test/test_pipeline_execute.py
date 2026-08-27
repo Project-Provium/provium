@@ -10,7 +10,7 @@ from typing import cast
 from provium import JsonValue
 from provium_pipeline.cli import LocalCLIBackend, PipelineCommand
 from provium_pipeline.definition.models import PipelineDefinition
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.models import (
     DependencyPolicy,
     Dispatch,
     DispatchState,
@@ -18,8 +18,8 @@ from provium_pipeline.dispatch_models import (
     TaskSelection,
 )
 from provium_pipeline.identifiers import DispatchId, RunId
-from provium_pipeline.run_models import PipelineRun
-from provium_pipeline.run_query import RunLookup
+from provium_pipeline.run.models import PipelineRun
+from provium_pipeline.run.query import RunLookup
 
 
 def test_pipeline_execute_creates_and_executes_resolver_backed_run(

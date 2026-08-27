@@ -93,9 +93,7 @@ class InputSourceDescriptor:
     ) -> None:
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "identifier", identifier)
-        object.__setattr__(
-            self, "configuration", MappingProxyType(dict(configuration))
-        )
+        object.__setattr__(self, "configuration", MappingProxyType(dict(configuration)))
         object.__setattr__(self, "result_digest", result_digest)
 
 

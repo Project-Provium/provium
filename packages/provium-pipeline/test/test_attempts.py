@@ -5,13 +5,13 @@ from uuid import UUID
 
 import pytest
 
-from provium_pipeline.attempts import (
+from provium_pipeline.execution.attempts import (
     AttemptLeaseManager,
     LeaseConflictError,
     RetryPolicy,
 )
 from provium_pipeline.identifiers import TaskId
-from provium_pipeline.run_models import TaskState
+from provium_pipeline.run.models import TaskState
 
 _NOW = datetime(2026, 8, 23, tzinfo=UTC)
 _TASK = TaskId(UUID("00000000-0000-0000-0000-000000000001"))
@@ -38,9 +38,7 @@ def test_claim_renews_and_releases_with_fencing_token() -> None:
     )
     assert renewed.heartbeat_at == _NOW + timedelta(seconds=10)
     assert renewed.expires_at == _NOW + timedelta(seconds=40)
-    released = manager.release(
-        _TASK, token="token-1", ended_at=renewed.expires_at
-    )
+    released = manager.release(_TASK, token="token-1", ended_at=renewed.expires_at)
     assert released.ended_at == renewed.expires_at
 
 

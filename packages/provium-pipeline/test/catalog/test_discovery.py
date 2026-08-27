@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from provium_pipeline import PipelineCatalog
-from provium_pipeline.discovery import (
+from provium_pipeline.plugin.discovery import (
     PIPELINE_CATALOG_ENTRY_POINT_GROUP,
     PipelineDiscoveryResult,
     discover_pipeline_catalogs,
@@ -146,7 +146,7 @@ def test_discovery_uses_installed_entry_point_group(monkeypatch: Any) -> None:
             return ()
 
     monkeypatch.setattr(
-        "provium_pipeline.discovery.metadata.entry_points", lambda: EntryPoints()
+        "provium_pipeline.plugin.discovery.metadata.entry_points", lambda: EntryPoints()
     )
 
     result = discover_pipeline_catalogs()

@@ -34,11 +34,14 @@ def test_in_memory_task_outputs_are_idempotent_and_resolvable() -> None:
         outputs.record_key,
         "$nodes.decode.image",
     ) == ("artifact-1",)
-    assert store.resolve(
-        outputs.run_identifier,
-        outputs.record_key,
-        "$nodes.decode.preview",
-    ) == ()
+    assert (
+        store.resolve(
+            outputs.run_identifier,
+            outputs.record_key,
+            "$nodes.decode.preview",
+        )
+        == ()
+    )
     assert store.list_for_run(outputs.run_identifier) == (outputs,)
 
 
@@ -67,21 +70,30 @@ def test_sqlite_task_outputs_persist_and_match_in_memory_contract(
         outputs.record_key,
         "$nodes.decode.image",
     ) == ("artifact-1",)
-    assert reopened.resolve(
-        outputs.run_identifier,
-        outputs.record_key,
-        "$nodes.decode.preview",
-    ) == ()
-    assert reopened.resolve(
-        outputs.run_identifier,
-        InputRecordKey("other"),
-        "$nodes.decode.image",
-    ) == ()
-    assert reopened.resolve(
-        outputs.run_identifier,
-        outputs.record_key,
-        "$inputs.image",
-    ) == ()
+    assert (
+        reopened.resolve(
+            outputs.run_identifier,
+            outputs.record_key,
+            "$nodes.decode.preview",
+        )
+        == ()
+    )
+    assert (
+        reopened.resolve(
+            outputs.run_identifier,
+            InputRecordKey("other"),
+            "$nodes.decode.image",
+        )
+        == ()
+    )
+    assert (
+        reopened.resolve(
+            outputs.run_identifier,
+            outputs.record_key,
+            "$inputs.image",
+        )
+        == ()
+    )
     with pytest.raises(TaskOutputConflictError, match="already recorded"):
         reopened.record(_outputs(image="artifact-2"))
 
@@ -91,18 +103,27 @@ def test_in_memory_task_outputs_ignore_unrelated_or_invalid_references() -> None
     outputs = _outputs(image="artifact-1")
     store.record(outputs)
 
-    assert store.resolve(
-        outputs.run_identifier,
-        InputRecordKey("other"),
-        "$nodes.decode.image",
-    ) == ()
-    assert store.resolve(
-        outputs.run_identifier,
-        outputs.record_key,
-        "$inputs.image",
-    ) == ()
-    assert store.resolve(
-        outputs.run_identifier,
-        outputs.record_key,
-        "$nodes.decode",
-    ) == ()
+    assert (
+        store.resolve(
+            outputs.run_identifier,
+            InputRecordKey("other"),
+            "$nodes.decode.image",
+        )
+        == ()
+    )
+    assert (
+        store.resolve(
+            outputs.run_identifier,
+            outputs.record_key,
+            "$inputs.image",
+        )
+        == ()
+    )
+    assert (
+        store.resolve(
+            outputs.run_identifier,
+            outputs.record_key,
+            "$nodes.decode",
+        )
+        == ()
+    )

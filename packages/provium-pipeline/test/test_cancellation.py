@@ -5,13 +5,13 @@ from uuid import UUID
 import pytest
 
 from provium import CancellationToken
-from provium_pipeline.attempts import LeaseConflictError
 from provium_pipeline.cancellation import (
     DispatchCancellationController,
     cancelled_task_state,
 )
+from provium_pipeline.execution.attempts import LeaseConflictError
 from provium_pipeline.identifiers import TaskId
-from provium_pipeline.run_models import TaskState
+from provium_pipeline.run.models import TaskState
 
 _TASK = TaskId(UUID("00000000-0000-0000-0000-000000000001"))
 
@@ -78,9 +78,7 @@ def test_active_attempt_unregister_is_fenced_by_lease_token() -> None:
 
 def test_duplicate_registration_is_rejected() -> None:
     controller = DispatchCancellationController()
-    controller.register(
-        _TASK, lease_token="lease", cancellation=CancellationToken()
-    )
+    controller.register(_TASK, lease_token="lease", cancellation=CancellationToken())
 
     with pytest.raises(LeaseConflictError):
         controller.register(

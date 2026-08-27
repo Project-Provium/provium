@@ -7,18 +7,18 @@ from threading import Thread
 from time import sleep
 from typing import cast
 
-from provium_pipeline.attempts import RetryPolicy
 from provium_pipeline.cli import LocalCLIBackend, RunLookup
-from provium_pipeline.dispatch_codec import dispatch_document
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.codec import dispatch_document
+from provium_pipeline.dispatch.models import (
     DependencyPolicy,
     Dispatch,
     DispatchState,
     TaskSelection,
 )
-from provium_pipeline.dispatch_store import InMemoryDispatchStore
+from provium_pipeline.dispatch.sqlite import SQLiteDispatchStore
+from provium_pipeline.dispatch.store import InMemoryDispatchStore
+from provium_pipeline.execution.attempts import RetryPolicy
 from provium_pipeline.identifiers import DispatchId, RunId
-from provium_pipeline.sqlite_dispatch_store import SQLiteDispatchStore
 
 
 def _dispatch(*, state: DispatchState) -> Dispatch:

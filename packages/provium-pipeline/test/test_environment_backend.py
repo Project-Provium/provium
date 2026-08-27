@@ -8,10 +8,10 @@ from typing import Any, cast
 from pytest import MonkeyPatch
 
 import provium_pipeline.artifact.service as artifact_service
-import provium_pipeline.cli as cli
-import provium_pipeline.dispatch_worker as dispatch_worker
+import provium_pipeline.dispatch.worker as dispatch_worker
 import provium_pipeline.local_task_attempt as local_task_attempt
 import provium_pipeline.task_executor as task_executor
+from provium_pipeline.cli import application as cli
 
 
 def test_environment_backend_wires_run_executor(

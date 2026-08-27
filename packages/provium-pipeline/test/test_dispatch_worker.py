@@ -6,11 +6,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from provium_pipeline.attempts import RetryPolicy, TaskAttemptLease
-from provium_pipeline.dispatch_models import Dispatch, DispatchState
-from provium_pipeline.dispatch_worker import SerialDispatchWorker
+from provium_pipeline.dispatch.models import Dispatch, DispatchState
+from provium_pipeline.dispatch.worker import SerialDispatchWorker
+from provium_pipeline.execution.attempts import RetryPolicy, TaskAttemptLease
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
-from provium_pipeline.run_models import PipelineTask, TaskState
+from provium_pipeline.run.models import PipelineTask, TaskState
 from test.test_dispatch_transitions import dispatch_for_state
 
 NOW = datetime(2026, 8, 26, tzinfo=UTC)

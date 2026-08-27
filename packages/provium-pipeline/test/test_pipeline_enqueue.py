@@ -11,8 +11,8 @@ import pytest
 from provium import JsonValue
 from provium_pipeline.cli import LocalCLIBackend, PipelineCommand
 from provium_pipeline.definition.models import PipelineDefinition
-from provium_pipeline.run_models import PipelineRun
-from provium_pipeline.run_query import RunLookup
+from provium_pipeline.run.models import PipelineRun
+from provium_pipeline.run.query import RunLookup
 
 
 def test_pipeline_enqueue_creates_a_planned_run_from_resolver_configuration(

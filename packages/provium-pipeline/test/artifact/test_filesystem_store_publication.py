@@ -119,9 +119,7 @@ def test_publish_never_overwrites_conflicting_existing_object(
     install_inspection(monkeypatch, managed)
     source = tmp_path / "source.pa"
     source.write_bytes(b"artifact-bytes")
-    destination = (
-        tmp_path / "store" / "objects" / "ab" / f"{managed.identity}.pa"
-    )
+    destination = tmp_path / "store" / "objects" / "ab" / f"{managed.identity}.pa"
     destination.parent.mkdir(parents=True)
     destination.write_bytes(b"different-bytes")
     store = FilesystemArtifactStore(identifier="local", root=tmp_path / "store")
@@ -213,9 +211,7 @@ def test_concurrent_conflicting_creation_is_never_overwritten(
     with pytest.raises(ArtifactStoreConflictError):
         store.publish(source=source, descriptor=managed)
 
-    destination = (
-        tmp_path / "store" / "objects" / "ab" / f"{managed.identity}.pa"
-    )
+    destination = tmp_path / "store" / "objects" / "ab" / f"{managed.identity}.pa"
     assert destination.read_bytes() == b"different-bytes"
 
 

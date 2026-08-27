@@ -83,9 +83,10 @@ def test_list_orphans_returns_deterministic_locations_before_cutoff(
     assert len(candidates) == 1
     assert candidates[0].locator == location.locator
     assert candidates[0].verified_at is None
-    assert store.list_orphans(
-        OrphanQuery(created_before=datetime(2000, 1, 1, tzinfo=UTC))
-    ) == ()
+    assert (
+        store.list_orphans(OrphanQuery(created_before=datetime(2000, 1, 1, tzinfo=UTC)))
+        == ()
+    )
     assert store.list_orphans(OrphanQuery())[0].size_bytes == managed.size_bytes
 
 

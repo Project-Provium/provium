@@ -7,8 +7,8 @@ from provium_pipeline.compiler.models import CompiledPipeline
 from provium_pipeline.definition.models import PipelineDefinition
 from provium_pipeline.identifiers import InputRecordKey, InputSetIdentifier
 from provium_pipeline.input.models import InputRecord, InputSet, InputSourceKind
-from provium_pipeline.run_creation import RunCreationService
-from provium_pipeline.run_models import CreateRunRequest, PipelineRun
+from provium_pipeline.run.creation import RunCreationService
+from provium_pipeline.run.models import CreateRunRequest, PipelineRun
 
 
 def test_run_creation_compiles_freezes_validates_and_persists_named_input_set() -> None:

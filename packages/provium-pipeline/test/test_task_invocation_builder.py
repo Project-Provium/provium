@@ -16,11 +16,11 @@ from provium_pipeline.artifact import (
     MaterializationCleanup,
     MaterializedArtifact,
 )
-from provium_pipeline.attempts import TaskAttemptLease
 from provium_pipeline.compiler.models import CompiledBindingPlan
+from provium_pipeline.execution.attempts import TaskAttemptLease
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
 from provium_pipeline.input.models import InputRecord, RunInputSnapshot
-from provium_pipeline.run_models import PipelineTask, TaskState
+from provium_pipeline.run.models import PipelineTask, TaskState
 from provium_pipeline.task_executor import AttemptMaterializations, StoredArtifact
 from provium_pipeline.task_invocation_builder import (
     FrozenTaskInvocationBuilder,

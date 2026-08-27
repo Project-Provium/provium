@@ -4,15 +4,15 @@ from argparse import Namespace
 from datetime import UTC, datetime
 from typing import cast
 
-from provium_pipeline.attempts import RetryPolicy
 from provium_pipeline.cli import LocalCLIBackend, RunExecutor, RunLookup
-from provium_pipeline.dispatch_codec import dispatch_document
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.codec import dispatch_document
+from provium_pipeline.dispatch.models import (
     DependencyPolicy,
     Dispatch,
     DispatchState,
     TaskSelection,
 )
+from provium_pipeline.execution.attempts import RetryPolicy
 from provium_pipeline.identifiers import DispatchId, RunId
 
 

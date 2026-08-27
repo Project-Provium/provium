@@ -8,7 +8,7 @@ import pytest
 
 from provium_pipeline.execution_store import InMemoryExecutionStore
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
-from provium_pipeline.run_models import PipelineTask, TaskState
+from provium_pipeline.run.models import PipelineTask, TaskState
 from provium_pipeline.task_transitions import (
     InvalidTaskTransitionError,
     TaskStateConflictError,
@@ -69,16 +69,14 @@ def test_legal_task_transitions_return_a_new_immutable_task(
 def test_transition_is_idempotent_when_expected_and_target_match() -> None:
     task = _task(TaskState.READY)
 
-    assert transition_task(
-        task, expected=TaskState.READY, target=TaskState.READY
-    ) is task
+    assert (
+        transition_task(task, expected=TaskState.READY, target=TaskState.READY) is task
+    )
 
 
 def test_in_memory_store_persists_atomic_compare_and_set_transition() -> None:
     task = _task(TaskState.READY)
-    store = InMemoryExecutionStore(
-        clock=lambda: datetime(2026, 8, 23, tzinfo=UTC)
-    )
+    store = InMemoryExecutionStore(clock=lambda: datetime(2026, 8, 23, tzinfo=UTC))
     storage = cast(
         dict[RunId, tuple[PipelineTask, ...]],
         getattr(store, "_tasks"),
@@ -113,9 +111,7 @@ def test_in_memory_store_persists_atomic_compare_and_set_transition() -> None:
 
 
 def test_in_memory_store_rejects_unknown_task_identifier() -> None:
-    store = InMemoryExecutionStore(
-        clock=lambda: datetime(2026, 8, 23, tzinfo=UTC)
-    )
+    store = InMemoryExecutionStore(clock=lambda: datetime(2026, 8, 23, tzinfo=UTC))
     existing = _task(TaskState.READY)
     storage = cast(
         dict[RunId, tuple[PipelineTask, ...]],

@@ -5,15 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from provium_pipeline.attempts import RetryPolicy
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.models import (
     DependencyPolicy,
     Dispatch,
     DispatchState,
     TaskSelection,
 )
+from provium_pipeline.dispatch.sqlite import SQLiteDispatchStore
+from provium_pipeline.execution.attempts import RetryPolicy
 from provium_pipeline.identifiers import DispatchId, RunId, TaskId
-from provium_pipeline.sqlite_dispatch_store import SQLiteDispatchStore
 from provium_pipeline.sqlite_execution_store import SQLiteExecutionStore
 
 RUN = RunId.parse("00000000-0000-0000-0000-000000000100")
@@ -31,9 +31,7 @@ def _dispatch(
         identifier=DispatchId.parse(f"00000000-0000-0000-0000-{number:012d}"),
         run_identifier=run_identifier,
         selection=selection,
-        task_identifiers=(
-            TaskId.parse("00000000-0000-0000-0000-000000000300"),
-        ),
+        task_identifiers=(TaskId.parse("00000000-0000-0000-0000-000000000300"),),
         dependency_policy=DependencyPolicy.INCLUDE_MISSING_UPSTREAM,
         retry_policy=RetryPolicy(
             max_attempts=4,

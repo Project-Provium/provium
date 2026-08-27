@@ -66,8 +66,7 @@ def load_input_records_ndjson(
 def _error_fields(error: ValidationError | ValueError) -> str:
     if isinstance(error, ValidationError):
         return ", ".join(
-            ".".join(str(part) for part in detail["loc"])
-            for detail in error.errors()
+            ".".join(str(part) for part in detail["loc"]) for detail in error.errors()
         )
     return "key"
 

@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from provium_pipeline.attempts import LeaseConflictError
+from provium_pipeline.execution.attempts import LeaseConflictError
 from provium_pipeline.identifiers import TaskId
-from provium_pipeline.run_models import TaskState
+from provium_pipeline.run.models import TaskState
 from provium_pipeline.sqlite_attempts import SQLiteAttemptLeaseManager
 from provium_pipeline.sqlite_execution_store import SQLiteExecutionStore
 from test.test_execution_store import request

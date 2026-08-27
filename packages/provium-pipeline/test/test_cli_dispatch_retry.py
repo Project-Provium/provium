@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 from provium_pipeline.cli import LocalCLIBackend
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.models import (
     DependencyPolicy,
     Dispatch,
     DispatchState,
@@ -13,7 +13,7 @@ from provium_pipeline.dispatch_models import (
     TaskSelection,
 )
 from provium_pipeline.identifiers import DispatchId, RunId
-from provium_pipeline.run_query import RunLookup
+from provium_pipeline.run.query import RunLookup
 
 
 def test_dispatch_retry_executes_only_failed_tasks_from_original_run() -> None:

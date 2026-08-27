@@ -3,20 +3,20 @@ from typing import cast
 
 import pytest
 
-from provium_pipeline.attempts import RetryPolicy
-from provium_pipeline.dispatch_codec import (
+from provium_pipeline.dispatch.codec import (
     DispatchCodecError,
     dispatch_document,
     dispatch_from_document,
     dispatch_from_json,
     dispatch_json,
 )
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.models import (
     DependencyPolicy,
     Dispatch,
     DispatchState,
     TaskSelection,
 )
+from provium_pipeline.execution.attempts import RetryPolicy
 from provium_pipeline.identifiers import DispatchId, RunId, TaskId
 
 

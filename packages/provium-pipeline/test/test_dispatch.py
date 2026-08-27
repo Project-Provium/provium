@@ -5,9 +5,9 @@ from uuid import UUID
 
 import pytest
 
-from provium_pipeline.dispatch import DispatchLimits, select_ready_tasks
+from provium_pipeline.dispatch.selection import DispatchLimits, select_ready_tasks
 from provium_pipeline.identifiers import InputRecordKey, TaskId
-from provium_pipeline.run_models import TaskState
+from provium_pipeline.run.models import TaskState
 
 
 @dataclass(frozen=True)

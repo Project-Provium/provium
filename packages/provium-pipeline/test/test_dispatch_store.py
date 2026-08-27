@@ -4,17 +4,17 @@ from datetime import UTC, datetime
 
 import pytest
 
-from provium_pipeline.attempts import RetryPolicy
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.models import (
     DependencyPolicy,
     Dispatch,
     DispatchState,
     TaskSelection,
 )
-from provium_pipeline.dispatch_store import (
+from provium_pipeline.dispatch.store import (
     DispatchRedefinitionError,
     InMemoryDispatchStore,
 )
+from provium_pipeline.execution.attempts import RetryPolicy
 from provium_pipeline.identifiers import DispatchId, RunId, TaskId
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -27,9 +27,7 @@ def _dispatch(identifier: str, *, run_identifier: RunId = RUN_ID) -> Dispatch:
         identifier=DispatchId.parse(identifier),
         run_identifier=run_identifier,
         selection=TaskSelection(all=True),
-        task_identifiers=(
-            TaskId.parse("00000000-0000-0000-0000-000000000010"),
-        ),
+        task_identifiers=(TaskId.parse("00000000-0000-0000-0000-000000000010"),),
         dependency_policy=DependencyPolicy.INCLUDE_MISSING_UPSTREAM,
         retry_policy=RetryPolicy(max_attempts=3),
         state=DispatchState.CREATED,

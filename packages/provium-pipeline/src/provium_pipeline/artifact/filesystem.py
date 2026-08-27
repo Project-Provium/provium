@@ -218,9 +218,8 @@ class FilesystemArtifactStore:
         from . import InvalidArtifactLocatorError
 
         locator = location.locator
-        if (
-            location.store_identifier != self.identifier
-            or not isinstance(locator, dict)
+        if location.store_identifier != self.identifier or not isinstance(
+            locator, dict
         ):
             raise InvalidArtifactLocatorError(
                 f"location is not valid for filesystem store {self.identifier!r}"

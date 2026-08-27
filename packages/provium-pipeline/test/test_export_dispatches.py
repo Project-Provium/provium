@@ -5,8 +5,8 @@ from uuid import UUID
 from pytest import MonkeyPatch
 
 from provium_pipeline import exports
-from provium_pipeline.exports import RunExportService, RunLookup
 from provium_pipeline.identifiers import RunId
+from provium_pipeline.run.exports import RunExportService, RunLookup
 
 
 class Store:

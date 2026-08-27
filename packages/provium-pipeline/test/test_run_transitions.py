@@ -6,8 +6,8 @@ import pytest
 
 from provium_pipeline.cli import LocalCLIBackend
 from provium_pipeline.execution_store import InMemoryExecutionStore
-from provium_pipeline.run_models import RunState
-from provium_pipeline.run_transitions import (
+from provium_pipeline.run.models import RunState
+from provium_pipeline.run.transitions import (
     InvalidRunTransitionError,
     RunStateConflictError,
 )

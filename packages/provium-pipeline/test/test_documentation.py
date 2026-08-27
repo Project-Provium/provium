@@ -114,7 +114,16 @@ def test_tutorial_notebooks_are_ordered_linked_and_executable() -> None:
 def test_source_layout_uses_singular_domain_packages() -> None:
     package = Path(__file__).resolve().parents[1]
     source = package / "src" / "provium_pipeline"
-    domains = ("input",)
+    domains = (
+        "input",
+        "run",
+        "dispatch",
+        "execution",
+        "cache",
+        "lifecycle",
+        "plugin",
+        "cli",
+    )
     for domain in domains:
         assert (source / domain / "__init__.py").is_file(), (
             f"missing domain package: {domain}"

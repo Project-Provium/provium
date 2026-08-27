@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from provium_pipeline.dispatch_models import DispatchState
-from provium_pipeline.dispatch_store import InMemoryDispatchStore
-from provium_pipeline.dispatch_transitions import (
+from provium_pipeline.dispatch.models import DispatchState
+from provium_pipeline.dispatch.sqlite import SQLiteDispatchStore
+from provium_pipeline.dispatch.store import InMemoryDispatchStore
+from provium_pipeline.dispatch.transitions import (
     DispatchStateConflictError,
     InvalidDispatchTransitionError,
 )
 from provium_pipeline.identifiers import DispatchId
-from provium_pipeline.sqlite_dispatch_store import SQLiteDispatchStore
 from test.test_dispatch_transitions import dispatch_for_state
 
 NOW = datetime(2026, 2, 1, tzinfo=UTC)
@@ -35,11 +35,14 @@ def test_in_memory_dispatch_store_transitions_atomically() -> None:
     assert running.terminal_at is None
     assert succeeded.terminal_at == NOW
     assert store.get(dispatch.identifier) == succeeded
-    assert store.transition(
-        dispatch.identifier,
-        expected=DispatchState.SUCCEEDED,
-        target=DispatchState.SUCCEEDED,
-    ) is succeeded
+    assert (
+        store.transition(
+            dispatch.identifier,
+            expected=DispatchState.SUCCEEDED,
+            target=DispatchState.SUCCEEDED,
+        )
+        is succeeded
+    )
 
 
 def test_in_memory_dispatch_store_preserves_value_after_transition_failures() -> None:
@@ -113,11 +116,15 @@ def test_sqlite_dispatch_store_allows_one_competing_transition(
 
     def transition(target: DispatchState) -> DispatchState | type[Exception]:
         try:
-            return SQLiteDispatchStore(database, clock=lambda: NOW).transition(
-                dispatch.identifier,
-                expected=DispatchState.CREATED,
-                target=target,
-            ).state
+            return (
+                SQLiteDispatchStore(database, clock=lambda: NOW)
+                .transition(
+                    dispatch.identifier,
+                    expected=DispatchState.CREATED,
+                    target=target,
+                )
+                .state
+            )
         except Exception as error:
             return type(error)
 

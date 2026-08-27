@@ -6,8 +6,8 @@ import pytest
 
 from provium_pipeline import PipelineCatalog as PublicPipelineCatalog
 from provium_pipeline import PipelineCatalogError as PublicPipelineCatalogError
-from provium_pipeline.catalog import PipelineCatalog, PipelineCatalogError
 from provium_pipeline.definition import PipelineBuilder, PipelineDefinition
+from provium_pipeline.plugin.catalog import PipelineCatalog, PipelineCatalogError
 
 
 def pipeline(identifier: str) -> PipelineDefinition:

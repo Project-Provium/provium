@@ -6,19 +6,19 @@ from typing import Any
 
 import pytest
 
-from provium_pipeline.attempts import RetryPolicy
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.models import (
     CreateDispatchRequest,
     DependencyPolicy,
     Dispatch,
     DispatchState,
     TaskSelection,
 )
-from provium_pipeline.dispatch_store import InMemoryDispatchStore
-from provium_pipeline.dispatch_transitions import DispatchStateConflictError
+from provium_pipeline.dispatch.store import InMemoryDispatchStore
+from provium_pipeline.dispatch.transitions import DispatchStateConflictError
+from provium_pipeline.execution.attempts import RetryPolicy
 from provium_pipeline.identifiers import DispatchId, RunId
+from provium_pipeline.run.models import RunState
 from provium_pipeline.run_execution import LocalRunExecutor
-from provium_pipeline.run_models import RunState
 from test.test_dispatch_transitions import dispatch_for_state
 
 

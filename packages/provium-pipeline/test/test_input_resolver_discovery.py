@@ -27,14 +27,10 @@ class _EntryPoint:
 def test_discovers_registered_input_record_resolvers_by_identifier() -> None:
     resolver = Resolver()
     catalog = discover_input_record_resolvers(
-        entry_points=(
-            _EntryPoint("test.resolver", "test:resolver", resolver),
-        )
+        entry_points=(_EntryPoint("test.resolver", "test:resolver", resolver),)
     )
 
-    assert INPUT_RECORD_RESOLVER_ENTRY_POINT_GROUP == (
-        "provium.input_record_resolvers"
-    )
+    assert INPUT_RECORD_RESOLVER_ENTRY_POINT_GROUP == ("provium.input_record_resolvers")
     assert isinstance(catalog, InputRecordResolverCatalog)
     assert catalog.names() == ("test.resolver",)
     assert catalog.get("test.resolver") is resolver
@@ -83,7 +79,5 @@ def test_catalog_rejects_malformed_duplicate_and_unknown_resolvers() -> None:
 def test_discovery_rejects_entry_point_identity_mismatch() -> None:
     with raises(ValueError, match="loaded identifier 'test.resolver'"):
         discover_input_record_resolvers(
-            entry_points=(
-                _EntryPoint("other.resolver", "test:resolver", Resolver()),
-            )
+            entry_points=(_EntryPoint("other.resolver", "test:resolver", Resolver()),)
         )

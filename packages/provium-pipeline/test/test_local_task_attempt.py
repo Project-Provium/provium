@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from provium_pipeline.attempts import TaskAttemptLease
+from provium_pipeline.execution.attempts import TaskAttemptLease
 from provium_pipeline.identifiers import InputRecordKey, RunId, TaskId
 from provium_pipeline.local_task_attempt import (
     BuiltTaskInvocation,
@@ -15,7 +15,7 @@ from provium_pipeline.local_task_attempt import (
     InvocationOutputMismatchError,
     LocalTaskAttemptExecutor,
 )
-from provium_pipeline.run_models import PipelineTask, TaskState
+from provium_pipeline.run.models import PipelineTask, TaskState
 from provium_pipeline.task_executor import (
     AttemptMaterializations,
     PreparedInvocation,

@@ -5,17 +5,17 @@ from datetime import UTC, datetime
 
 import pytest
 
-from provium_pipeline.attempts import RetryPolicy
-from provium_pipeline.dispatch_creation import (
+from provium_pipeline.dispatch.creation import (
     DispatchCreationService,
     DispatchIdempotencyConflictError,
 )
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.models import (
     CreateDispatchRequest,
     DependencyPolicy,
     TaskSelection,
 )
-from provium_pipeline.dispatch_store import InMemoryDispatchStore
+from provium_pipeline.dispatch.store import InMemoryDispatchStore
+from provium_pipeline.execution.attempts import RetryPolicy
 from provium_pipeline.execution_store import InMemoryExecutionStore
 from provium_pipeline.identifiers import DispatchId, RunId
 from test.test_execution_store import request
@@ -73,9 +73,7 @@ def test_dispatch_creation_replays_and_rejects_run_scoped_idempotency() -> None:
     assert service.create(creation) is first
 
     with pytest.raises(DispatchIdempotencyConflictError, match="conflicts"):
-        service.create(
-            replace(creation, selection=TaskSelection(nodes=("different",)))
-        )
+        service.create(replace(creation, selection=TaskSelection(nodes=("different",))))
     assert dispatches.list_for_run(run.identifier) == (other, first)
 
 

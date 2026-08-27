@@ -2,7 +2,7 @@ from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import cast
 
-from provium_pipeline.run_query import RunLookup, RunQueryService
+from provium_pipeline.run.query import RunLookup, RunQueryService
 
 
 class Store:

@@ -5,7 +5,7 @@ from typing import cast
 
 from provium_pipeline.cli import LocalCLIBackend
 from provium_pipeline.identifiers import RunId
-from provium_pipeline.run_query import RunLookup
+from provium_pipeline.run.query import RunLookup
 
 
 def test_run_artifacts_returns_provider_results_with_locations() -> None:

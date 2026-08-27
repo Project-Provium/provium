@@ -2,18 +2,18 @@ from datetime import UTC, datetime
 
 import pytest
 
-from provium_pipeline.attempts import RetryPolicy
-from provium_pipeline.dispatch_models import (
+from provium_pipeline.dispatch.models import (
     DependencyPolicy,
     Dispatch,
     DispatchState,
     TaskSelection,
 )
-from provium_pipeline.dispatch_transitions import (
+from provium_pipeline.dispatch.transitions import (
     DispatchStateConflictError,
     InvalidDispatchTransitionError,
     apply_dispatch_transition,
 )
+from provium_pipeline.execution.attempts import RetryPolicy
 from provium_pipeline.identifiers import DispatchId, RunId
 
 NOW = datetime(2026, 1, 2, tzinfo=UTC)
@@ -62,12 +62,15 @@ def test_dispatch_transition_applies_each_legal_edge(
 def test_dispatch_transition_replays_same_state(state: DispatchState) -> None:
     dispatch = dispatch_for_state(state)
 
-    assert apply_dispatch_transition(
-        dispatch,
-        expected=state,
-        target=state,
-        transitioned_at=NOW,
-    ) is dispatch
+    assert (
+        apply_dispatch_transition(
+            dispatch,
+            expected=state,
+            target=state,
+            transitioned_at=NOW,
+        )
+        is dispatch
+    )
 
 
 def test_dispatch_transition_rejects_stale_expected_state() -> None:

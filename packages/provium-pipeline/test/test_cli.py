@@ -12,7 +12,6 @@ from pytest import CaptureFixture, MonkeyPatch, raises
 from provium.artifact.catalog import ArtifactCatalog
 from provium.cli import CLI_PLUGIN_API_VERSION
 from provium.procedure.catalog import ProcedureCatalog
-from provium_pipeline import cli as pipeline_cli
 from provium_pipeline.cli import (
     CLIResult,
     LocalCLIBackend,
@@ -20,6 +19,7 @@ from provium_pipeline.cli import (
     cli_plugin,
     use_cli_backend,
 )
+from provium_pipeline.cli import application as pipeline_cli
 from provium_pipeline.compiler.catalogs import (
     ArtifactCatalogCollection,
     ProcedureCatalogCollection,
@@ -30,7 +30,7 @@ from provium_pipeline.compiler.diagnostics import (
 )
 from provium_pipeline.definition.models import PipelineDefinition
 from provium_pipeline.input.sqlite import SQLiteInputSetStore
-from provium_pipeline.run_query import RunLookup
+from provium_pipeline.run.query import RunLookup
 
 
 class RecordingBackend:

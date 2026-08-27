@@ -12,7 +12,7 @@ from provium_pipeline.execution_store import (
     RunIdempotencyConflictError,
 )
 from provium_pipeline.identifiers import RunId, TaskId
-from provium_pipeline.run_models import CreateRunRequest, RunPlan, TaskState, plan_run
+from provium_pipeline.run.models import CreateRunRequest, RunPlan, TaskState, plan_run
 from provium_pipeline.sqlite_execution_store import SQLiteExecutionStore
 from provium_pipeline.task_transitions import TaskStateConflictError
 from test.test_execution_store import NOW, request

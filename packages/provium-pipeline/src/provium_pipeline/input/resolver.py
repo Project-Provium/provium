@@ -42,9 +42,7 @@ class ResolveInputRecordsRequest:
         configuration: Mapping[str, JsonValue],
         shared_inputs: Mapping[str, Sequence[str]],
     ) -> None:
-        object.__setattr__(
-            self, "configuration", MappingProxyType(dict(configuration))
-        )
+        object.__setattr__(self, "configuration", MappingProxyType(dict(configuration)))
         object.__setattr__(
             self,
             "shared_inputs",
