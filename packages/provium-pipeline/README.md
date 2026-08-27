@@ -4,6 +4,23 @@ Typed, reproducible, idempotent local pipelines built on the public Provium core
 
 The package requires Python 3.12 or newer and Provium core API version 1. Installing it adds pipeline commands to the existing `provium` executable through the public CLI plugin entry point.
 
+## Documentation
+
+Start with the [documentation guide](docs/index.md), which provides reading paths for users, operators, and contributors.
+
+- [Core concepts and vocabulary](docs/concepts.md)
+- [Architecture and end-to-end data flow](docs/architecture.md)
+- [Pipeline definitions and compilation](docs/definitions-and-compilation.md)
+- [Inputs, input sets, and runs](docs/inputs-and-runs.md)
+- [Dispatch and execution](docs/execution.md)
+- [Artifacts, publication, retention, and garbage collection](docs/artifacts.md)
+- [Storage, transactions, and recovery](docs/storage-and-recovery.md)
+- [CLI reference and workflows](docs/cli.md)
+- [Extension and plugin guide](docs/extensions.md)
+- [Operations and troubleshooting](docs/operations.md)
+- [Testing architecture](docs/testing.md)
+- [Python module responsibility map](docs/api-reference.md)
+
 ## Local storage
 
 The local backend stores durable state in `.provium/pipeline.sqlite3` and managed artifacts under `.provium/artifacts`. Set `PROVIUM_PIPELINE_DATABASE` to place the database and its sibling artifact/workspace directories elsewhere.
