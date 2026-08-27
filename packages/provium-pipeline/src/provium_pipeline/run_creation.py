@@ -70,11 +70,43 @@ class RunCreationService:
                 ),
             ),
         )
-        validate_input_snapshot(snapshot, compiled.inputs, self._artifact_index)
+        return self._create_from_snapshot(
+            compiled,
+            input_snapshot=snapshot,
+            metadata=metadata,
+        )
+
+    def create_from_snapshot(
+        self,
+        definition: PipelineDefinition,
+        *,
+        input_snapshot: RunInputSnapshot,
+        metadata: Mapping[str, JsonValue] | None = None,
+    ) -> PipelineRun:
+        """Compile and persist a run from an already-frozen input snapshot."""
+        compiled = self._compiler.compile(definition)
+        return self._create_from_snapshot(
+            compiled,
+            input_snapshot=input_snapshot,
+            metadata=metadata,
+        )
+
+    def _create_from_snapshot(
+        self,
+        compiled: CompiledPipeline,
+        *,
+        input_snapshot: RunInputSnapshot,
+        metadata: Mapping[str, JsonValue] | None,
+    ) -> PipelineRun:
+        validate_input_snapshot(
+            input_snapshot,
+            compiled.inputs,
+            self._artifact_index,
+        )
         return self._runs.create_run(
             CreateRunRequest(
                 pipeline=compiled,
-                inputs=snapshot,
+                inputs=input_snapshot,
                 metadata=metadata,
             )
         )

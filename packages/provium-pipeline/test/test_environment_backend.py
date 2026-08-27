@@ -80,7 +80,9 @@ def test_environment_backend_wires_run_executor(
 
     assert isinstance(result, cli.CLIResult)
     run_executor = cast(Any, captured["run_executor"])
+    resolved_run_creator = cast(Any, captured["resolved_run_creator"])
     assert run_executor._runs is not None
+    assert resolved_run_creator._runs is not None
     assert closed
 
     clock = runtime["clock"]

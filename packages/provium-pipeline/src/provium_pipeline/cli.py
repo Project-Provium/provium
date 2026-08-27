@@ -13,6 +13,8 @@ from pathlib import Path
 from time import sleep
 from typing import Any, ClassVar, Protocol, cast
 
+import yaml
+
 from provium import JsonValue
 from provium.artifact.discovery import discover_artifact_catalogs
 from provium.canonical import canonical_json
@@ -85,6 +87,17 @@ class RunCreator(Protocol):
         definition: PipelineDefinition,
         *,
         input_set: str,
+        metadata: Mapping[str, JsonValue] | None = None,
+    ) -> PipelineRun: ...
+
+
+class ResolvedRunCreator(Protocol):
+    def create(
+        self,
+        definition: PipelineDefinition,
+        *,
+        resolver_identifier: str,
+        configuration: Mapping[str, JsonValue],
         metadata: Mapping[str, JsonValue] | None = None,
     ) -> PipelineRun: ...
 
@@ -196,6 +209,7 @@ class LocalCLIBackend:
         dispatches: DispatchStore | None = None,
         artifact_locations: Callable[[str], Iterable[object]] | None = None,
         run_creator: RunCreator | None = None,
+        resolved_run_creator: ResolvedRunCreator | None = None,
         run_executor: RunExecutor | None = None,
     ) -> None:
         self._store = cast(ExportRunLookup, store)
@@ -206,6 +220,7 @@ class LocalCLIBackend:
         self._dispatches = dispatches
         self._artifact_locations = artifact_locations or _no_locations
         self._run_creator = run_creator
+        self._resolved_run_creator = resolved_run_creator
         self._run_executor = run_executor
 
     def execute(
@@ -227,6 +242,19 @@ class LocalCLIBackend:
             return CLIResult(
                 {"pipeline": canonical_definition_document(definition)}
             )
+        if (
+            group == "pipeline"
+            and action == "enqueue"
+            and self._resolved_run_creator is not None
+        ):
+            return self._enqueue_pipeline(arguments)
+        if (
+            group == "pipeline"
+            and action == "execute"
+            and self._resolved_run_creator is not None
+            and self._run_executor is not None
+        ):
+            return self._execute_pipeline(arguments)
         if group == "run" and action == "create" and self._run_creator is not None:
             return self._create_run(arguments)
         if group == "run" and action == "execute" and self._run_executor is not None:
@@ -281,6 +309,16 @@ class LocalCLIBackend:
         )
 
     def _execute_run(self, arguments: argparse.Namespace) -> CLIResult:
+        return self._execute_run_identifier(
+            RunId.parse(arguments.run_id),
+            arguments,
+        )
+
+    def _execute_run_identifier(
+        self,
+        run_identifier: RunId,
+        arguments: argparse.Namespace,
+    ) -> CLIResult:
         executor = cast(RunExecutor, self._run_executor)
         selection = TaskSelection(
             all=arguments.all,
@@ -298,11 +336,38 @@ class LocalCLIBackend:
             else DependencyPolicy.SELECTED_ONLY
         )
         dispatch = executor.execute(
-            RunId.parse(arguments.run_id),
+            run_identifier,
             selection=selection,
             dependency_policy=dependency_policy,
         )
         return CLIResult({"dispatch": dispatch_document(dispatch)["dispatch"]})
+
+    def _enqueue_pipeline(self, arguments: argparse.Namespace) -> CLIResult:
+        run = self._create_resolved_run(arguments)
+        return CLIResult(
+            {"run_id": str(run.identifier), "status": run.state.value}
+        )
+
+    def _execute_pipeline(self, arguments: argparse.Namespace) -> CLIResult:
+        run = self._create_resolved_run(arguments)
+        return self._execute_run_identifier(run.identifier, arguments)
+
+    def _create_resolved_run(self, arguments: argparse.Namespace) -> PipelineRun:
+        if arguments.records_from is None or arguments.config is None:
+            raise ValueError(
+                "pipeline execution requires --records-from and --config"
+            )
+        payload = yaml.safe_load(Path(arguments.config).read_text(encoding="utf-8"))
+        configuration = to_json_value(payload)
+        if not isinstance(configuration, dict):
+            raise TypeError("pipeline resolver configuration must be a mapping")
+        creator = cast(ResolvedRunCreator, self._resolved_run_creator)
+        return creator.create(
+            _load_pipeline_source(arguments.source),
+            resolver_identifier=arguments.records_from,
+            configuration=configuration,
+            metadata={"selection": _selection_document(arguments)},
+        )
 
     def _create_run(self, arguments: argparse.Namespace) -> CLIResult:
         if arguments.input_set is None:
@@ -538,7 +603,9 @@ class _EnvironmentBackend:
         from provium_pipeline.dispatch_creation import DispatchCreationService
         from provium_pipeline.dispatch_models import RetryPolicy
         from provium_pipeline.dispatch_worker import SerialDispatchWorker
+        from provium_pipeline.input_resolver import discover_input_record_resolvers
         from provium_pipeline.local_task_attempt import LocalTaskAttemptExecutor
+        from provium_pipeline.resolved_run_creation import ResolvedRunCreationService
         from provium_pipeline.run_execution import LocalRunExecutor
         from provium_pipeline.sqlite_attempts import SQLiteAttemptLeaseManager
         from provium_pipeline.sqlite_dispatch_store import SQLiteDispatchStore
@@ -576,6 +643,11 @@ class _EnvironmentBackend:
             input_sets=input_sets,
             artifact_index=artifact_index,
             runs=runs,
+        )
+        resolved_run_creator = ResolvedRunCreationService(
+            resolvers=discover_input_record_resolvers(),
+            artifact_index=artifact_index,
+            runs=run_creator,
         )
         invocation_builder = FrozenTaskInvocationBuilder(
             runs=runs,
@@ -649,6 +721,7 @@ class _EnvironmentBackend:
                 dispatches=dispatches,
                 artifact_locations=artifact_index.get_active_locations,
                 run_creator=run_creator,
+                resolved_run_creator=resolved_run_creator,
                 run_executor=run_executor,
             ).execute(
                 group,
@@ -743,6 +816,8 @@ class PipelineCommand(_PipelineCommand):
             command = actions.add_parser(action)
             command.add_argument("source")
             if action in {"execute", "enqueue"}:
+                command.add_argument("--records-from")
+                command.add_argument("--config")
                 _add_selection_flags(command)
             _finish(command, action)
         _finish(actions.add_parser("list"), "list")
