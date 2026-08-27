@@ -1,5 +1,7 @@
 # Provium Pipeline documentation
 
+Prefer learning by running examples? Follow the [progressive Jupyter tutorial course](../notebooks/README.md), which assumes familiarity with standard Provium procedures and artifacts.
+
 `provium-pipeline` is the managed workflow layer for [Provium](../../provium/README.md). Provium core defines artifacts, procedures, typed I/O, configuration, and one prepared procedure execution. This package adds the durable machinery required to turn those primitives into reproducible pipelines: definitions, compilation, frozen inputs, runs, tasks, dispatches, retries, managed artifact storage, queries, and recovery.
 
 If the package feels large, start with the distinction between **semantic state** and **operational state**:

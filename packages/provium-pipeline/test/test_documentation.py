@@ -1,5 +1,17 @@
+import json
 import re
 from pathlib import Path
+
+_NOTEBOOKS = (
+    "00-orientation.ipynb",
+    "01-definitions-and-compilation.ipynb",
+    "02-inputs-and-runs.ipynb",
+    "03-dispatch-and-execution.ipynb",
+    "04-artifacts-cache-and-gc.ipynb",
+    "05-storage-recovery-and-concurrency.ipynb",
+    "06-cli-workflows.ipynb",
+    "07-extension-points-and-testing.ipynb",
+)
 
 _DOCUMENTS = (
     "index.md",
@@ -47,7 +59,11 @@ def test_documentation_covers_guides_navigation_and_every_runtime_module() -> No
 
 def test_relative_documentation_links_resolve() -> None:
     package = Path(__file__).resolve().parents[1]
-    pages = [package / "README.md", *(package / "docs").glob("*.md")]
+    pages = [
+        package / "README.md",
+        package / "notebooks" / "README.md",
+        *(package / "docs").glob("*.md"),
+    ]
 
     for page in pages:
         content = page.read_text(encoding="utf-8")
@@ -57,3 +73,41 @@ def test_relative_documentation_links_resolve() -> None:
                 continue
             resolved = (page.parent / target).resolve()
             assert resolved.exists(), f"broken link in {page.name}: {raw_target}"
+
+
+def test_tutorial_notebooks_are_ordered_linked_and_executable() -> None:
+    package = Path(__file__).resolve().parents[1]
+    notebooks = package / "notebooks"
+    index = (notebooks / "README.md").read_text(encoding="utf-8")
+    package_readme = (package / "README.md").read_text(encoding="utf-8")
+
+    assert "notebooks/README.md" in package_readme
+    for position, name in enumerate(_NOTEBOOKS):
+        path = notebooks / name
+        assert path.is_file(), f"missing tutorial notebook: {name}"
+        assert f"({name})" in index, f"notebook index does not link {name}"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        assert document["nbformat"] == 4
+        assert document["metadata"]["kernelspec"]["language"] == "python"
+        cells = document["cells"]
+        assert cells[0]["cell_type"] == "markdown"
+        assert cells[0]["source"][0].startswith(f"# {position}.")
+        assert any(cell["cell_type"] == "code" for cell in cells)
+
+        namespace: dict[str, object] = {"__name__": "__notebook__"}
+        for cell in cells:
+            source = "".join(cell["source"])
+            if cell["cell_type"] == "markdown":
+                for raw_target in re.findall(r"\[[^]]*\]\(([^)]+)\)", source):
+                    target = raw_target.strip().split("#", maxsplit=1)[0]
+                    if (
+                        target
+                        and "://" not in target
+                        and not target.startswith("mailto:")
+                    ):
+                        resolved = (path.parent / target).resolve()
+                        assert resolved.exists(), f"broken link in {name}: {raw_target}"
+            if cell["cell_type"] == "code":
+                assert cell["execution_count"] is None
+                assert cell["outputs"] == []
+                exec(compile(source, str(path), "exec"), namespace)

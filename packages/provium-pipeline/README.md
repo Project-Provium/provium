@@ -6,7 +6,7 @@ The package requires Python 3.12 or newer and Provium core API version 1. Instal
 
 ## Documentation
 
-Start with the [documentation guide](docs/index.md), which provides reading paths for users, operators, and contributors.
+Start with the [documentation guide](docs/index.md), which provides reading paths for users, operators, and contributors. For a progressive, executable introduction, use the [Jupyter tutorial course](notebooks/README.md).
 
 - [Core concepts and vocabulary](docs/concepts.md)
 - [Architecture and end-to-end data flow](docs/architecture.md)
