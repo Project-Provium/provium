@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0](https://github.com/Project-Provium/provium/compare/provium-v0.8.0...provium-v0.9.0) (2026-09-10)
+
+
+### Features
+
+* Add pipeline core compatibility contracts ([290f853](https://github.com/Project-Provium/provium/commit/290f8538c230ff7263362a5fbe8eb630072314d8))
+* **core:** expose canonical JSON utilities ([63138a1](https://github.com/Project-Provium/provium/commit/63138a16fb14580f066258ec914a59afc6f7975d))
+
 ## [0.8.0](https://github.com/Project-Provium/provium/compare/provium-v0.7.0...provium-v0.8.0) (2026-08-22)
 
 
