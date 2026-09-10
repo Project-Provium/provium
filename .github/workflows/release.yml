@@ -4,6 +4,10 @@ on:
   push:
     branches: [master]
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -16,8 +20,113 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      paths_released: ${{ steps.release.outputs.paths_released }}
+      provium_release_created: ${{ steps.release.outputs['packages/provium--release_created'] }}
+      provium_tag: ${{ steps.release.outputs['packages/provium--tag_name'] }}
+      pipeline_release_created: ${{ steps.release.outputs['packages/provium-pipeline--release_created'] }}
+      pipeline_tag: ${{ steps.release.outputs['packages/provium-pipeline--tag_name'] }}
 
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           target-branch: master
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # A PAT/App token lets release PRs trigger the normal pull_request CI.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+
+  build:
+    name: Test and build ${{ matrix.path }}
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        path: ${{ fromJSON(needs.release-please.outputs.paths_released) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.path }}
+    env:
+      PACKAGE_NAME: ${{ matrix.path == 'packages/provium' && 'provium' || 'provium-pipeline' }}
+      PACKAGE_IMPORT: ${{ matrix.path == 'packages/provium' && 'provium' || 'provium_pipeline' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.path == 'packages/provium' && needs.release-please.outputs.provium_tag || needs.release-please.outputs.pipeline_tag }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package and workspace dependency
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "../provium[test]"
+          python -m pip install -e ".[test]" build twine
+      - name: Check lint, formatting, and types
+        run: |
+          ruff check .
+          ruff format --check .
+          python -m pyright
+      - name: Test the released code
+        run: python -m pytest --cov="$PACKAGE_IMPORT" --cov-branch --cov-fail-under=100
+      - name: Build and validate distributions
+        run: |
+          python -m build
+          python -m twine check dist/*
+      - name: Store tested distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}-distributions
+          path: ${{ matrix.path }}/dist/*
+          if-no-files-found: error
+
+  publish-provium:
+    name: Publish Provium to PyPI
+    needs: [release-please, build]
+    if: needs.release-please.outputs.provium_release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/provium
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: provium-distributions
+          path: dist
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-pipeline:
+    name: Publish Provium Pipeline to PyPI
+    needs: [release-please, build, publish-provium]
+    if: >-
+      always() && !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.release-please.outputs.pipeline_release_created == 'true' &&
+      (needs.publish-provium.result == 'success' || needs.publish-provium.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/provium-pipeline
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: provium-pipeline-distributions
+          path: dist
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
