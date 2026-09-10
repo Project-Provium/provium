@@ -2,6 +2,8 @@
 
 from importlib.metadata import version
 
+__version__ = version("provium")
+
 from .artifact import (
     Artifact,
     ArtifactCatalog,
@@ -20,6 +22,12 @@ from .artifact import (
     reset_artifact_discovery,
     stage_artifact,
 )
+from .artifact.inspection import (
+    FinalizedArtifactInspection,
+    inspect_finalized_artifact,
+)
+from .canonical import canonical_digest, canonical_json, canonical_json_bytes
+from .cli import CLI_PLUGIN_API_VERSION, CLI_PLUGIN_ENTRY_POINT_GROUP, CLIPlugin
 from .procedure import (
     CancellationToken,
     ConfigurationSnapshot,
@@ -45,6 +53,7 @@ from .procedure import (
     ProcedureOptionalInputField,
     ProcedureOptionalOutputField,
     ProcedureOutputField,
+    ProcedureOutputResult,
     ProcedureOutputs,
     ProcedureProcessContext,
     ProcedureRepeatedInputField,
@@ -71,13 +80,19 @@ from .provenance import (
 from .session import Session, current_session, session
 from .tool.visualization import lineage_to_dot, lineage_to_mermaid, render_lineage
 
-__version__ = version("provium")
+# Compatibility version for Provium's public core integration contracts.
+PROVIUM_CORE_API_VERSION = 1
 
 __all__ = [
+    "PROVIUM_CORE_API_VERSION",
+    "CLI_PLUGIN_API_VERSION",
+    "CLI_PLUGIN_ENTRY_POINT_GROUP",
+    "CLIPlugin",
     "Artifact",
     "ArtifactCatalog",
     "ArtifactDefinition",
     "ArtifactHeader",
+    "FinalizedArtifactInspection",
     "ArtifactLineage",
     "ArtifactReadBinding",
     "ArtifactReader",
@@ -104,6 +119,7 @@ __all__ = [
     "ProcedureExecutionRecord",
     "ProcedureExecutionSession",
     "ProcedureExecutionResult",
+    "ProcedureOutputResult",
     "ProcedureExecutor",
     "ProcedureIOField",
     "ProcedureIOFieldMetadata",
@@ -119,6 +135,9 @@ __all__ = [
     "ProcedureSetupContext",
     "Session",
     "__version__",
+    "canonical_digest",
+    "canonical_json",
+    "canonical_json_bytes",
     "compose_configuration",
     "current_session",
     "decode_header",
@@ -126,6 +145,7 @@ __all__ = [
     "discover_procedure_catalogs",
     "encode_header",
     "input",
+    "inspect_finalized_artifact",
     "lineage_to_dot",
     "lineage_to_mermaid",
     "load_json_configuration",

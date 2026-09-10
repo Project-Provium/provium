@@ -4,6 +4,11 @@
     "packages/provium": {
       "package-name": "provium",
       "release-type": "python"
+    },
+    "packages/provium-pipeline": {
+      "package-name": "provium-pipeline",
+      "release-type": "python",
+      "initial-version": "0.1.0"
     }
   }
 }

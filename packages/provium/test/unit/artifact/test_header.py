@@ -2,6 +2,7 @@
 
 import json
 import struct
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -190,6 +191,38 @@ def test_decode_rejects_truncated_or_malformed_metadata() -> None:
             decode_header(prefix + metadata)
 
 
+def test_decode_rejects_a_nonstring_creation_time() -> None:
+    encoded = encode_header(
+        ArtifactHeader.create(
+            artifact_identifier="example.ImageV1",
+            artifact_identity="artifact-1",
+            body_length=128,
+            body_digest="a" * 64,
+            lineage=lineage(),
+        )
+    )
+    metadata = json.loads(encoded[PREFIX_SIZE:])
+    metadata["created_at"] = 123
+    malformed = json.dumps(
+        metadata,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    prefix = struct.pack(
+        ">8sHQQQQ",
+        MAGIC,
+        CONTAINER_VERSION,
+        PREFIX_SIZE,
+        len(malformed),
+        4096,
+        128,
+    )
+
+    with pytest.raises(ValueError, match="malformed artifact metadata"):
+        decode_header(prefix + malformed)
+
+
 def test_decode_rejects_noncanonical_metadata_encoding() -> None:
     encoded = encode_header(header())
     metadata = encoded[PREFIX_SIZE:] + b" "
@@ -232,6 +265,8 @@ def test_decode_rejects_noncanonical_metadata_encoding() -> None:
         ({"body_length": 2**64}, "body_length"),
         ({"body_digest": ""}, "body_digest"),
         ({"lineage": object()}, "lineage"),
+        ({"created_at": object()}, "created_at"),
+        ({"created_at": datetime(2026, 1, 1)}, "timezone-aware"),
         ({"metadata_offset": PREFIX_SIZE - 1}, "metadata_offset"),
         ({"metadata_offset": True}, "metadata_offset"),
         ({"metadata_offset": 2**64}, "metadata_offset"),

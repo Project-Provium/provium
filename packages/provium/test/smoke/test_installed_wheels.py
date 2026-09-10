@@ -88,6 +88,41 @@ def test_installed_wheels_complete_external_plugin_workflow(
     assert len(imported_paths) == 4
     assert all(Path(path).is_relative_to(environment) for path in imported_paths)
 
+    public_contracts = (
+        "ArtifactDefinition",
+        "Artifact",
+        "ArtifactReadBinding",
+        "ArtifactWriteBinding",
+        "ProcedureDefinition",
+        "ProcedureContract",
+        "ProcedureInputs",
+        "ProcedureOutputs",
+        "Procedure",
+        "ProcedureExecutor",
+        "PreparedProcedure",
+        "ProcedureConfig",
+        "ConfigurationSnapshot",
+    )
+    contract_audit = run(
+        str(python),
+        "-c",
+        (
+            "import inspect, json, provium; "
+            f"names = {public_contracts!r}; "
+            "audit = {name: {'module': getattr(provium, name).__module__, "
+            "'signature': str(inspect.signature(getattr(provium, name)))} "
+            "for name in names}; "
+            "print(json.dumps(audit, sort_keys=True))"
+        ),
+        cwd=tmp_path,
+    )
+    audited_contracts = json.loads(contract_audit.stdout)
+    assert tuple(sorted(audited_contracts)) == tuple(sorted(public_contracts))
+    assert all(
+        contract["module"].startswith("provium") and contract["signature"]
+        for contract in audited_contracts.values()
+    )
+
     installed_version = run(
         str(python),
         "-c",

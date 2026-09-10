@@ -145,6 +145,15 @@ def test_prepared_execution_stages_and_publishes_declared_output(
     assert result.procedure.name == DEFINITION.identifier
     assert result.inputs == ()
     assert result.outputs == {"result": result.outputs["result"]}
+    output_result = result.output_results["result"]
+    assert output_result.produced
+    assert output_result.path == destination.resolve()
+    assert output_result.reference == result.outputs["result"]
+    assert output_result.inspection is not None
+    assert output_result.inspection.path == destination.resolve()
+    assert (
+        output_result.inspection.artifact_identity == result.outputs["result"].identity
+    )
     assert result.lineage is not None
     data = destination.read_bytes()
     header = decode_header(data)

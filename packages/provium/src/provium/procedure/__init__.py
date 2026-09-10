@@ -42,7 +42,7 @@ from .io import (
     repeated_input,
 )
 from .prepared import PreparedProcedure
-from .result import ProcedureExecutionResult
+from .result import ProcedureExecutionResult, ProcedureOutputResult
 from .validation import (
     ProcedureConfigurationError,
     validate_procedure_configuration,
@@ -66,6 +66,7 @@ __all__ = [
     "ProcedureExecutor",
     "ProcedureExecutionSession",
     "ProcedureExecutionResult",
+    "ProcedureOutputResult",
     "ProcedureIOField",
     "ProcedureIOFieldMetadata",
     "ProcedureInputField",
