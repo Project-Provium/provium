@@ -152,8 +152,7 @@ def test_prepared_execution_stages_and_publishes_declared_output(
     assert output_result.inspection is not None
     assert output_result.inspection.path == destination.resolve()
     assert (
-        output_result.inspection.artifact_identity
-        == result.outputs["result"].identity
+        output_result.inspection.artifact_identity == result.outputs["result"].identity
     )
     assert result.lineage is not None
     data = destination.read_bytes()

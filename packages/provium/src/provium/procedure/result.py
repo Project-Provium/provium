@@ -121,9 +121,7 @@ class ProcedureExecutionResult:
         if normalized_results and set(normalized_outputs) - set(normalized_results):
             raise ValueError("every produced output must have an output result")
         object.__setattr__(self, "outputs", MappingProxyType(normalized_outputs))
-        object.__setattr__(
-            self, "output_results", MappingProxyType(normalized_results)
-        )
+        object.__setattr__(self, "output_results", MappingProxyType(normalized_results))
 
 
 __all__ = ["ProcedureExecutionResult", "ProcedureOutputResult"]

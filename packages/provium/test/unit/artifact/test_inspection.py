@@ -96,8 +96,7 @@ def test_inspection_preserves_immutable_metadata_after_copy(tmp_path: Path) -> N
     assert destination_inspection.created_at == source_inspection.created_at
     assert destination_inspection.container_digest == source_inspection.container_digest
     assert (
-        destination_inspection.artifact_identity
-        == source_inspection.artifact_identity
+        destination_inspection.artifact_identity == source_inspection.artifact_identity
     )
 
 

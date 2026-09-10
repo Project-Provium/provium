@@ -192,13 +192,15 @@ def test_decode_rejects_truncated_or_malformed_metadata() -> None:
 
 
 def test_decode_rejects_a_nonstring_creation_time() -> None:
-    encoded = encode_header(ArtifactHeader.create(
-        artifact_identifier="example.ImageV1",
-        artifact_identity="artifact-1",
-        body_length=128,
-        body_digest="a" * 64,
-        lineage=lineage(),
-    ))
+    encoded = encode_header(
+        ArtifactHeader.create(
+            artifact_identifier="example.ImageV1",
+            artifact_identity="artifact-1",
+            body_length=128,
+            body_digest="a" * 64,
+            lineage=lineage(),
+        )
+    )
     metadata = json.loads(encoded[PREFIX_SIZE:])
     metadata["created_at"] = 123
     malformed = json.dumps(

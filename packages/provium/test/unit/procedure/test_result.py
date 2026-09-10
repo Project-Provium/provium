@@ -175,9 +175,7 @@ def test_execution_result_requires_every_produced_output_result() -> None:
             (),
             {"first": REFERENCE, "second": REFERENCE},
             output_results={
-                "first": ProcedureOutputResult(
-                    Path("first.pa"), REFERENCE, INSPECTION
-                )
+                "first": ProcedureOutputResult(Path("first.pa"), REFERENCE, INSPECTION)
             },
         )
 
