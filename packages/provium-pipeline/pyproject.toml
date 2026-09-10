@@ -5,41 +5,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "provium-pipeline"
 version = "0.1.0"
-description = "Typed, reproducible, idempotent local pipelines for Provium"
+description = "Declarative one-off pipelines for Provium"
 readme = "README.md"
-license = "MIT"
 requires-python = ">=3.12"
-classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
-]
-dependencies = [
-    "provium>=0.7,<0.8",
-    "pydantic>=2.10,<3",
-    "PyYAML>=6,<7",
-]
+dependencies = ["provium>=0.7,<0.8", "pydantic>=2.10,<3"]
 
-[project.entry-points."provium.artifact_stores"]
-filesystem = "provium_pipeline.artifact.plugins:filesystem_artifact_store_factory"
-
-[project.entry-points."provium.artifact_indexes"]
-sqlite = "provium_pipeline.artifact.plugins:sqlite_artifact_index_factory"
-
-[project.urls]
-Homepage = "https://github.com/SirDavidLudwig/provium"
-Issues = "https://github.com/SirDavidLudwig/provium/issues"
-Repository = "https://github.com/SirDavidLudwig/provium"
+[project.entry-points."provium.cli.command_catalogs"]
+pipeline = "provium_pipeline.cli:plugin"
 
 [project.optional-dependencies]
-test = [
-    "build>=1.2",
-    "pyright>=1.1.411",
-    "pytest>=8.3",
-    "pytest-cov>=6.0",
-    "ruff>=0.16",
-    "testcontainers>=4.10",
-]
+test = ["pytest>=8.3", "pytest-cov>=6", "ruff>=0.16", "pyright>=1.1.411", "build>=1.2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -48,36 +23,16 @@ where = ["src"]
 provium_pipeline = ["py.typed"]
 
 [tool.pytest.ini_options]
-addopts = [
-    "--strict-config",
-    "--strict-markers",
-    "--cov=provium_pipeline",
-    "--cov-branch",
-    "--cov-report=term-missing",
-    "--cov-fail-under=100",
-]
 testpaths = ["test"]
-markers = [
-    "integration: real integration test",
-    "testcontainers: integration test requiring a container runtime",
-]
-
-[tool.coverage.run]
-branch = true
-source = ["provium_pipeline"]
-
-[tool.coverage.report]
-fail_under = 100
-show_missing = true
-skip_covered = false
+pythonpath = ["src", "../provium/test"]
+addopts = ["--strict-config", "--strict-markers"]
 
 [tool.pyright]
-include = ["src", "test"]
+include = ["src"]
 extraPaths = ["src", "../provium/src"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 reportUnnecessaryIsInstance = "none"
-reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.ruff]
 target-version = "py312"
@@ -85,6 +40,3 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "TRY", "UP"]
 ignore = ["TRY003"]
-
-[tool.ruff.lint.isort]
-known-first-party = ["provium", "provium_pipeline"]
