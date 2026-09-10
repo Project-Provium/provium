@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Declarative one-off pipelines for Provium"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["provium>=0.7,<0.8", "pydantic>=2.10,<3"]
+dependencies = ["provium>=0.7,<0.9", "pydantic>=2.10,<3"]
 
 [project.entry-points."provium.cli.command_catalogs"]
 pipeline = "provium_pipeline.cli:plugin"

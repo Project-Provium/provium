@@ -54,7 +54,7 @@ Pull-request/push CI tests the pipeline package on Python 3.12 and 3.13; release
 builds repeat validation on Python 3.12 before uploading anything.
 
 A compatible core version must already be available on PyPI for users to install
-`provium-pipeline`. Its current dependency is `provium>=0.7,<0.8`. Publishing the
+`provium-pipeline`. Its current dependency is `provium>=0.7,<0.9`. Publishing the
 pipeline alone does not publish an unreleased core version automatically. Check
 that requirement when reviewing release PRs, especially across core minor versions.
 
