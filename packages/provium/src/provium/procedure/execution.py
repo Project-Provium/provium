@@ -38,6 +38,7 @@ class ProcedureExecutionSession:
             raise TypeError("procedure must be a ProcedureRecord")
         self.identity = str(uuid4())
         self.procedure = procedure
+        self.bindings: dict[str, str | tuple[str, ...] | None] | None = None
         self._session: Session | None = None
         self._staged: dict[str, StagedArtifact[Any]] | None = None
         self._references: dict[str, ArtifactReference] = {}
@@ -157,11 +158,24 @@ class ProcedureExecutionSession:
         child: Session,
         references: Mapping[str, ArtifactReference],
     ) -> ProcedureExecutionRecord:
+        if self.bindings is None and not child.inputs:
+            self.bindings = {}
         return ProcedureExecutionRecord(
             self.identity,
             self.procedure,
             tuple(record.reference for record in child.inputs),
             tuple(references.values()),
+            bindings=(
+                {
+                    **self.bindings,
+                    **{
+                        f"outputs.{name}": ref.identity
+                        for name, ref in references.items()
+                    },
+                }
+                if self.bindings is not None
+                else None
+            ),
         )
 
     @staticmethod

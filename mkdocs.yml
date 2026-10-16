@@ -26,6 +26,11 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
 
+# Internal planning and review notes must never be published or indexed.
+exclude_docs: |
+  /pipeline-requirements.md
+  /pipeline-implementation.md
+
 nav:
   - Home: index.md
   - Getting started: getting-started.md
@@ -35,6 +40,7 @@ nav:
       - Dumping and loading: guides/transfers.md
       - Provenance graphs: guides/graphing.md
       - Command-line tools: guides/cli.md
+      - Pipelines: pipeline-api-examples.md
   - API reference:
       - Provium core: reference/provium.md
       - Provium CLI: reference/provium-cli.md

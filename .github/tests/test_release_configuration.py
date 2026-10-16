@@ -33,6 +33,9 @@ class ReleaseConfigurationTests(unittest.TestCase):
         commands = "\n".join(step.get("run", "") for step in job["steps"])
         self.assertIn("packages/provium[test]", commands)
         self.assertIn("packages/provium-pipeline[test]", commands)
+        self.assertIn("examples/provium-text-pipeline", commands)
+        self.assertIn("postgres", job["services"])
+        self.assertIn("localstack", job["services"])
         self.assertIn("--cov=provium_pipeline", commands)
         self.assertIn("--cov-fail-under=100", commands)
         lint = ci["jobs"]["lint-format"]["steps"]
@@ -67,6 +70,9 @@ class ReleaseConfigurationTests(unittest.TestCase):
         commands = "\n".join(step.get("run", "") for step in steps)
         for check in ("ruff check", "ruff format --check", "pyright", "twine check"):
             self.assertIn(check, commands)
+        self.assertIn("examples/provium-text-pipeline", commands)
+        self.assertIn("postgres", build["services"])
+        self.assertIn("localstack", build["services"])
         outputs = jobs["release-please"]["outputs"]
         self.assertIn(
             "packages/provium-pipeline--release_created",

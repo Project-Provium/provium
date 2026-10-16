@@ -39,6 +39,21 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
 
   build:
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: provium
+          POSTGRES_DB: provium
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+      localstack:
+        image: localstack/localstack:4
+        env:
+          SERVICES: s3
+        ports: ["4566:4566"]
     name: Test and build ${{ matrix.path }}
     needs: release-please
     if: needs.release-please.outputs.releases_created == 'true'
@@ -52,6 +67,12 @@ jobs:
       run:
         working-directory: ${{ matrix.path }}
     env:
+      PROVIUM_TEST_DATABASE: postgresql://postgres:provium@localhost:5432/provium
+      PROVIUM_TEST_S3: "1"
+      AWS_ENDPOINT_URL_S3: http://localhost:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
       PACKAGE_NAME: ${{ matrix.path == 'packages/provium' && 'provium' || 'provium-pipeline' }}
       PACKAGE_IMPORT: ${{ matrix.path == 'packages/provium' && 'provium' || 'provium_pipeline' }}
 
@@ -68,7 +89,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e "../provium[test]"
-          python -m pip install -e ".[test]" build twine
+          python -m pip install -e ".[test]" -e "../../examples/provium-text-pipeline[test]" build twine
       - name: Check lint, formatting, and types
         run: |
           ruff check .
