@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import struct
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, ExitStack
 from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, BinaryIO, Protocol, Self, cast
@@ -20,6 +20,7 @@ from .artifact.header import (
 from .artifact.reader import ArtifactReader
 from .artifact.region import BodyRegion
 from .context import activate_context, current_context
+from .files import local_file
 from .provenance import ArtifactLineage, ArtifactRecord, ArtifactReference
 
 if TYPE_CHECKING:
@@ -33,7 +34,10 @@ class _Closeable(Protocol):
 class Session:
     """Own resources within a single-use, nestable logical context."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, scratch_directory: str | Path | None = None) -> None:
+        self.scratch_directory = scratch_directory
+        if scratch_directory is not None:
+            Path(scratch_directory).mkdir(parents=True, exist_ok=True)
         self.active = False
         self.parent: Session | None = None
         self._used = False
@@ -51,6 +55,8 @@ class Session:
             raise RuntimeError("active artifact context is not a session")
         self._used = True
         self.parent = parent
+        if self.scratch_directory is None and parent is not None:
+            self.scratch_directory = parent.scratch_directory
         self.active = True
         activation = activate_context(self)
         activation.__enter__()
@@ -114,7 +120,12 @@ class Session:
         if not self.active or current_context() is not self:
             raise RuntimeError("artifact opening requires the active session")
         expected_identity = expected_input_identity(binding)
-        stream = Path(binding.path).open("rb")
+        downloads = ExitStack()
+        self.manage(downloads)
+        path = downloads.enter_context(
+            local_file(binding.path, scratch_directory=self.scratch_directory)
+        )
+        stream = path.open("rb")
         try:
             header, file_length = self._read_header(stream)
             expected_identifier = binding.artifact.definition.identifier
@@ -245,6 +256,8 @@ class PersistentSession(Session):
         if parent is not None and not isinstance(parent, Session):
             raise RuntimeError("active artifact context is not a session")
         self.parent = parent
+        if self.scratch_directory is None and parent is not None:
+            self.scratch_directory = parent.scratch_directory
         self.active = True
         activation = activate_context(self)
         activation.__enter__()
@@ -281,9 +294,9 @@ class PersistentSession(Session):
             raise close_error
 
 
-def session() -> Session:
+def session(*, scratch_directory: str | Path | None = None) -> Session:
     """Create a new artifact resource session."""
-    return Session()
+    return Session(scratch_directory=scratch_directory)
 
 
 def current_session() -> Session | None:

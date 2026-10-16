@@ -9,6 +9,8 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
+from provium.files import normalize_location
+
 from .binding import ArtifactReadBinding, ArtifactWriteBinding
 from .reader import ArtifactReader
 from .writer import ArtifactWriter
@@ -47,12 +49,12 @@ class Artifact[ReaderT: ArtifactReader, WriterT: ArtifactWriter]:
     @classmethod
     def bind_read(cls, path: str | PathLike[str]) -> ArtifactReadBinding[ReaderT]:
         """Bind this artifact's reader type to a normalized path."""
-        return ArtifactReadBinding(cls, Path(path))
+        return ArtifactReadBinding(cls, normalize_location(path))
 
     @classmethod
     def bind_write(cls, path: str | PathLike[str]) -> ArtifactWriteBinding[WriterT]:
         """Bind this artifact's writer type to a normalized path."""
-        return ArtifactWriteBinding(cls, Path(path))
+        return ArtifactWriteBinding(cls, normalize_location(path))
 
 
 @dataclass(frozen=True, slots=True)

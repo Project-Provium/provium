@@ -7,9 +7,9 @@ import struct
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from os import PathLike
-from pathlib import Path
 from typing import Any, Self, cast
 
+from provium.files import local_file
 from provium.provenance import ArtifactLineage, ArtifactReference
 
 MAGIC = b"PROVIUM\0"
@@ -234,7 +234,7 @@ def decode_header(data: bytes | bytearray | memoryview) -> ArtifactHeader:
 
 def read_artifact_header(path: str | PathLike[str]) -> ArtifactHeader:
     """Read an artifact container's header without reading its body."""
-    with Path(path).open("rb") as stream:
+    with local_file(path) as local, local.open("rb") as stream:
         prefix = stream.read(PREFIX_SIZE)
         if len(prefix) < PREFIX_SIZE:
             raise ValueError("truncated fixed header")

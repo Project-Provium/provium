@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping
+from contextlib import ExitStack
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -16,6 +17,7 @@ from provium.artifact import (
     StagedArtifact,
     stage_artifact,
 )
+from provium.files import local_file, location_identity, publish_file, remove_file
 from provium.provenance import (
     ArtifactLineage,
     ArtifactRecord,
@@ -45,6 +47,7 @@ class ProcedureExecutionSession:
         self._lineage: ArtifactLineage | None = None
         self._result: ProcedureExecutionResult | None = None
         self._used = False
+        self._remote_attempts: set[str] = set()
 
     @property
     def writers(self) -> tuple[ArtifactWriter, ...]:
@@ -149,7 +152,9 @@ class ProcedureExecutionSession:
     def _validate_destinations(
         bindings: Mapping[str, ArtifactWriteBinding[Any]],
     ) -> None:
-        destinations = [binding.path.resolve() for binding in bindings.values()]
+        destinations = [
+            location_identity(binding.path) for binding in bindings.values()
+        ]
         if len(destinations) != len(set(destinations)):
             raise ValueError("procedure output destination is already in use")
 
@@ -228,17 +233,26 @@ class ProcedureExecutionSession:
     def _publish_outputs(self, metadata: Mapping[str, ArtifactHeader]) -> None:
         assert self._staged is not None
         backups: dict[str, Path | None] = {}
+        cleanup = ExitStack()
+        self._require_active().manage(cleanup)
         try:
             for name, output in self._staged.items():
                 destination = output.destination
                 backup = None
-                if destination.exists():
+                if isinstance(destination, str):
+                    try:
+                        backup = cleanup.enter_context(local_file(destination))
+                    except FileNotFoundError:
+                        pass
+                elif destination.exists():
                     backup = destination.with_name(
                         f".{destination.name}.{uuid4().hex}.backup"
                     )
                     destination.replace(backup)
                 backups[name] = backup
             for name, output in self._staged.items():
+                if isinstance(output.destination, str):
+                    self._remote_attempts.add(name)
                 output.publish(metadata[name])
         except BaseException as error:
             try:
@@ -256,6 +270,14 @@ class ProcedureExecutionSession:
     ) -> None:
         assert self._staged is not None
         for name, output in reversed(tuple(self._staged.items())):
+            if isinstance(output.destination, str):
+                if name in self._remote_attempts:
+                    backup = backups[name]
+                    if backup is None:
+                        remove_file(output.destination)
+                    else:
+                        publish_file(backup, output.destination)
+                continue
             if output.published:
                 output.destination.unlink(missing_ok=True)
             backup = backups.get(name)

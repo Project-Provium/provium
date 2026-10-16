@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import io
+import tempfile
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, cast
 from uuid import uuid4
 
 from provium.context import current_context
+from provium.files import publish_file
 
 from .binding import ArtifactWriteBinding
 from .header import ArtifactHeader, encode_header
@@ -24,7 +27,7 @@ class StagedArtifact[WriterT: ArtifactWriter]:
 
     def __init__(
         self,
-        destination: Path,
+        destination: Path | str,
         temporary_path: Path,
         stream: BinaryIO,
         body: BodyRegion,
@@ -91,7 +94,7 @@ class StagedArtifact[WriterT: ArtifactWriter]:
         self._stream.write(encoded)
         self._stream.flush()
         self._stream.close()
-        self.temporary_path.replace(self.destination)
+        publish_file(self.temporary_path, self.destination)
         self._published = True
 
     def abort(self) -> None:
@@ -124,7 +127,17 @@ def stage_artifact[WriterT: ArtifactWriter](
     """Create an adjacent temporary container for one typed output."""
     _validate_staging(binding, metadata, owner)
     destination = binding.path
-    temporary_path = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
+    if isinstance(destination, Path):
+        temporary_path = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
+    else:
+        cleanup = ExitStack()
+        owner.manage(cleanup)
+        directory = cleanup.enter_context(
+            tempfile.TemporaryDirectory(
+                prefix="provium-output-", dir=owner.scratch_directory
+            )
+        )
+        temporary_path = Path(directory) / "artifact.pa"
     stream = temporary_path.open("x+b")
     try:
         _reserve_body_offset(stream, metadata.body_offset)

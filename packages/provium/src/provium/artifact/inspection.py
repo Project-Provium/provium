@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from provium.artifact.header import read_artifact_header
+from provium.files import local_file, location_identity
 from provium.provenance import ArtifactLineage
 
 _CHUNK_SIZE = 1024 * 1024
@@ -19,7 +20,7 @@ _CHUNK_SIZE = 1024 * 1024
 class FinalizedArtifactInspection:
     """Verified immutable metadata for one finalized artifact container."""
 
-    path: Path
+    path: Path | str
     artifact_identifier: str
     artifact_identity: str
     body_digest: str
@@ -38,35 +39,37 @@ def _digest_stream(stream: BinaryIO) -> str:
 
 def inspect_finalized_artifact(
     path: str | PathLike[str],
+    *,
+    scratch_directory: str | PathLike[str] | None = None,
 ) -> FinalizedArtifactInspection:
     """Fully verify a finalized artifact without resolving its artifact class."""
-    finalized_path = Path(path).resolve()
-    header = read_artifact_header(finalized_path)
-    size_bytes = finalized_path.stat().st_size
-    expected_size = header.body_offset + header.body_length
-    if size_bytes != expected_size:
-        raise ValueError(
-            "artifact container size does not match its finalized header: "
-            f"expected {expected_size}, found {size_bytes}"
+    with local_file(path, scratch_directory=scratch_directory) as finalized_path:
+        header = read_artifact_header(finalized_path)
+        size_bytes = finalized_path.stat().st_size
+        expected_size = header.body_offset + header.body_length
+        if size_bytes != expected_size:
+            raise ValueError(
+                "artifact container size does not match its finalized header: "
+                f"expected {expected_size}, found {size_bytes}"
+            )
+
+        with finalized_path.open("rb") as stream:
+            container_digest = _digest_stream(stream)
+            stream.seek(header.body_offset)
+            body_digest = _digest_stream(stream)
+        if body_digest != header.body_digest:
+            raise ValueError("artifact body digest does not match its finalized header")
+
+        return FinalizedArtifactInspection(
+            path=location_identity(path),
+            artifact_identifier=header.artifact_identifier,
+            artifact_identity=header.artifact_identity,
+            body_digest=header.body_digest,
+            container_digest=container_digest,
+            size_bytes=size_bytes,
+            created_at=header.created_at,
+            lineage=header.lineage,
         )
-
-    with finalized_path.open("rb") as stream:
-        container_digest = _digest_stream(stream)
-        stream.seek(header.body_offset)
-        body_digest = _digest_stream(stream)
-    if body_digest != header.body_digest:
-        raise ValueError("artifact body digest does not match its finalized header")
-
-    return FinalizedArtifactInspection(
-        path=finalized_path,
-        artifact_identifier=header.artifact_identifier,
-        artifact_identity=header.artifact_identity,
-        body_digest=header.body_digest,
-        container_digest=container_digest,
-        size_bytes=size_bytes,
-        created_at=header.created_at,
-        lineage=header.lineage,
-    )
 
 
 __all__ = ["FinalizedArtifactInspection", "inspect_finalized_artifact"]

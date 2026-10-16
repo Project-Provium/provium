@@ -8,6 +8,7 @@ from typing import Any, Never, cast
 from uuid import uuid4
 
 from provium.artifact import ArtifactReadBinding, ArtifactWriteBinding
+from provium.files import location_identity
 from provium.provenance import ProcedureRecord
 from provium.session import PersistentSession, Session, session
 
@@ -228,7 +229,7 @@ class PreparedProcedure[
         result = cast(ProcedureExecutionResult, execution.result)
         output_results = {
             name: ProcedureOutputResult(
-                path=binding.path.resolve(),
+                path=location_identity(binding.path),
                 reference=result.outputs.get(name),
                 inspection=(
                     inspect_finalized_artifact(binding.path)
@@ -327,9 +328,9 @@ class PreparedProcedure[
         bindings: dict[str, ArtifactWriteBinding[Any]],
         procedure_identifier: str,
     ) -> None:
-        fields_by_destination: dict[Path, str] = {}
+        fields_by_destination: dict[Path | str, str] = {}
         for name, binding in bindings.items():
-            destination = binding.path.resolve()
+            destination = location_identity(binding.path)
             conflicting_name = fields_by_destination.get(destination)
             if conflicting_name is not None:
                 raise ValueError(

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 from typing import Any
 
 from provium import (
@@ -12,6 +11,7 @@ from provium import (
     read_artifact_header,
     session,
 )
+from provium.files import local_file, normalize_location, writable_file
 
 from ..command import Command
 from ..errors import EXPECTED_CLI_ERRORS, print_cli_error
@@ -55,13 +55,15 @@ class ArtifactCommand(Command):
             if action == "load":
                 identifier = action_parser.add_argument("identifier")
                 identifier.completer = _complete_artifact_identifiers  # type: ignore[attr-defined]
-            action_parser.add_argument("source", type=Path)
-            action_parser.add_argument("destination", type=Path)
+            action_parser.add_argument("source", type=normalize_location)
+            action_parser.add_argument("destination", type=normalize_location)
+            action_parser.add_argument("--scratch-directory")
             action_parser.set_defaults(artifact_handler=getattr(self, f"_{action}"))
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            arguments.artifact_handler(arguments)
+            with session(scratch_directory=arguments.scratch_directory):
+                arguments.artifact_handler(arguments)
         except EXPECTED_CLI_ERRORS as error:
             action = arguments.artifact_action
             identifier = getattr(arguments, "identifier", None)
@@ -81,7 +83,8 @@ class ArtifactCommand(Command):
             raise ValueError(f"artifact {identifier} does not define a dump handler")
         with session():
             with artifact.bind_read(arguments.source).open() as reader:
-                handler(reader, arguments.destination)
+                with writable_file(arguments.destination) as destination:
+                    handler(reader, destination)
 
     @staticmethod
     def _load(arguments: argparse.Namespace) -> None:
@@ -98,7 +101,8 @@ class ArtifactCommand(Command):
         )
         with procedure.execute(outputs={"artifact": binding}):
             with binding.open() as writer:
-                handler(writer, arguments.source)
+                with local_file(arguments.source) as source:
+                    handler(writer, source)
 
 
 __all__ = ["ArtifactCommand"]

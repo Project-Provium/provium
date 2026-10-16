@@ -8,6 +8,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from provium.artifact.inspection import FinalizedArtifactInspection
+from provium.files import normalize_location
 from provium.provenance import ArtifactLineage, ArtifactReference, ProcedureRecord
 
 
@@ -15,13 +16,15 @@ from provium.provenance import ArtifactLineage, ArtifactReference, ProcedureReco
 class ProcedureOutputResult:
     """Describe one declared output's produced or absent final state."""
 
-    path: Path
+    path: Path | str
     reference: ArtifactReference | None = None
     inspection: FinalizedArtifactInspection | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.path, Path):
-            raise TypeError("procedure output result path must be a Path")
+        if isinstance(self.path, str) and self.path.startswith("s3://"):
+            normalize_location(self.path)
+        elif not isinstance(self.path, Path):
+            raise TypeError("procedure output result path must be a Path or S3 URI")
         if (self.reference is None) != (self.inspection is None):
             raise ValueError(
                 "procedure output reference and inspection must both be "

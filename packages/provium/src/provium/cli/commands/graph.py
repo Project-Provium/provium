@@ -6,7 +6,9 @@ import argparse
 import sys
 from pathlib import Path
 
+from provium import session
 from provium.artifact import read_artifact_header
+from provium.files import file_exists, normalize_location, writable_file
 from provium.tool.visualization import (
     lineage_to_dot,
     lineage_to_mermaid,
@@ -47,8 +49,8 @@ def _add_label_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _confirm_output(path: Path, *, force: bool) -> None:
-    if not path.exists() or force:
+def _confirm_output(path: Path | str, *, force: bool) -> None:
+    if not file_exists(path) or force:
         return
     if not sys.stdin.isatty():
         raise RuntimeError(
@@ -72,13 +74,14 @@ class GraphCommand(Command):
         render_parser = actions.add_parser(
             "render", help="Render an artifact provenance graph"
         )
-        render_parser.add_argument("artifact", type=Path)
-        render_parser.add_argument("output", type=Path)
+        render_parser.add_argument("artifact", type=normalize_location)
+        render_parser.add_argument("output", type=normalize_location)
         render_parser.add_argument(
             "--backend",
             choices=("auto", "graphviz", "mermaid"),
             default="auto",
         )
+        render_parser.add_argument("--scratch-directory")
         _add_label_arguments(render_parser)
         _add_force_argument(render_parser)
         render_parser.set_defaults(graph_handler=self._render)
@@ -86,40 +89,43 @@ class GraphCommand(Command):
         source_parser = actions.add_parser(
             "source", help="Write DOT or Mermaid graph source"
         )
-        source_parser.add_argument("artifact", type=Path)
+        source_parser.add_argument("artifact", type=normalize_location)
         source_parser.add_argument("language", choices=("dot", "mermaid"))
-        source_parser.add_argument("output", nargs="?", type=Path)
+        source_parser.add_argument("output", nargs="?", type=normalize_location)
+        source_parser.add_argument("--scratch-directory")
         _add_label_arguments(source_parser)
         _add_force_argument(source_parser)
         source_parser.set_defaults(graph_handler=self._source)
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            arguments.graph_handler(arguments)
+            with session(scratch_directory=arguments.scratch_directory):
+                arguments.graph_handler(arguments)
         except EXPECTED_CLI_ERRORS as error:
             return print_cli_error(f"generating {arguments.graph_action} graph", error)
         return 0
 
     @staticmethod
     def _render(arguments: argparse.Namespace) -> None:
-        output: Path = arguments.output
-        if not output.suffix:
-            output = Path(f"{output}.png")
+        output: Path | str = arguments.output
+        if not Path(str(output)).suffix:
+            output = normalize_location(f"{output}.png")
         _confirm_output(output, force=arguments.force)
         lineage = read_artifact_header(arguments.artifact).lineage
         image = render_lineage(
             lineage,
-            format=output.suffix[1:].lower(),
+            format=Path(str(output)).suffix[1:].lower(),
             backend=arguments.backend,
             show_artifact_identities=arguments.show_artifact_identities,
             show_procedure_versions=arguments.show_procedure_versions,
             show_execution_identities=arguments.show_execution_identities,
         )
-        output.write_bytes(image)
+        with writable_file(output) as local:
+            local.write_bytes(image)
 
     @staticmethod
     def _source(arguments: argparse.Namespace) -> None:
-        output: Path | None = arguments.output
+        output: Path | str | None = arguments.output
         if output is not None:
             _confirm_output(output, force=arguments.force)
         lineage = read_artifact_header(arguments.artifact).lineage
@@ -140,7 +146,8 @@ class GraphCommand(Command):
         if output is None:
             sys.stdout.write(source)
         else:
-            output.write_text(source)
+            with writable_file(output) as local:
+                local.write_text(source)
 
 
 __all__ = ["GraphCommand"]
