@@ -220,6 +220,10 @@ Callbacks run serially on a context-owned dispatcher thread. Keep them short: th
 
 `Artifact.location` is durable. For S3, `Artifact.path` points to a verified local download owned by the store; use it before closing the store. Closing a store removes only its downloads. Filesystem artifact paths remain valid.
 
+YAML files supplied with `-f` may also use `s3://bucket/key` locations. Local and
+remote files can be mixed, and `--scratch-directory` controls temporary downloads.
+See [Local and S3 files](guides/storage.md) for core and pipeline examples.
+
 ## PostgreSQL-backed execution
 
 ```sh
