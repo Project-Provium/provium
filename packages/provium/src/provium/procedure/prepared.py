@@ -54,6 +54,7 @@ class PreparedProcedure[
         self._closed = False
         self._setup_session = PersistentSession()
         self._setup_temporary_directory = _SetupTemporaryDirectory()
+        self._setup_inputs = setup_inputs
         self._setup_bindings = self._input_bindings(setup_inputs)
         self._setup_identities: dict[int, str] = {}
         try:
@@ -204,6 +205,12 @@ class PreparedProcedure[
         with ProcedureExecutionSession(procedure) as execution:
             with authorize_bindings(input_bindings, {}, {}):
                 identities = self._register_inputs(input_bindings)
+            execution.bindings = {
+                **self._named_input_identities(
+                    "setup", self._setup_inputs, self._setup_identities
+                ),
+                **self._named_input_identities("inputs", inputs, identities),
+            }
             writers = execution.stage_outputs(output_bindings)
             with authorize_bindings(
                 input_bindings,
@@ -266,6 +273,26 @@ class PreparedProcedure[
             inputs,
             outputs,
         )
+
+    @staticmethod
+    def _named_input_identities(
+        scope: str,
+        inputs: ProcedureInputs | None,
+        identities: Mapping[int, str],
+    ) -> dict[str, str | tuple[str, ...] | None]:
+        if inputs is None:
+            return {}
+        values = cast(dict[str, Any], object.__getattribute__(inputs, "_values"))
+        return {
+            f"{scope}.{name}": (
+                tuple(identities[id(item)] for item in cast(tuple[Any, ...], value))
+                if isinstance(value, tuple)
+                else None
+                if value is None
+                else identities[id(value)]
+            )
+            for name, value in values.items()
+        }
 
     @staticmethod
     def _input_bindings(

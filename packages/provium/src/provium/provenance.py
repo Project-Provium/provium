@@ -155,6 +155,7 @@ class ProcedureExecutionRecord(_SerializableRecord):
     procedure: ProcedureRecord
     inputs: tuple[ArtifactReference, ...] = ()
     outputs: tuple[ArtifactReference, ...] = ()
+    bindings: Mapping[str, str | tuple[str, ...] | None] | None = None
     _shape_name: ClassVar[str] = "procedure execution record"
 
     def __init__(
@@ -163,7 +164,14 @@ class ProcedureExecutionRecord(_SerializableRecord):
         procedure: ProcedureRecord,
         inputs: tuple[ArtifactReference, ...] | None = None,
         outputs: tuple[ArtifactReference, ...] | None = None,
+        *,
+        bindings: Mapping[str, str | tuple[str, ...] | None] | None = None,
     ) -> None:
+        object.__setattr__(
+            self,
+            "bindings",
+            None if bindings is None else MappingProxyType(dict(bindings)),
+        )
         object.__setattr__(self, "identity", identity)
         object.__setattr__(self, "procedure", procedure)
         object.__setattr__(self, "inputs", () if inputs is None else inputs)
@@ -182,6 +190,38 @@ class ProcedureExecutionRecord(_SerializableRecord):
         self._validate_references(self.outputs, "output")
         self._validate_edge_directions()
         object.__setattr__(self, "outputs", self._normalized(self.outputs))
+        self._validate_bindings()
+
+    def _validate_bindings(self) -> None:
+        if self.bindings is None:
+            return
+        seen_inputs: set[str] = set()
+        seen_outputs: set[str] = set()
+        for key, value in self.bindings.items():
+            if not isinstance(key, str):
+                raise TypeError("binding name must be a string")
+            scope, separator, name = key.partition(".")
+            if not separator or not name or scope not in {"inputs", "setup", "outputs"}:
+                raise ValueError("invalid binding name")
+            if scope == "outputs":
+                if not isinstance(value, str) or value in seen_outputs:
+                    raise ValueError("invalid output binding")
+                seen_outputs.add(value)
+            else:
+                values = (
+                    ()
+                    if value is None
+                    else value
+                    if isinstance(value, tuple)
+                    else (value,)
+                )
+                if any(not isinstance(item, str) for item in values):
+                    raise TypeError("invalid input binding")
+                seen_inputs.update(values)
+        if seen_inputs != {ref.identity for ref in self.inputs}:
+            raise ValueError("input bindings do not match dependencies")
+        if seen_outputs != {ref.identity for ref in self.outputs}:
+            raise ValueError("output bindings do not match outputs")
 
     @staticmethod
     def _validate_references(
@@ -208,6 +248,17 @@ class ProcedureExecutionRecord(_SerializableRecord):
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            **(
+                {
+                    "bindings": {
+                        key: list(value) if isinstance(value, tuple) else value
+                        for key, value in self.bindings.items()
+                    },
+                    "bindings_version": 1,
+                }
+                if self.bindings is not None
+                else {}
+            ),
             "identity": self.identity,
             "inputs": [reference.to_dict() for reference in self.inputs],
             "outputs": [reference.to_dict() for reference in self.outputs],
@@ -216,12 +267,23 @@ class ProcedureExecutionRecord(_SerializableRecord):
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> Self:
-        cls._expect_keys(value, {"identity", "inputs", "outputs", "procedure"})
+        keys = {"identity", "inputs", "outputs", "procedure"}
+        if "bindings" in value:
+            keys |= {"bindings", "bindings_version"}
+            if value.get("bindings_version") != 1:
+                raise ValueError("unsupported bindings version")
+        cls._expect_keys(value, keys)
         return cls(
             value["identity"],
             ProcedureRecord.from_dict(value["procedure"]),
             tuple(ArtifactReference.from_dict(item) for item in value["inputs"]),
             tuple(ArtifactReference.from_dict(item) for item in value["outputs"]),
+            bindings={
+                key: tuple(cast(list[Any], item)) if isinstance(item, list) else item
+                for key, item in value["bindings"].items()
+            }
+            if "bindings" in value
+            else None,
         )
 
 
