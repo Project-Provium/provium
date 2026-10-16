@@ -1,152 +1,75 @@
 # provium-pipeline
 
-Simple YAML-defined, one-off pipelines for Provium. This is a separate distribution
-and imports as `provium_pipeline`; it installs a `provium pipeline` CLI plugin.
+Provenance-addressed procedure graphs with local execution, PostgreSQL queues,
+filesystem/S3 artifact storage, reusable process workers, and completion callbacks.
 
-From this repository:
-
-```bash
+```sh
 python -m pip install -e packages/provium -e packages/provium-pipeline
+provium-pipeline run -f pipeline.yaml --input document=/data/document.pa --store ./artifacts
 ```
 
-Install any procedure plugins referenced by your pipeline as well.
-
-## Definition
-
-Procedure identifiers below are illustrative; substitute your installed procedures.
-Input and output port names must match each procedure's contract.
+Inputs must already be Provium artifacts. Install the procedure catalogs referenced
+by the graph. The same command is available as `provium pipeline`.
 
 ```yaml
-version: 1
-name: summarize-documents
-configuration:
-  min_length: 100
-  max_words: 200
-inputs:
-  - documents
-steps:
-  clean:
-    procedure: example.clean_documents
-    configuration:
-      min_length: $config.min_length
+kind: PipelineConfiguration
+name: tokenize-documents
+nodes:
+  tokenize:
+    procedure: provium_text_pipeline_example.TokenizeV1
+    tags: [text]
     inputs:
-      documents: $inputs.documents
-  summarize:
-    procedure: example.summarize_documents
-    configuration:
-      max_words: $config.max_words
-    inputs:
-      documents: $steps.clean.outputs.documents
+      source: $inputs.document
 outputs:
-  summary: $steps.summarize.outputs.summary
-  cleaning_report: $steps.clean.outputs.report
+  tokens: $nodes.tokenize.destination
 ```
 
-- `$inputs.name` refers to a single caller-supplied artifact. Its type is inferred
-  from the connected procedure contracts. Shared inputs must have compatible types.
-- `$steps.step_id.outputs.port` refers to a procedure's named output. No output
-  declarations are needed on individual steps. All declared step outputs receive
-  bindings; unexposed outputs use temporary storage.
-- `$config.key` substitutes a configuration value while preserving its type.
-  Nested keys such as `$config.model.temperature` are supported. References are
-  entire values, not string interpolation. Use `$$` for a literal leading `$`.
-- A step's `inputs` and `setup_inputs` map procedure ports to references. A repeated
-  input takes a list of references, preserving order. Optional inputs may be omitted.
-- Pipeline `outputs` rename step outputs for the caller. Every exposed output needs
-  a destination; expose a port only once. To retain a specific intermediate, expose
-  it here as another pipeline output.
+The example procedure is provided by `examples/provium-text-pipeline`.
+Compute profiles are separate YAML documents. Default execution uses one child
+process; only one configured node is resident per context.
 
-For example, multiple artifacts on one repeated input:
-
-```yaml
-inputs:
-  documents:
-    - $steps.clean_a.outputs.documents
-    - $steps.clean_b.outputs.documents
+```sh
+export PROVIUM_DATABASE_URL=postgresql://localhost/provium
+provium-pipeline register -f pipeline.yaml -f profiles.yaml
+provium-pipeline enqueue tokenize-documents --input document=/data/document.pa
+provium-pipeline run tokenize-documents --profile cluster --store s3://bucket/artifacts
+provium-pipeline status tokenize-documents --outputs
 ```
 
-The planner validates configuration, references, required ports, cardinality,
-artifact compatibility, and cycles before execution. Steps execute sequentially in
-dependency order, regardless of their order in YAML. Every step runs, including
-steps whose outputs are not exposed. Unknown definition keys are rejected.
+Repeated equivalent computations reuse verified results. PostgreSQL leases coordinate
+shared computation across pipelines. Force replaces results through an atomic accepted
+result reference while retaining immutable artifact versions for existing readers.
 
-## CLI
-
-```bash
-provium pipeline validate pipeline.yaml
-provium pipeline run pipeline.yaml \
-  --input documents=documents.pa \
-  --output summary=summary.pa \
-  --output cleaning_report=report.pa \
-  --config max_words=150
-```
-
-`--config NAME=VALUE` accepts JSON values or plain strings. Repeat it for different
-keys. `--config-file configuration.yaml` (or `.json`) supplies configuration layers;
-files apply in argument order, after YAML defaults, followed by `--config` overrides.
-Use configuration files to override nested mappings.
-
-Add `--keep-intermediates ./debug` to retain artifacts in a unique run directory
-under `./debug`. The CLI prints that directory after successful execution.
-
-## Python
-
-```python
-from provium_pipeline import Pipeline, PipelineExecutor
-
-pipeline = Pipeline.from_yaml("pipeline.yaml")
-executor = PipelineExecutor()
-plan = executor.plan(pipeline)  # Validate without running procedure callbacks.
-
-# Documents, Summary, and Report are your plugin's artifact classes.
-result = executor.execute(
-    pipeline,
-    configuration_layers=[{"max_words": 150}],
-    inputs={"documents": Documents.bind_read("documents.pa")},
-    outputs={
-        "summary": Summary.bind_write("summary.pa"),
-        "cleaning_report": Report.bind_write("report.pa"),
-    },
-)
-```
-
-`Pipeline.from_mapping(...)` accepts the same structure as YAML. By default the
-executor discovers installed procedure catalogs; library callers can instead pass
-`PipelineExecutor(procedures={definition.identifier: definition, ...})`.
-
-`execute()` also accepts a Provium cancellation token and
-`keep_intermediates="./debug"`. Its result contains a run identity, the public
-artifact references in `outputs`, ordinary procedure execution results in `steps`,
-and `intermediate_directory` (only set for retained runs). Normal Provium artifact
-provenance records the actual producing procedures and their input lineage.
-
-## Lifetime and scope
-
-Each execution has fresh procedure instances and an isolated intermediate directory.
-Temporary artifacts are removed on success, failure, and cancellation. Retained runs
-are kept even when they fail; their directories remain under the requested root.
-External inputs and explicit output destinations are never part of temporary cleanup.
-Output destinations cannot overlap each other or external input paths.
-
-Publication is transactional **per procedure**, not across the entire pipeline.
-A public output committed by an earlier step remains if a later step fails. Exceptions
-include a note naming the pipeline and failing step.
-
-The definition, storage-independent plan, and execution lifetime are separate so
-persistent runs, idempotency, and reusable artifacts can be added later. This release
-has no caching, resume, persistence database, retries, parallel execution, nested
-pipelines, or pipeline-wide rollback. Pipeline inputs each bind one artifact; lists
-are supported on repeated procedure input ports.
+See the repository's [usage examples](../../docs/pipeline-api-examples.md) for
+definitions, profiles, selectors, Python callbacks, time limits, and deployment.
+The [requirements](../../docs/pipeline-requirements.md) define the supported behavior.
 
 ## Development
 
-From the repository root, with the packages and test dependencies installed:
-
-```bash
-python -m pytest -c packages/provium-pipeline/pyproject.toml packages/provium-pipeline/test
+```sh
+python -m pip install -e 'packages/provium[test]' -e 'packages/provium-pipeline[test]' \
+  -e examples/provium-text-pipeline
+python -m pytest packages/provium-pipeline/test
 ruff check packages/provium-pipeline
+ruff format --check packages/provium-pipeline
 pyright --project packages/provium-pipeline/pyproject.toml
 ```
 
-Integration tests reuse the core package's test fixtures from the repository; those
-fixtures are not runtime dependencies and are not shipped in the wheel.
+For PostgreSQL and S3 integration tests:
+
+```sh
+docker run -d --name provium-pipeline-postgres \
+  -e POSTGRES_PASSWORD=provium -e POSTGRES_DB=provium \
+  -p 127.0.0.1:55432:5432 postgres:17
+docker run -d --name provium-pipeline-localstack \
+  -e SERVICES=s3 -p 127.0.0.1:54566:4566 localstack/localstack:4
+
+export PROVIUM_TEST_DATABASE=postgresql://postgres:provium@localhost:55432/provium
+export PROVIUM_TEST_S3=1 AWS_ENDPOINT_URL_S3=http://localhost:54566
+export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1
+python -m pytest packages/provium-pipeline/test
+```
+
+Integration tests create unique records and buckets. Use a disposable test database.
+Slurm/AWS Batch deployment uses the same CLI with externally allocated resources;
+those scheduler services are not required for local integration tests.

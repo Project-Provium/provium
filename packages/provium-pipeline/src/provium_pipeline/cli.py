@@ -1,132 +1,276 @@
-"""Provium CLI plugin: pipeline validate and pipeline run."""
+"""Direct and PostgreSQL-backed pipeline command line."""
+
+from __future__ import annotations
 
 import argparse
+import importlib
 import json
+import os
 import sys
-from collections.abc import Mapping, Sequence
-from pathlib import Path
+from dataclasses import asdict
+from importlib.metadata import entry_points
 from typing import Any
 
-from provium import (
-    ArtifactDefinition,
-    load_json_configuration,
-    load_yaml_configuration,
-)
 from provium.cli import CLI_PLUGIN_API_VERSION, CLIPlugin, Command, CommandCatalog
 
-from .executor import PipelineExecutor
-from .models import Pipeline
+from .database import PostgresBackend
+from .models import (
+    ComputeProfile,
+    PipelineConfiguration,
+    PipelineDefinition,
+    load_documents,
+)
+from .planning import build_plan
+from .runtime import ExecutionContext, InputSet, Outcome
+from .store import ArtifactStore
 
 
-def _assignments(values: Sequence[str]) -> dict[str, str]:
+def configure(parser: argparse.ArgumentParser) -> None:
+    subparsers = parser.add_subparsers(dest="action", required=True)
+    for action in (
+        "run",
+        "register",
+        "enqueue",
+        "status",
+        "validate",
+        "inspect",
+        "retry",
+    ):
+        child = subparsers.add_parser(action)
+        child.add_argument("pipeline", nargs="?")
+        child.add_argument("-f", "--file", action="append", default=[])
+        child.add_argument("--database", default=os.environ.get("PROVIUM_DATABASE_URL"))
+        child.add_argument(
+            "--store",
+            default=os.environ.get("PROVIUM_PIPELINE_STORE") or "./.provium/artifacts",
+        )
+        child.add_argument("--scratch-directory")
+        child.add_argument(
+            "--definition",
+            help="Python module:attribute containing a PipelineDefinition",
+        )
+        child.add_argument("--input", action="append", default=[])
+        child.add_argument("--profile")
+        child.add_argument("--only", action="append", default=[])
+        child.add_argument("--workers", action="append", default=[])
+        child.add_argument("--force", action="append", default=[])
+        child.add_argument("--idle-wait", type=float, default=0)
+        child.add_argument("--outputs", action="store_true")
+        child.add_argument("--json", action="store_true")
+
+
+def assignments(values: list[str]) -> dict[str, str]:
     result: dict[str, str] = {}
     for value in values:
-        name, separator, content = value.partition("=")
-        if not separator or not name or not content:
-            raise ValueError(f"expected NAME=VALUE: {value!r}")
-        if name in result:
-            raise ValueError(f"duplicate assignment: {name!r}")
-        result[name] = content
+        key, separator, item = value.partition("=")
+        if not separator or not key or not item or key in result:
+            raise ValueError(f"invalid or duplicate binding: {value}")
+        result[key] = item
     return result
 
 
-def _configuration(arguments: argparse.Namespace) -> list[Mapping[str, object]]:
-    layers: list[Mapping[str, object]] = []
-    for filename in arguments.config_file:
-        path = Path(filename)
-        loader = (
-            load_json_configuration
-            if path.suffix == ".json"
-            else load_yaml_configuration
+def load_definition(name: str, reference: str | None) -> PipelineDefinition | None:
+    if reference:
+        module, separator, attribute = reference.partition(":")
+        if not separator:
+            raise ValueError("definition must be module:attribute")
+        value = getattr(importlib.import_module(module), attribute)
+    else:
+        matches = list(entry_points(group="provium.pipeline.definitions", name=name))
+        if len(matches) > 1:
+            raise ValueError(f"duplicate pipeline definition: {name}")
+        if not matches:
+            return None
+        value = matches[0].load()
+    if not isinstance(value, PipelineDefinition):
+        raise TypeError("expected PipelineDefinition")
+    return value
+
+
+def outcome_json(event: Outcome) -> dict[str, Any]:
+    return {
+        "state": event.state,
+        "node": event.node,
+        "reused": event.reused,
+        "outputs": {
+            name: {"location": artifact.location, **artifact.fingerprint}
+            for name, artifact in event.outputs.items()
+        },
+        "error": event.error,
+    }
+
+
+def execute(arguments: argparse.Namespace) -> int:
+    action = arguments.action
+    documents = load_documents(arguments.file)
+    graphs = [doc for doc in documents if isinstance(doc, PipelineConfiguration)]
+    profiles = {doc.name: doc for doc in documents if isinstance(doc, ComputeProfile)}
+    backend = None
+    if action in ("register", "enqueue", "retry") or arguments.pipeline:
+        if not arguments.database:
+            raise ValueError(
+                "database required; use --database or PROVIUM_DATABASE_URL"
+            )
+        backend = PostgresBackend(arguments.database)
+    if action == "register":
+        if not documents:
+            raise ValueError("register requires YAML documents")
+        for graph in graphs:
+            build_plan(graph, load_definition(graph.name, arguments.definition))
+        assert backend is not None
+        backend.register(
+            [doc.model_dump(mode="json") for doc in documents],
+            definitions={
+                graph.name: definition
+                for graph in graphs
+                if (definition := load_definition(graph.name, arguments.definition))
+                is not None
+            },
         )
-        layers.append(loader(path))
-    overrides: dict[str, object] = {}
-    for name, value in _assignments(arguments.config).items():
-        try:
-            overrides[name] = json.loads(value)
-        except json.JSONDecodeError:
-            overrides[name] = value
-    layers.append(overrides)
-    return layers
+        print(json.dumps({"registered": len(documents)}))
+        return 0
+    if arguments.pipeline:
+        if documents or action == "run" and arguments.input:
+            raise ValueError(
+                "registered execution cannot combine files or direct inputs"
+            )
+        assert backend is not None
+        graph = PipelineConfiguration.model_validate(
+            backend.get("PipelineConfiguration", arguments.pipeline)
+        )
+    else:
+        if len(graphs) != 1:
+            raise ValueError("select exactly one pipeline with -f or a registered name")
+        graph = graphs[0]
+    definition = load_definition(graph.name, arguments.definition)
+    if action == "retry":
+        assert backend is not None
+        print(json.dumps({"reset": backend.retry(graph.name)}))
+        return 0
+    if action == "enqueue":
+        assert backend is not None
+        values = assignments(arguments.input)
+        print(json.dumps({"id": backend.enqueue(graph.name, values)}))
+        return 0
+    profile = None
+    if arguments.profile:
+        if backend:
+            profile = ComputeProfile.model_validate(
+                backend.get("ComputeProfile", arguments.profile)
+            )
+        elif arguments.profile in profiles:
+            profile = profiles[arguments.profile]
+        else:
+            raise ValueError(f"unknown profile: {arguments.profile}")
+    overrides: list[dict[str, Any]] = []
+    for value in arguments.workers:
+        key, separator, count = value.partition("=")
+        if not separator:
+            raise ValueError("worker override requires selector=count")
+        overrides.append({key: int(count)})
+    store = ArtifactStore(arguments.store, scratch=arguments.scratch_directory)
+    with (
+        store,
+        ExecutionContext(
+            graph,
+            store,
+            definition=definition,
+            profile=profile,
+            workers=overrides,
+            only=arguments.only,
+            force=arguments.force,
+            backend=backend,
+            idle_wait=arguments.idle_wait,
+        ) as context,
+    ):
+        if action in ("validate", "inspect"):
+            print(
+                json.dumps(
+                    {
+                        "pipeline": graph.name,
+                        "order": context.plan.order,
+                        "settings": {
+                            name: asdict(settings)
+                            for name, settings in context.settings.items()
+                        },
+                    }
+                )
+            )
+        elif action == "status":
+            if backend and not arguments.input:
+                rows: list[dict[str, Any]] = []
+                after = 0
+                while batch := backend.pending(
+                    graph.name, after, include_finished=True
+                ):
+                    rows.extend(batch)
+                    after = batch[-1]["id"]
+                if arguments.outputs:
+                    result: list[dict[str, Any]] = []
+                    for row in rows:
+                        recorded_store = row["detail"].get("store", store.namespace)
+                        with ArtifactStore(
+                            recorded_store, scratch=arguments.scratch_directory
+                        ) as reader:
+                            with ExecutionContext(
+                                graph, reader, backend=backend, only=arguments.only
+                            ) as inspector:
+                                report = inspector.inspect_inputs(
+                                    [InputSet(row["inputs"])]
+                                )[0]
+                                report["id"] = row["id"]
+                                result.append(report)
+                else:
+                    result = [
+                        {"id": row["id"], "state": row["state"], **row["detail"]}
+                        for row in rows
+                    ]
+            else:
+                result = context.inspect_inputs(
+                    [InputSet(assignments(arguments.input))]
+                )
+            print(json.dumps(result))
+        elif action == "run":
+            items = [] if backend else [InputSet(assignments(arguments.input))]
+            context.start(items)
+        else:
+            raise ValueError(f"unsupported action: {action}")
+    if action == "run":
+        print(json.dumps([outcome_json(event) for event in context.outcomes]))
+        print(f"Run log: {context.log_path}", file=sys.stderr)
+    return 0
 
 
-def _paths(
-    values: Sequence[str],
-    definitions: Mapping[str, ArtifactDefinition[Any]],
-) -> dict[str, Path]:
-    paths = _assignments(values)
-    unknown = paths.keys() - definitions.keys()
-    if unknown:
-        raise ValueError(f"unknown pipeline bindings: {sorted(unknown)}")
-    return {name: Path(value) for name, value in paths.items()}
+def run(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="provium-pipeline")
+    configure(parser)
+    arguments = parser.parse_args(argv)
+    try:
+        return execute(arguments)
+    except Exception as error:
+        print(f"provium-pipeline: {error}", file=sys.stderr)
+        return 2
+
+
+def main() -> None:
+    raise SystemExit(run())
 
 
 class PipelineCommand(Command):
-    """Load, validate and execute a pipeline definition."""
-
     name = "pipeline"
-    help = "Validate or execute a YAML pipeline"
+    help = "Execute and manage provenance-addressed procedure graphs"
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
-        subparsers = parser.add_subparsers(dest="pipeline_action", required=True)
-        for action in ("validate", "run"):
-            command = subparsers.add_parser(action)
-            command.add_argument("definition")
-            command.add_argument(
-                "--config", action="append", default=[], metavar="NAME=VALUE"
-            )
-            command.add_argument(
-                "--config-file", action="append", default=[], metavar="PATH"
-            )
-            if action == "run":
-                command.add_argument(
-                    "--input", action="append", default=[], metavar="NAME=PATH"
-                )
-                command.add_argument(
-                    "--output", action="append", default=[], metavar="NAME=PATH"
-                )
-                command.add_argument("--keep-intermediates", metavar="DIRECTORY")
+        configure(parser)
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            pipeline = Pipeline.from_yaml(arguments.definition)
-            executor = PipelineExecutor()
-            layers = _configuration(arguments)
-            plan = executor.plan(pipeline, configuration_layers=layers)
-            if arguments.pipeline_action == "validate":
-                print(f"{plan.name}: " + " -> ".join(step.name for step in plan.steps))
-                return 0
-            steps = {step.name: step for step in plan.steps}
-            output_types: dict[str, ArtifactDefinition[Any]] = {}
-            for name, reference in plan.outputs.items():
-                assert reference.step is not None
-                output_types[name] = steps[reference.step].outputs[reference.name]
-            inputs = {
-                name: plan.inputs[name].resolve().bind_read(path)
-                for name, path in _paths(arguments.input, plan.inputs).items()
-            }
-            outputs = {
-                name: output_types[name].resolve().bind_write(path)
-                for name, path in _paths(arguments.output, output_types).items()
-            }
-            result = executor.execute(
-                pipeline,
-                configuration_layers=layers,
-                inputs=inputs,
-                outputs=outputs,
-                keep_intermediates=arguments.keep_intermediates,
-            )
+            return execute(arguments)
         except Exception as error:
-            print(f"pipeline: {error}", file=sys.stderr)
-            return 1
-        print(result.identity)
-        if result.intermediate_directory is not None:
-            print(f"Intermediates: {result.intermediate_directory}")
-        return 0
+            print(f"provium pipeline: {error}", file=sys.stderr)
+            return 2
 
 
 catalog = CommandCatalog()
 catalog.register(PipelineCommand)
 plugin = CLIPlugin(CLI_PLUGIN_API_VERSION, "provium-pipeline", catalog)
-
-__all__ = ["PipelineCommand", "plugin"]

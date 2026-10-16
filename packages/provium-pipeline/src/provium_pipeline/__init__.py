@@ -1,14 +1,28 @@
-"""Declarative ephemeral pipelines for Provium."""
+"""Provenance-addressed procedure pipelines."""
 
-from .executor import PipelineExecutionResult, PipelineExecutor
-from .models import Pipeline, PipelineStep
-from .planning import PipelinePlan, PlannedStep
+from importlib.metadata import version
 
+from .database import PostgresBackend
+from .models import (
+    ComputeProfile,
+    PipelineConfiguration,
+    PipelineDefinition,
+    load_documents,
+)
+from .runtime import ExecutionContext, InputSet, Outcome
+from .store import Artifact, ArtifactStore
+
+__version__ = version("provium-pipeline")
 __all__ = [
-    "Pipeline",
-    "PipelineExecutionResult",
-    "PipelineExecutor",
-    "PipelinePlan",
-    "PipelineStep",
-    "PlannedStep",
+    "Artifact",
+    "ArtifactStore",
+    "ComputeProfile",
+    "ExecutionContext",
+    "InputSet",
+    "Outcome",
+    "PipelineConfiguration",
+    "PipelineDefinition",
+    "PostgresBackend",
+    "load_documents",
+    "__version__",
 ]
