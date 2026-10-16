@@ -25,7 +25,6 @@ from .models import (
     PipelineConfiguration,
     PipelineDefinition,
     Settings,
-    refs,
 )
 from .planning import build_plan
 from .store import Artifact, ArtifactStore
@@ -399,20 +398,7 @@ class ExecutionContext:
         self._states.append(state)
         self.max_resident_inputs = max(self.max_resident_inputs, len(self._states))
         try:
-            graph = self.plan.configuration
-            initial_references = list(graph.outputs.values()) + [
-                ref
-                for node in graph.nodes.values()
-                for binding in (*node.inputs.values(), *node.setup_inputs.values())
-                for ref in refs(binding)
-            ]
-            expected_names = (
-                set(self.plan.definition.inputs)
-                if self.plan.definition
-                else {
-                    ref[8:] for ref in initial_references if ref.startswith("$inputs.")
-                }
-            )
+            expected_names = set(self.plan.configuration.inputs)
             if set(item.inputs) != expected_names:
                 raise ValueError("input names do not match pipeline definition")  # noqa: TRY301 -- converted to an item outcome
             for name, value in item.inputs.items():

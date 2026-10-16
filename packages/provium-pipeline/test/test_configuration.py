@@ -10,7 +10,7 @@ from provium_pipeline.models import (
 def test_multidoc_and_duplicate_rejection(tmp_path):
     path = tmp_path / "bundle.yaml"
     path.write_text(
-        "kind: PipelineConfiguration\nname: p\nnodes: {}\noutputs: {}\n"
+        "kind: PipelineConfiguration\nname: p\ninputs: {}\nnodes: {}\noutputs: {}\n"
         "---\nkind: ComputeProfile\nname: local\n"
     )
     docs = load_documents([path])
@@ -47,6 +47,7 @@ def test_invalid_workers(value):
 
 def test_graph_cycles_and_bad_references():
     graph = PipelineConfiguration(
+        inputs={},
         name="p",
         nodes={
             "a": {"procedure": "x", "inputs": {"i": "$nodes.b.o"}},
@@ -57,11 +58,12 @@ def test_graph_cycles_and_bad_references():
     with pytest.raises(ValueError, match="cycle"):
         graph.order()
     with pytest.raises(ValueError):
-        PipelineConfiguration(name="p", nodes={}, outputs={"o": "$bad.x"})
+        PipelineConfiguration(inputs={}, name="p", nodes={}, outputs={"o": "$bad.x"})
 
 
 def test_stable_leftmost_topological_order():
     graph = PipelineConfiguration(
+        inputs={"i": "example.ArtifactV1"},
         name="p",
         nodes={
             "a": {"procedure": "x", "inputs": {"i": "$inputs.i"}},
@@ -76,5 +78,8 @@ def test_stable_leftmost_topological_order():
 def test_unknown_compute_fields_rejected():
     with pytest.raises(ValueError):
         PipelineConfiguration(
-            name="p", nodes={"a": {"procedure": "x", "compute": {}}}, outputs={}
+            inputs={},
+            name="p",
+            nodes={"a": {"procedure": "x", "compute": {}}},
+            outputs={},
         )

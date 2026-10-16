@@ -13,7 +13,8 @@ def remote(monkeypatch):
 
     files = {
         "pipeline.yaml": (
-            b"kind: PipelineConfiguration\nname: remote\nnodes: {}\noutputs: {}\n"
+            b"kind: PipelineConfiguration\nname: remote\n"
+            b"inputs: {}\nnodes: {}\noutputs: {}\n"
         ),
         "profiles.yaml": (
             b"kind: ComputeProfile\nname: local\n---\n"

@@ -14,6 +14,8 @@ by the graph. The same command is available as `provium pipeline`.
 ```yaml
 kind: PipelineConfiguration
 name: tokenize-documents
+inputs:
+  document: provium_text_pipeline_example.DocumentV1
 nodes:
   tokenize:
     procedure: provium_text_pipeline_example.TokenizeV1

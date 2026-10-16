@@ -40,14 +40,16 @@ def build_plan(
     configs: dict[str, dict[str, Any]] = {}
     output_types: dict[str, dict[str, str]] = {}
     order = configuration.order()
-    types: dict[str, str] = {}
+    types = {f"$inputs.{name}": value for name, value in configuration.inputs.items()}
     if definition is not None:
-        types.update(
-            {
-                f"$inputs.{name}": value if isinstance(value, str) else value.identifier
-                for name, value in definition.inputs.items()
-            }
-        )
+        if configuration.inputs.keys() != definition.inputs.keys():
+            raise ValueError("pipeline input names do not match definition")
+        for name, expected in definition.inputs.items():
+            expected_type = (
+                expected if isinstance(expected, str) else expected.identifier
+            )
+            if configuration.inputs[name] != expected_type:
+                raise ValueError(f"incompatible pipeline input: {name}")
     for name in order:
         node = configuration.nodes[name]
         procedure: Any = (
@@ -96,12 +98,6 @@ def build_plan(
                 ):
                     raise ValueError(f"{name}.{key}: invalid binding cardinality")
                 for source in sources:
-                    if (
-                        source not in types
-                        and source.startswith("$inputs.")
-                        and definition is None
-                    ):
-                        types[source] = field.artifact_identifier
                     if types.get(source) != field.artifact_identifier:
                         raise ValueError(
                             f"{name}.{key}: incompatible or unknown source {source}"
@@ -123,7 +119,7 @@ def build_plan(
                 raise ValueError(f"incompatible pipeline output: {name}")
     else:
         for source in configuration.outputs.values():
-            if source.startswith("$nodes.") and source not in types:
+            if source not in types:
                 raise ValueError(f"unknown pipeline output source: {source}")
     return Plan(
         configuration,

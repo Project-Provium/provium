@@ -25,6 +25,7 @@ def test_procedure_isolated_in_child_process(tmp_path):
     from provium_text_pipeline_example.artifact import DOCUMENT
 
     graph = PipelineConfiguration(
+        inputs={},
         name="source",
         nodes={"source": {"procedure": SOURCE.identifier}},
         outputs={"result": "$nodes.source.result"},
@@ -43,6 +44,7 @@ def test_procedure_isolated_in_child_process(tmp_path):
 
 def test_hard_limit_interrupts_running_code(tmp_path):
     graph = PipelineConfiguration(
+        inputs={},
         name="slow",
         nodes={"slow": {"procedure": SLOW.identifier}},
         outputs={"result": "$nodes.slow.result"},

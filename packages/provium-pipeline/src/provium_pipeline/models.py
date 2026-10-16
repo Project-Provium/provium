@@ -65,8 +65,18 @@ class Node(BaseModel):
 
 class PipelineConfiguration(Document):
     kind: Literal["PipelineConfiguration"] = "PipelineConfiguration"
+    inputs: dict[str, str]
     nodes: dict[str, Node]
     outputs: dict[str, str]
+
+    @field_validator("inputs")
+    @classmethod
+    def validate_inputs(cls, value: dict[str, str]) -> dict[str, str]:
+        for name, artifact in value.items():
+            name_check(name)
+            if not artifact.strip():
+                raise ValueError(f"input {name} requires an artifact identifier")
+        return value
 
     @field_validator("nodes")
     @classmethod

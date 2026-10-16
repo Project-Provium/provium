@@ -9,7 +9,8 @@ from provium_pipeline.cli import run
 def config(tmp_path):
     path = tmp_path / "pipeline.yaml"
     path.write_text(
-        "kind: PipelineConfiguration\nname: tokenize\nnodes:\n"
+        "kind: PipelineConfiguration\nname: tokenize\n"
+        "inputs: {document: provium_text_pipeline_example.DocumentV1}\nnodes:\n"
         f"  tokenize:\n    procedure: {TOKENIZE.identifier}\n"
         '    inputs:\n      source: "$inputs.document"\n'
         'outputs:\n  tokens: "$nodes.tokenize.destination"\n'

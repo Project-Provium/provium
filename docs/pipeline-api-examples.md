@@ -14,6 +14,8 @@ Create `pipeline.yaml`:
 ```yaml
 kind: PipelineConfiguration
 name: tokenize-documents
+inputs:
+  document: provium_text_pipeline_example.DocumentV1
 nodes:
   tokenize:
     procedure: provium_text_pipeline_example.TokenizeV1
@@ -23,6 +25,10 @@ nodes:
 outputs:
   tokens: $nodes.tokenize.destination
 ```
+
+The top-level `inputs` mapping declares every required input name and its artifact identifier. Input sets must match these names and types exactly, including inputs passed directly to outputs. Node bindings can only reference declared inputs. Use `inputs: {}` for a pipeline that requires no inputs. When supplied, a Pipeline Definition must agree with the declared input names and types.
+
+Existing configurations must add this mapping before validation or registration. Previously registered configurations and queued snapshots without it must be replaced explicitly; this change does not rewrite persisted work.
 
 `DOCUMENT_ARTIFACT` is the path or S3 URL of an existing Document artifact produced with named provenance bindings:
 
