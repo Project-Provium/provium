@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.0.0](https://github.com/Project-Provium/provium/compare/provium-pipeline-v1.0.0...provium-pipeline-v2.0.0) (2026-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **provium-pipeline:** PipelineConfiguration requires an inputs mapping from names to artifact identifiers. Existing YAML and persisted configurations must be updated explicitly.
+
+### Features
+
+* **provium-pipeline:** add unregister, registry listing, and queue summaries ([ad714c9](https://github.com/Project-Provium/provium/commit/ad714c9f4b721a031c4f9624beffba7617e27fa4))
+* **provium-pipeline:** add unregister, registry listing, and queue summaries ([69e2753](https://github.com/Project-Provium/provium/commit/69e27535a3c603b4bc9acaffb1baa0b96f7769fd))
+* **provium-pipeline:** load YAML documents from S3 ([4787230](https://github.com/Project-Provium/provium/commit/478723034de41150d18f2299c748abe2ca1a8f85))
+* **provium-pipeline:** require explicit typed pipeline inputs ([23bc5cf](https://github.com/Project-Provium/provium/commit/23bc5cfe3e4dc460771ab9e53e1bafb702b2a93f))
+* support S3 paths and explicit pipeline input declarations ([43bf0f6](https://github.com/Project-Provium/provium/commit/43bf0f677b852adfd0524ccd134bea2f721c8517))
+
 ## [1.0.0](https://github.com/Project-Provium/provium/compare/provium-pipeline-v0.1.0...provium-pipeline-v1.0.0) (2026-10-16)
 
 
