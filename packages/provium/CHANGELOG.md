@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/Project-Provium/provium/compare/provium-v0.9.0...provium-v0.10.0) (2026-10-16)
+
+
+### Features
+
+* **provium:** add stable semantic provenance and named procedure bindings ([d57dd77](https://github.com/Project-Provium/provium/commit/d57dd774f8d27cd5a37c1b9157a63f299a592de5))
+
 ## [0.9.0](https://github.com/Project-Provium/provium/compare/provium-v0.8.0...provium-v0.9.0) (2026-09-10)
 
 

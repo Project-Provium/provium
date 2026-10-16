@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "provium-pipeline"
-version = "0.1.0"
+version = "1.0.0"
 description = "Provenance-addressed local and PostgreSQL-backed procedure pipelines"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     # Core releases keep this minimum aligned with the tested workspace version.
-    "provium>=0.8.0", # x-release-please-version
+    "provium>=0.10.0", # x-release-please-version
     "pydantic>=2.10,<3",
     "PyYAML>=6",
     "psycopg[binary]>=3.2",
