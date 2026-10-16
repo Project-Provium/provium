@@ -265,6 +265,64 @@ with ArtifactStore("./artifacts") as store:
 
 Run exit code 0 means the executor operated normally, including empty queues, failed items, partial completion, and handled time limits. Invalid commands/configurations or executor failure return nonzero. Item failure details and tracebacks are in the run log, whose default location is the system temporary directory; programmatic callers may set `log_path`.
 
+## Managing registered pipelines and queues
+
+List objects registered in the selected PostgreSQL database:
+
+```sh
+provium-pipeline list
+provium-pipeline list pipelines
+provium-pipeline list profiles
+provium-pipeline queue
+provium-pipeline queue tokenize-documents
+```
+
+These commands return JSON and accept `--database` or `PROVIUM_DATABASE_URL`.
+`list` reports registered kind/name pairs; it does not enumerate installed Python
+procedure packages. `queue` reports total InputSets and counts by persisted state
+(pending, partial, cancelled, failed, completed), including empty registered queues.
+It does not load procedures or inspect artifact files. A pending count is not a
+count of active workers: execution ownership is tracked separately by computation
+leases. Use `status <pipeline>` for per-InputSet details and `status --outputs` to
+locate artifacts.
+
+Remove a pipeline, a profile, or all objects named in YAML documents:
+
+```sh
+provium-pipeline unregister tokenize-documents
+provium-pipeline unregister --profile cluster
+provium-pipeline unregister -f pipeline.yaml -f profiles.yaml
+```
+
+File selection supports multi-document YAML and uses each document's `kind` and
+`name`; no procedure implementation is loaded. Use either files or explicit names.
+A pipeline and profile can share a name; the positional name selects the pipeline,
+and `--profile` selects the profile. Both can be supplied in one invocation.
+
+Unregistering a pipeline atomically deletes its saved definition and all its
+InputSet records, including pending work and completed/failed queue history.
+Unregistering a profile does not remove pipeline queues. Missing objects are a
+successful no-op, so repeated commands are safe. The response reports
+`unregistered` and `removed_inputs` counts.
+
+Shared artifacts, accepted results, and computation leases are preserved.
+Already-admitted work may finish and publish its result, but removed InputSets
+cannot acquire new computation leases. Removing a registration is not a hard
+cancellation command. You can register the name again afterward; its old queue
+history will not be restored.
+
+The same operations are available programmatically:
+
+```python
+backend.registered()                          # All registered identities
+backend.registered("PipelineConfiguration")  # Pipelines only
+backend.queue_info("tokenize-documents")      # Omit name for all queues
+backend.unregister([
+    {"kind": "PipelineConfiguration", "name": "tokenize-documents"},
+    {"kind": "ComputeProfile", "name": "cluster"},
+])
+```
+
 ## Deployment and publication
 
 Slurm and AWS Batch launch the same registered `run` command. Install compatible core/procedure packages on every node, provide database/network credentials, and use shared filesystems or S3 for artifacts. Allocate hardware in Slurm/Batch configuration; worker counts are per launched context. These are externally managed deployments, not built-in submission adapters.

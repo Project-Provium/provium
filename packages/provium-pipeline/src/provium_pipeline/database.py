@@ -80,6 +80,7 @@ class QueueBackend(Protocol):
         *,
         force: bool = False,
         ttl: float = 60,
+        input_id: int | None = None,
     ) -> Lease | None: ...
 
     def renew(self, lease: Lease, *, ttl: float = 60) -> bool: ...
@@ -146,6 +147,7 @@ class PostgresBackend:
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate registry objects")
         with self.connect() as connection:
+            connection.execute("SELECT pg_advisory_xact_lock(742819406)")
             for name, definition in definitions.items():
                 payload = definition.snapshot()
                 connection.execute(
@@ -173,6 +175,80 @@ class PostgresBackend:
                 ).fetchone()
                 if row["document"] != document:
                     raise ValueError(f"registered object differs: {key}")
+
+    def registered(self, kind: str | None = None) -> list[dict[str, Any]]:
+        """List registered object identities without loading procedure catalogs."""
+        if kind not in (None, "PipelineConfiguration", "ComputeProfile"):
+            raise ValueError("unknown registry document kind")
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    "SELECT kind,name FROM provium_registry "
+                    "WHERE (%s::text IS NULL OR kind=%s) ORDER BY kind,name",
+                    (kind, kind),
+                )
+            )
+
+    def queue_info(self, pipeline: str | None = None) -> list[dict[str, Any]]:
+        """Summarize persisted InputSet states, including empty pipeline queues."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT r.name,i.state,count(i.id) AS count FROM provium_registry r "
+                "LEFT JOIN provium_inputs i ON i.pipeline=r.name "
+                "WHERE r.kind='PipelineConfiguration' "
+                "AND (%s::text IS NULL OR r.name=%s) "
+                "GROUP BY r.name,i.state ORDER BY r.name,i.state",
+                (pipeline, pipeline),
+            )
+            summaries: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                summary = summaries.setdefault(
+                    row["name"],
+                    {
+                        "pipeline": row["name"],
+                        "total": 0,
+                        "states": dict.fromkeys(
+                            ("pending", "partial", "cancelled", "failed", "completed"),
+                            0,
+                        ),
+                    },
+                )
+                if row["state"] is not None:
+                    summary["states"][row["state"]] = row["count"]
+                    summary["total"] += row["count"]
+            return list(summaries.values())
+
+    def unregister(self, documents: list[dict[str, Any]]) -> dict[str, int]:
+        """Atomically remove registry identities and a pipeline's queue records.
+
+        Missing objects are a no-op. Shared computations and artifacts survive.
+        Documents are selected only by kind/name; their old graph need not resolve.
+        """
+        keys: set[tuple[str, str]] = set()
+        for document in documents:
+            kind, name = document.get("kind"), document.get("name")
+            if kind not in ("PipelineConfiguration", "ComputeProfile"):
+                raise ValueError("unknown registry document kind")
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("unregister requires a nonempty object name")
+            keys.add((kind, name))
+        result = {"unregistered": 0, "removed_inputs": 0}
+        with self.connect() as connection:
+            # Serialize registry changes and final enqueue insertion, not artifact IO.
+            connection.execute("SELECT pg_advisory_xact_lock(742819406)")
+            for kind, name in sorted(keys):
+                if kind == "PipelineConfiguration":
+                    result["removed_inputs"] += connection.execute(
+                        "DELETE FROM provium_inputs WHERE pipeline=%s", (name,)
+                    ).rowcount
+                    connection.execute(
+                        "DELETE FROM provium_definitions WHERE name=%s", (name,)
+                    )
+                result["unregistered"] += connection.execute(
+                    "DELETE FROM provium_registry WHERE kind=%s AND name=%s",
+                    (kind, name),
+                ).rowcount
+        return result
 
     def get(self, kind: str, name: str) -> dict[str, Any]:
         with self.connect() as connection:
@@ -233,6 +309,19 @@ class PostgresBackend:
             }
         )
         with self.connect() as connection:
+            connection.execute("SELECT pg_advisory_xact_lock(742819406)")
+            current = connection.execute(
+                "SELECT r.document,d.document AS definition FROM provium_registry r "
+                "LEFT JOIN provium_definitions d ON d.name=r.name "
+                "WHERE r.kind='PipelineConfiguration' AND r.name=%s",
+                (pipeline,),
+            ).fetchone()
+            if (
+                current is None
+                or current["document"] != snapshot
+                or current["definition"] != definition_payload
+            ):
+                raise ValueError("pipeline changed or was unregistered during enqueue")
             row = connection.execute(
                 "INSERT INTO provium_inputs(pipeline,snapshot,inputs,dedup,definition) "
                 "VALUES(%s,%s,%s,%s,%s) ON CONFLICT(dedup) DO UPDATE "
@@ -301,9 +390,19 @@ class PostgresBackend:
         *,
         force: bool = False,
         ttl: float = 60,
+        input_id: int | None = None,
     ) -> Lease | None:
         owner = uuid4().hex
         with self.connect() as connection:
+            # Admission and deletion serialize on the InputSet row. A lease already
+            # admitted may finish; deleting a queue never revokes shared computation.
+            if input_id is not None:
+                row = connection.execute(
+                    "SELECT id FROM provium_inputs WHERE id=%s FOR KEY SHARE",
+                    (input_id,),
+                ).fetchone()
+                if row is None:
+                    return None
             connection.execute(
                 "INSERT INTO provium_computations(namespace,key) VALUES(%s,%s) "
                 "ON CONFLICT DO NOTHING",
