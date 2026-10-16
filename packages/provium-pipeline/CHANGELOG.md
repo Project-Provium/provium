@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.0.0](https://github.com/Project-Provium/provium/compare/provium-pipeline-v0.1.0...provium-pipeline-v1.0.0) (2026-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **provium-pipeline:** Replace the previous pipeline executor API and configuration with pipeline definitions, YAML procedure graphs, compute profiles, and ExecutionContext. Existing pipeline integrations must migrate to the new API.
+
+### Features
+
+* **provium-pipeline:** implement idempotent execution and PostgreSQL queues ([1126724](https://github.com/Project-Provium/provium/commit/11267240f4d25c534c2885346a2ef17b4d3992b8))
+
+
+### Bug Fixes
+
+* **provium-pipeline:** keep core dependency compatible with automated releases ([b774114](https://github.com/Project-Provium/provium/commit/b7741143383ffda1e3b23e943154e3e3b36b5258))
+* **provium-pipeline:** keep core dependency compatible with automated releases ([098dc85](https://github.com/Project-Provium/provium/commit/098dc85c4877d930faa77640c662e53f149b2ce5))
+
+
+### Documentation
+
+* exclude internal pipeline planning from published documentation ([5135075](https://github.com/Project-Provium/provium/commit/5135075e5c7ccf39e068f3b1488de769fd2b85fc))
+
 ## 0.1.0 (2026-09-10)
 
 
