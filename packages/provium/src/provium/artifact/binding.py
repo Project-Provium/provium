@@ -7,6 +7,8 @@ from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast, get_args, get_origin
 
+from provium.files import normalize_location
+
 from .reader import ArtifactReader
 from .writer import ArtifactWriter
 
@@ -83,22 +85,22 @@ def validate_artifact_class(artifact: object) -> type[Artifact[Any, Any]]:
     return cast(type[Artifact[Any, Any]], artifact)
 
 
-def _validate_binding(artifact: object, path: object) -> Path:
+def _validate_binding(artifact: object, path: object) -> Path | str:
     from provium.procedure.authorization import require_binding_creation_allowed
 
     require_binding_creation_allowed()
     validate_artifact_class(artifact)
     if not isinstance(path, (str, PathLike)):
         raise TypeError("artifact binding path must be a string or path-like object")
-    return Path(cast(str | PathLike[str], path))
+    return normalize_location(cast(str | PathLike[str], path))
 
 
 @dataclass(frozen=True, slots=True)
 class ArtifactReadBinding[ReaderT: ArtifactReader]:
-    """Bind a concrete artifact reader type to a filesystem path."""
+    """Bind a concrete artifact reader type to a local path or S3 URI."""
 
     artifact: type[Artifact[ReaderT, Any]]
-    path: Path
+    path: Path | str
 
     def __post_init__(self) -> None:
         normalized = _validate_binding(self.artifact, self.path)
@@ -116,10 +118,10 @@ class ArtifactReadBinding[ReaderT: ArtifactReader]:
 
 @dataclass(frozen=True, slots=True)
 class ArtifactWriteBinding[WriterT: ArtifactWriter]:
-    """Bind a concrete artifact writer type to a filesystem path."""
+    """Bind a concrete artifact writer type to a local path or S3 URI."""
 
     artifact: type[Artifact[Any, WriterT]]
-    path: Path
+    path: Path | str
 
     def __post_init__(self) -> None:
         normalized = _validate_binding(self.artifact, self.path)

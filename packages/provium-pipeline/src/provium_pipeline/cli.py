@@ -128,7 +128,9 @@ def execute(arguments: argparse.Namespace) -> int:
         else:
             print(json.dumps(backend.queue_info(arguments.pipeline)))
         return 0
-    documents = load_documents(arguments.file)
+    documents = load_documents(
+        arguments.file, scratch_directory=arguments.scratch_directory
+    )
     graphs = [doc for doc in documents if isinstance(doc, PipelineConfiguration)]
     profiles = {doc.name: doc for doc in documents if isinstance(doc, ComputeProfile)}
     backend = None

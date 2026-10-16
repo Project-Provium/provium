@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import yaml
+from provium.files import local_file
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 NAME = re.compile(r"^[^.$\s/]+$")
@@ -64,8 +65,18 @@ class Node(BaseModel):
 
 class PipelineConfiguration(Document):
     kind: Literal["PipelineConfiguration"] = "PipelineConfiguration"
+    inputs: dict[str, str]
     nodes: dict[str, Node]
     outputs: dict[str, str]
+
+    @field_validator("inputs")
+    @classmethod
+    def validate_inputs(cls, value: dict[str, str]) -> dict[str, str]:
+        for name, artifact in value.items():
+            name_check(name)
+            if not artifact.strip():
+                raise ValueError(f"input {name} requires an artifact identifier")
+        return value
 
     @field_validator("nodes")
     @classmethod
@@ -259,12 +270,16 @@ UniqueLoader.add_constructor(
 
 def load_documents(
     paths: Iterable[str | Path],
+    *,
+    scratch_directory: str | Path | None = None,
 ) -> list[PipelineConfiguration | ComputeProfile]:
     documents: list[PipelineConfiguration | ComputeProfile] = []
     seen: set[tuple[str, str]] = set()
     for path in paths:
-        with Path(path).open() as stream:
-            for value in yaml.load_all(stream, Loader=UniqueLoader):
+        with local_file(path, scratch_directory=scratch_directory) as local:
+            for value in yaml.load_all(
+                local.read_text(encoding="utf-8"), Loader=UniqueLoader
+            ):
                 if value is None:
                     continue
                 if not isinstance(value, dict):

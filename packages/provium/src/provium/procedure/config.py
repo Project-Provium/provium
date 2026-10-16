@@ -10,10 +10,11 @@ from dataclasses import dataclass
 from hashlib import sha256
 from importlib import import_module
 from os import PathLike
-from pathlib import Path
 from typing import Never, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict
+
+from provium.files import local_file
 
 type JsonScalar = None | bool | int | float | str
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -139,8 +140,9 @@ def compose_configuration(
 
 def load_json_configuration(path: str | PathLike[str]) -> dict[str, object]:
     """Load one raw configuration layer from a UTF-8 JSON object."""
-    configuration_path = Path(path)
-    document = configuration_path.read_text(encoding="utf-8")
+    configuration_path = path
+    with local_file(path) as local:
+        document = local.read_text(encoding="utf-8")
 
     def reject_non_finite(constant: str) -> Never:
         raise json.JSONDecodeError(
@@ -167,8 +169,9 @@ def load_yaml_configuration(path: str | PathLike[str]) -> dict[str, object]:
             "YAML configuration support requires installing provium[yaml]"
         ) from error
 
-    configuration_path = Path(path)
-    value = yaml.safe_load(configuration_path.read_text(encoding="utf-8"))
+    configuration_path = path
+    with local_file(path) as local:
+        value = yaml.safe_load(local.read_text(encoding="utf-8"))
     if not isinstance(value, Mapping):
         raise TypeError(f"configuration root must be a mapping: {configuration_path}")
     mapping = cast(Mapping[object, object], value)

@@ -13,6 +13,7 @@ from provium_pipeline.store import ArtifactStore
 
 def configuration():
     return PipelineConfiguration(
+        inputs={"document": DOCUMENT.identifier},
         name="tokenize",
         nodes={
             "tokenize": {
@@ -148,6 +149,7 @@ def test_force_content_controls_descendant_reuse(tmp_path):
         (SOURCE, {}, False),
     ):
         graph = PipelineConfiguration(
+            inputs={"document": DOCUMENT.identifier} if inputs else {},
             name="chain",
             nodes={
                 "source": {
@@ -179,6 +181,7 @@ def test_failed_equivalent_inputs_do_not_retry_and_independent_work_continues(tm
     from pipeline_fixtures import COPY
 
     graph = PipelineConfiguration(
+        inputs={"document": DOCUMENT.identifier},
         name="copy",
         nodes={
             "copy": {
@@ -212,6 +215,7 @@ def test_soft_expiry_drains_inflight_but_not_next_input(tmp_path):
     from pipeline_fixtures import COPY
 
     graph = PipelineConfiguration(
+        inputs={"document": DOCUMENT.identifier},
         name="copy",
         nodes={
             "copy": {
@@ -241,6 +245,7 @@ def test_branches_join_setup_binding_and_atomic_multiple_outputs(tmp_path):
     from pipeline_fixtures import COPY, JOIN
 
     graph = PipelineConfiguration(
+        inputs={"left": DOCUMENT.identifier, "right": DOCUMENT.identifier},
         name="join",
         nodes={
             "left": {

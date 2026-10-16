@@ -50,6 +50,8 @@ Support YAML and programmatic construction of the same validated models. Every Y
 
 Accept repeatable `-f <path>` options and multi-document YAML separated by `---`. Read files and documents in supplied order. Ignore empty documents; reject unknown kinds, duplicate mapping keys, unknown structural fields, and duplicate `(kind, name)` objects in one batch. Do not merge documents implicitly or evaluate arbitrary YAML objects/expressions.
 
+A Pipeline Configuration requires a top-level `inputs` mapping from input names to artifact identifiers (`inputs: {}` when empty). These declarations determine the exact names and types accepted by local execution and database enqueueing, including pass-through inputs. All `$inputs` references must be declared, and a supplied Pipeline Definition must agree with the declarations. Do not infer undeclared inputs from node bindings.
+
 A Pipeline Configuration contains its kind, name, procedure nodes, semantic procedure configuration, optional node `tags`, named input/setup-input bindings, and final output mappings. Queue/database connections, store paths, compute settings, and scheduling settings are supplied separately.
 
 Bindings use complete references:

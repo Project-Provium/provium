@@ -38,6 +38,7 @@ nav:
       - Artifacts: guides/artifacts.md
       - Procedures and provenance: guides/procedures.md
       - Dumping and loading: guides/transfers.md
+      - Local and S3 files: guides/storage.md
       - Provenance graphs: guides/graphing.md
       - Command-line tools: guides/cli.md
       - Pipelines: pipeline-api-examples.md

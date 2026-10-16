@@ -229,6 +229,9 @@ def test_repeated_and_optional_bindings_match_core_provenance(tmp_path):
         )
     ):
         graph = PipelineConfiguration(
+            inputs={"document": "provium_text_pipeline_example.DocumentV1"}
+            if bindings
+            else {},
             name="collection",
             nodes={"collect": {"procedure": COLLECTION.identifier, "inputs": bindings}},
             outputs={"result": "$nodes.collect.result"},

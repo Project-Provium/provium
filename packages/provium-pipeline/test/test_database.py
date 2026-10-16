@@ -24,6 +24,7 @@ def test_concurrent_enqueue_deduplicates_and_registration_is_immutable(tmp_path)
     name = "p-" + uuid4().hex
     document = {
         "kind": "PipelineConfiguration",
+        "inputs": {"x": "provium_text_pipeline_example.DocumentV1"},
         "name": name,
         "nodes": {},
         "outputs": {},
@@ -89,6 +90,7 @@ def test_enqueue_pins_artifact_content(tmp_path):
         [
             {
                 "kind": "PipelineConfiguration",
+                "inputs": {"x": "provium_text_pipeline_example.DocumentV1"},
                 "name": name,
                 "nodes": {},
                 "outputs": {"result": "$inputs.x"},
@@ -117,6 +119,7 @@ def test_registered_definition_is_pinned_and_checked(tmp_path):
     )
     document = {
         "kind": "PipelineConfiguration",
+        "inputs": {"x": "provium_text_pipeline_example.DocumentV1"},
         "name": name,
         "nodes": {},
         "outputs": {"result": "$inputs.x"},
@@ -217,6 +220,7 @@ def test_cancelled_input_remains_available_for_later_run(tmp_path):
         [
             {
                 "kind": "PipelineConfiguration",
+                "inputs": {"x": "provium_text_pipeline_example.DocumentV1"},
                 "name": name,
                 "nodes": {},
                 "outputs": {"result": "$inputs.x"},
@@ -239,6 +243,7 @@ def test_registry_and_input_validation_errors(tmp_path):
         db.register([{"kind": "Unknown", "name": "bad"}])
     document = {
         "kind": "PipelineConfiguration",
+        "inputs": {"x": "provium_text_pipeline_example.DocumentV1"},
         "name": "p-" + uuid4().hex,
         "nodes": {},
         "outputs": {"x": "$inputs.x"},
@@ -254,7 +259,7 @@ def test_registry_and_input_validation_errors(tmp_path):
         db.register([document], definitions={document["name"]: changed})
     with pytest.raises(ValueError, match="input names"):
         db.enqueue(document["name"], {})
-    wrong = {**document, "name": "p-" + uuid4().hex}
+    wrong = {**document, "name": "p-" + uuid4().hex, "inputs": {"x": TOKENS.identifier}}
     db.register(
         [wrong],
         definitions={wrong["name"]: PipelineDefinition({"x": TOKENS}, {"x": TOKENS})},

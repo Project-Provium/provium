@@ -89,7 +89,8 @@ def test_persistent_commands_and_invalid_combinations(tmp_path, capsys):
     name = "p-" + uuid4().hex
     path = tmp_path / "bundle.yaml"
     path.write_text(
-        f"kind: PipelineConfiguration\nname: {name}\nnodes: {{}}\n"
+        f"kind: PipelineConfiguration\nname: {name}\n"
+        "inputs: {x: provium_text_pipeline_example.DocumentV1}\nnodes: {}\n"
         "outputs: {result: '$inputs.x'}\n"
         f"---\nkind: ComputeProfile\nname: {name}\n"
     )

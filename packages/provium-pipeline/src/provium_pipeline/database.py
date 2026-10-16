@@ -289,12 +289,12 @@ class PostgresBackend:
                     "fingerprint": artifact.fingerprint,
                 }
         inputs = pinned
-        if definition:
-            if inputs.keys() != definition.inputs.keys():
-                raise ValueError("input names differ from pipeline definition")
-            for name, artifact in inputs.items():
-                if artifact["fingerprint"]["type"] != definition.inputs[name]:
-                    raise ValueError(f"incompatible pipeline input: {name}")
+        expected_inputs = PipelineConfiguration.model_validate(snapshot).inputs
+        if inputs.keys() != expected_inputs.keys():
+            raise ValueError("input names differ from pipeline configuration")
+        for name, artifact in inputs.items():
+            if artifact["fingerprint"]["type"] != expected_inputs[name]:
+                raise ValueError(f"incompatible pipeline input: {name}")
         key = canonical_hash(
             {
                 "pipeline": snapshot,

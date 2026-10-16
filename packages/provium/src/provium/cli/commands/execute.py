@@ -18,7 +18,9 @@ from provium import (
     discover_procedure_catalogs,
     load_json_configuration,
     load_yaml_configuration,
+    session,
 )
+from provium.files import local_file, normalize_location
 
 from ..command import Command
 from ..errors import EXPECTED_CLI_ERRORS, print_cli_error
@@ -123,6 +125,7 @@ class ExecuteCommand(Command):
             help="List available procedures",
         )
         parser.add_argument("--config", action="append", default=[])
+        parser.add_argument("--scratch-directory")
         setup_input = parser.add_argument("--setup-input", action="append", default=[])
         setup_input.completer = _complete_setup_bindings  # type: ignore[attr-defined]
         process_input = parser.add_argument("--input", action="append", default=[])
@@ -143,28 +146,31 @@ class ExecuteCommand(Command):
                 self._parser.error("the following arguments are required: identifier")
             if arguments.help:
                 return self._show_help(arguments.identifier)
-            definition = _definition(arguments.identifier)
-            contract = definition.resolve_contract()
-            layers = tuple(self._load_configuration(path) for path in arguments.config)
-            setup_inputs = self._read_bindings(
-                contract.SetupInputs.fields if contract.SetupInputs else {},
-                arguments.setup_input,
-            )
-            inputs = self._read_bindings(
-                contract.Inputs.fields if contract.Inputs else {},
-                arguments.input,
-            )
-            outputs = self._write_bindings(
-                contract.Outputs.fields if contract.Outputs else {},
-                arguments.output,
-            )
-            result = ProcedureExecutor().execute(
-                definition,
-                configuration_layers=layers,
-                setup_inputs=setup_inputs,
-                inputs=inputs,
-                outputs=outputs,
-            )
+            with session(scratch_directory=arguments.scratch_directory):
+                definition = _definition(arguments.identifier)
+                contract = definition.resolve_contract()
+                layers = tuple(
+                    self._load_configuration(path) for path in arguments.config
+                )
+                setup_inputs = self._read_bindings(
+                    contract.SetupInputs.fields if contract.SetupInputs else {},
+                    arguments.setup_input,
+                )
+                inputs = self._read_bindings(
+                    contract.Inputs.fields if contract.Inputs else {},
+                    arguments.input,
+                )
+                outputs = self._write_bindings(
+                    contract.Outputs.fields if contract.Outputs else {},
+                    arguments.output,
+                )
+                result = ProcedureExecutor().execute(
+                    definition,
+                    configuration_layers=layers,
+                    setup_inputs=setup_inputs,
+                    inputs=inputs,
+                    outputs=outputs,
+                )
         except EXPECTED_CLI_ERRORS as error:
             identifier = getattr(arguments, "identifier", None)
             context = (
@@ -235,21 +241,21 @@ class ExecuteCommand(Command):
 
     @staticmethod
     def _load_configuration(path_value: str) -> Mapping[str, object]:
-        path = Path(path_value)
-        if path.suffix.casefold() == ".json":
-            return load_json_configuration(path)
-        if path.suffix.casefold() in {".yaml", ".yml"}:
-            return load_yaml_configuration(path)
-        raise ValueError(f"unsupported configuration file type: {path}")
+        with local_file(path_value) as path:
+            if path.suffix.casefold() == ".json":
+                return load_json_configuration(path)
+            if path.suffix.casefold() in {".yaml", ".yml"}:
+                return load_yaml_configuration(path)
+        raise ValueError(f"unsupported configuration file type: {path_value}")
 
     @staticmethod
-    def _assignments(values: Sequence[str]) -> dict[str, list[Path]]:
-        assignments: dict[str, list[Path]] = {}
+    def _assignments(values: Sequence[str]) -> dict[str, list[Path | str]]:
+        assignments: dict[str, list[Path | str]] = {}
         for value in values:
             name, separator, path = value.partition("=")
             if not separator or not name or not path:
                 raise ValueError(f"binding must use FIELD=PATH syntax: {value}")
-            assignments.setdefault(name, []).append(Path(path))
+            assignments.setdefault(name, []).append(normalize_location(path))
         return assignments
 
     @classmethod

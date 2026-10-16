@@ -18,7 +18,13 @@ def db():
 
 
 def document(name):
-    return {"kind": "PipelineConfiguration", "name": name, "nodes": {}, "outputs": {}}
+    return {
+        "kind": "PipelineConfiguration",
+        "name": name,
+        "inputs": {},
+        "nodes": {},
+        "outputs": {},
+    }
 
 
 def test_unregister_removes_queue_and_definition_but_preserves_shared_results(db):
@@ -116,7 +122,14 @@ def test_enqueue_racing_unregister_does_not_restore_deleted_queue(
     from provium_pipeline.store import ArtifactStore
 
     name = "p-" + uuid4().hex
-    db.register([document(name)])
+    db.register(
+        [
+            {
+                **document(name),
+                "inputs": {"x": "provium_text_pipeline_example.DocumentV1"},
+            }
+        ]
+    )
     source = str(make_artifact(tmp_path / "source.pa"))
     original = ArtifactStore.inspect
 
@@ -135,7 +148,8 @@ def test_management_cli(db, tmp_path, capsys):
     name = "p-" + uuid4().hex
     path = tmp_path / "bundle.yaml"
     path.write_text(
-        f"kind: PipelineConfiguration\nname: {name}\nnodes: {{}}\noutputs: {{}}\n"
+        f"kind: PipelineConfiguration\nname: {name}\n"
+        "inputs: {}\nnodes: {}\noutputs: {}\n"
         f"---\nkind: ComputeProfile\nname: {name}\n"
     )
     common = ["--database", DSN]

@@ -81,7 +81,9 @@ def test_empty_documents_are_ignored(tmp_path):
 )
 def test_missing_and_unused_nodes(nodes, outputs):
     with pytest.raises(ValueError):
-        PipelineConfiguration(name="test", nodes=nodes, outputs=outputs).order()
+        PipelineConfiguration(
+            inputs={}, name="test", nodes=nodes, outputs=outputs
+        ).order()
 
 
 def test_unknown_fields_and_incompatible_contracts():

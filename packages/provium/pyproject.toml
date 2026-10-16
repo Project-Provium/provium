@@ -30,6 +30,7 @@ Issues = "https://github.com/SirDavidLudwig/provium/issues"
 Repository = "https://github.com/SirDavidLudwig/provium"
 
 [project.optional-dependencies]
+s3 = ["boto3>=1.35"]
 graphviz = [
     "graphviz>=0.20",
 ]
@@ -41,6 +42,8 @@ yaml = [
     "PyYAML>=6,<7",
 ]
 test = [
+    "boto3>=1.35",
+    "boto3-stubs[s3]>=1.35",
     "PyYAML>=6,<7",
     "build>=1.2",
     "pyright>=1.1.411",
