@@ -27,7 +27,18 @@ from .store import ArtifactStore
 
 def configure(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="action", required=True)
+    for action in ("list", "queue"):
+        child = subparsers.add_parser(action)
+        if action == "list":
+            child.add_argument(
+                "resource", nargs="?", choices=("pipelines", "profiles"), default=None
+            )
+        else:
+            child.add_argument("pipeline", nargs="?")
+        child.add_argument("--database", default=os.environ.get("PROVIUM_DATABASE_URL"))
+        child.add_argument("--json", action="store_true")
     for action in (
+        "unregister",
         "run",
         "register",
         "enqueue",
@@ -102,16 +113,46 @@ def outcome_json(event: Outcome) -> dict[str, Any]:
 
 def execute(arguments: argparse.Namespace) -> int:
     action = arguments.action
-    documents = load_documents(arguments.file)
-    graphs = [doc for doc in documents if isinstance(doc, PipelineConfiguration)]
-    profiles = {doc.name: doc for doc in documents if isinstance(doc, ComputeProfile)}
-    backend = None
-    if action in ("register", "enqueue", "retry") or arguments.pipeline:
+    if action in ("list", "queue"):
         if not arguments.database:
             raise ValueError(
                 "database required; use --database or PROVIUM_DATABASE_URL"
             )
         backend = PostgresBackend(arguments.database)
+        if action == "list":
+            kind = {
+                "pipelines": "PipelineConfiguration",
+                "profiles": "ComputeProfile",
+            }.get(arguments.resource)
+            print(json.dumps(backend.registered(kind)))
+        else:
+            print(json.dumps(backend.queue_info(arguments.pipeline)))
+        return 0
+    documents = load_documents(arguments.file)
+    graphs = [doc for doc in documents if isinstance(doc, PipelineConfiguration)]
+    profiles = {doc.name: doc for doc in documents if isinstance(doc, ComputeProfile)}
+    backend = None
+    if action in ("register", "unregister", "enqueue", "retry") or arguments.pipeline:
+        if not arguments.database:
+            raise ValueError(
+                "database required; use --database or PROVIUM_DATABASE_URL"
+            )
+        backend = PostgresBackend(arguments.database)
+    if action == "unregister":
+        if documents and (arguments.pipeline or arguments.profile):
+            raise ValueError("unregister accepts files or explicit names, not both")
+        identities = [{"kind": doc.kind, "name": doc.name} for doc in documents]
+        if arguments.pipeline:
+            identities.append(
+                {"kind": "PipelineConfiguration", "name": arguments.pipeline}
+            )
+        if arguments.profile:
+            identities.append({"kind": "ComputeProfile", "name": arguments.profile})
+        if not identities:
+            raise ValueError("unregister requires files, a pipeline name or --profile")
+        assert backend is not None
+        print(json.dumps(backend.unregister(identities)))
+        return 0
     if action == "register":
         if not documents:
             raise ValueError("register requires YAML documents")

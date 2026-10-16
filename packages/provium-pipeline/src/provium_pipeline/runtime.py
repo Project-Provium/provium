@@ -718,6 +718,7 @@ class ExecutionContext:
                             self.store.namespace,
                             job.key,
                             self.run_id,
+                            input_id=job.state.identity,
                             force=self._matches(name, self.force)
                             and job.key not in self._forced,
                         )
