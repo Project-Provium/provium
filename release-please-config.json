@@ -3,7 +3,10 @@
   "packages": {
     "packages/provium": {
       "package-name": "provium",
-      "release-type": "python"
+      "release-type": "python",
+      "extra-files": [
+        {"type": "generic", "path": "/packages/provium-pipeline/pyproject.toml"}
+      ]
     },
     "packages/provium-pipeline": {
       "package-name": "provium-pipeline",
