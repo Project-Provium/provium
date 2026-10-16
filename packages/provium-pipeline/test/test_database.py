@@ -226,3 +226,38 @@ def test_cancelled_input_remains_available_for_later_run(tmp_path):
     identity = db.enqueue(name, {"x": str(make_artifact(tmp_path / "source.pa"))})
     db.progress(identity, "cancelled", {"run": "cancelled-run"})
     assert [row["id"] for row in db.pending(name)] == [identity]
+
+
+def test_registry_and_input_validation_errors(tmp_path):
+    from provium_text_pipeline_example.artifact import DOCUMENT, TOKENS
+    from test_store import make_artifact
+
+    from provium_pipeline import PipelineDefinition
+
+    db = backend()
+    with pytest.raises(ValueError, match="kind"):
+        db.register([{"kind": "Unknown", "name": "bad"}])
+    document = {
+        "kind": "PipelineConfiguration",
+        "name": "p-" + uuid4().hex,
+        "nodes": {},
+        "outputs": {"x": "$inputs.x"},
+    }
+    with pytest.raises(ValueError, match="duplicate"):
+        db.register([document, document])
+    with pytest.raises(ValueError, match="unregistered"):
+        db.get("PipelineConfiguration", "missing-" + uuid4().hex)
+    definition = PipelineDefinition({"x": DOCUMENT}, {"x": DOCUMENT})
+    db.register([document], definitions={document["name"]: definition})
+    changed = PipelineDefinition({"x": DOCUMENT}, {"x": DOCUMENT}, frozenset({"new"}))
+    with pytest.raises(ValueError, match="definition"):
+        db.register([document], definitions={document["name"]: changed})
+    with pytest.raises(ValueError, match="input names"):
+        db.enqueue(document["name"], {})
+    wrong = {**document, "name": "p-" + uuid4().hex}
+    db.register(
+        [wrong],
+        definitions={wrong["name"]: PipelineDefinition({"x": TOKENS}, {"x": TOKENS})},
+    )
+    with pytest.raises(ValueError, match="incompatible"):
+        db.enqueue(wrong["name"], {"x": str(make_artifact(tmp_path / "source.pa"))})

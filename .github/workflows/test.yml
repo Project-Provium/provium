@@ -25,7 +25,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install lint and type-check dependencies
-        run: python -m pip install -e "./packages/provium[test]"
+        run: python -m pip install -e "./packages/provium[test]" -e "./packages/provium-pipeline[test]"
       - name: Lint Provium
         working-directory: packages/provium
         run: ruff check src test typecheck
@@ -97,6 +97,28 @@ jobs:
           use_oidc: true
 
   pipeline-test:
+    env:
+      PROVIUM_TEST_DATABASE: postgresql://postgres:provium@localhost:5432/provium
+      PROVIUM_TEST_S3: "1"
+      AWS_ENDPOINT_URL_S3: http://localhost:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: provium
+          POSTGRES_DB: provium
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+      localstack:
+        image: localstack/localstack:4
+        env:
+          SERVICES: s3
+        ports: ["4566:4566"]
     name: Pipeline tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     needs: lint-format
@@ -115,7 +137,7 @@ jobs:
       - name: Install pipeline and workspace dependency
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e "./packages/provium[test]" -e "./packages/provium-pipeline[test]"
+          python -m pip install -e "./packages/provium[test]" -e "./packages/provium-pipeline[test]" -e "./examples/provium-text-pipeline[test]"
       - name: Run pipeline package tests
         working-directory: packages/provium-pipeline
         run: python -m pytest --cov=provium_pipeline --cov-branch --cov-fail-under=100

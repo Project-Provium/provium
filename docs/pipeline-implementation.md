@@ -18,7 +18,7 @@ then profiles, callbacks, PostgreSQL queues, and deployment.
   limits, serial completion callbacks, cancellation, logs, and read-only status.
 - Standalone and core-plugin CLIs, explicit retry, wheel/source packaging.
 
-## Test-first implementation and five review passes
+## Test-first implementation and six review passes
 
 Each behavioral fix was preceded by a failing regression test, then retested.
 
@@ -39,13 +39,18 @@ Each behavioral fix was preceded by a failing regression test, then retested.
    joins, setup dependencies, multi-output publication, descendant reuse after force,
    packaging, formatting, and strict typing.
 
+6. **CI and coverage review:** retained the existing 100% gate, added validation,
+   protocol, shutdown, optional/repeated-binding and failure-path tests, removed
+   redundant dispatch bookkeeping, and supplied PostgreSQL/LocalStack plus example
+   catalogs in CI and release jobs.
+
 These were self-review passes with regression tests, not independent human reviews.
 No known blocking issue remains within the documented initial scope.
 
 ## Verification
 
 - Core: **704 tests**, **100% statement and branch coverage**.
-- Pipeline: **52 tests**, including real PostgreSQL 17 and LocalStack S3.
+- Pipeline: **136 tests**, **100% statement and branch coverage**, including real PostgreSQL 17 and LocalStack S3.
 - Example package: **2 tests**.
 - Release configuration: **5 tests and 2 subtests**.
 - Ruff lint and formatting checks pass.

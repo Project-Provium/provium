@@ -10,6 +10,7 @@ from provium import (
     output,
 )
 from provium import input as input_field
+from provium.procedure.io import optional_input, repeated_input
 from provium_text_pipeline_example.artifact import DOCUMENT
 
 
@@ -134,3 +135,43 @@ class Join(
         with outputs.result.open() as result, outputs.mirror.open() as mirror:
             result.write(text)
             mirror.write(text)
+
+
+class CollectionContract(ProcedureContract[None]):
+    class SetupInputs(ProcedureInputs):
+        optional = optional_input(DOCUMENT)
+
+    class Inputs(ProcedureInputs):
+        sources = repeated_input(DOCUMENT)
+        optional = optional_input(DOCUMENT)
+
+    class Outputs(ProcedureOutputs):
+        result = output(DOCUMENT)
+
+
+COLLECTION = ProcedureDefinition(
+    identifier="pipeline.tests.Collection",
+    target="pipeline_fixtures:Collection",
+    label="Collection",
+    description=None,
+    contract=CollectionContract,
+)
+
+
+class Collection(
+    Procedure[
+        None,
+        CollectionContract.SetupInputs,
+        CollectionContract.Inputs,
+        CollectionContract.Outputs,
+    ]
+):
+    definition = COLLECTION
+
+    def process(self, context, configuration, inputs, outputs):
+        text = ""
+        for source in inputs.sources:
+            with source.open() as reader:
+                text += reader.read()
+        with outputs.result.open() as writer:
+            writer.write(text)

@@ -713,8 +713,6 @@ class ExecutionContext:
                     )
                     if idle is None and len(self._workers) >= settings.workers:
                         break
-                    if job.key in self._leases:
-                        continue
                     if self.backend:
                         job.lease = self.backend.acquire(
                             self.store.namespace,
@@ -747,12 +745,6 @@ class ExecutionContext:
                     if idle.ready:
                         self._send(idle)
                     busy_keys.add(job.key)
-                    # Deduplicate equivalent inputs within this dispatch batch.
-                    candidates = [
-                        candidate
-                        for candidate in candidates
-                        if candidate.key != job.key
-                    ]
                 progress = False
                 for worker in list(self._workers):
                     if worker.connection.poll():

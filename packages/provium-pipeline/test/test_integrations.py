@@ -235,3 +235,36 @@ def test_s3_lost_upload_acknowledgement_reconciles(tmp_path, monkeypatch):
                 Delete={"Objects": [{"Key": obj["Key"]} for obj in objects]},
             )
         client.delete_bucket(Bucket=bucket)
+
+
+@pytest.mark.skipif(not DSN, reason="requires PostgreSQL")
+@pytest.mark.parametrize("stop", ["before", "during", "budget"])
+def test_queued_partial_and_cancelled_runs_preserve_work(tmp_path, monkeypatch, stop):
+    backend = PostgresBackend(DSN)
+    graph = configuration().model_copy(update={"name": "p-" + uuid4().hex})
+    backend.register([graph.model_dump(mode="json")])
+    identity = backend.enqueue(
+        graph.name, {"document": str(make_artifact(tmp_path / "source.pa"))}
+    )
+    profile = (
+        ComputeProfile(name="test", soft_time_limit=1e-9) if stop == "budget" else None
+    )
+    with ExecutionContext(
+        graph, ArtifactStore(str(tmp_path / "store")), backend=backend, profile=profile
+    ) as execution:
+        if stop == "before":
+            execution.cancel()
+        elif stop == "during":
+            load_page = execution._load_page
+
+            def cancel_after_selection(rows):
+                load_page(rows)
+                execution.cancel()
+
+            monkeypatch.setattr(execution, "_load_page", cancel_after_selection)
+        execution.start()
+    assert [row["id"] for row in backend.pending(graph.name)] == [identity]
+    if stop != "before":
+        assert execution.outcomes[0].state == (
+            "partial" if stop == "budget" else "cancelled"
+        )
