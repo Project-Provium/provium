@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/Project-Provium/provium/compare/provium-v0.10.0...provium-v0.11.0) (2026-10-16)
+
+
+### Features
+
+* **provium:** support S3 file paths with scoped temporary storage ([5b1e63c](https://github.com/Project-Provium/provium/commit/5b1e63c546c9e67da7f94fc8c7cddc2cfe612e31))
+* support S3 paths and explicit pipeline input declarations ([43bf0f6](https://github.com/Project-Provium/provium/commit/43bf0f677b852adfd0524ccd134bea2f721c8517))
+
 ## [0.10.0](https://github.com/Project-Provium/provium/compare/provium-v0.9.0...provium-v0.10.0) (2026-10-16)
 
 
