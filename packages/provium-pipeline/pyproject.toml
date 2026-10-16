@@ -8,7 +8,14 @@ version = "0.1.0"
 description = "Provenance-addressed local and PostgreSQL-backed procedure pipelines"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["provium>=0.8,<0.10", "pydantic>=2.10,<3", "PyYAML>=6", "psycopg[binary]>=3.2", "boto3>=1.35"]
+dependencies = [
+    # Core releases keep this minimum aligned with the tested workspace version.
+    "provium>=0.8.0", # x-release-please-version
+    "pydantic>=2.10,<3",
+    "PyYAML>=6",
+    "psycopg[binary]>=3.2",
+    "boto3>=1.35",
+]
 
 [project.scripts]
 provium-pipeline = "provium_pipeline.cli:main"

@@ -1,10 +1,12 @@
 """Regression checks for CI coverage and release publication gates."""
 
 import json
+import tomllib
 import unittest
 from pathlib import Path
 
 import yaml
+from packaging.requirements import Requirement
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -24,6 +26,54 @@ class ReleaseConfigurationTests(unittest.TestCase):
         self.assertEqual(package["release-type"], "python")
         self.assertEqual(package["initial-version"], "0.1.0")
         self.assertIn("packages/provium", config["packages"])
+
+    def test_core_release_updates_pipeline_dependency(self):
+        config = json.loads((ROOT / "release-please-config.json").read_text())
+        extras = config["packages"]["packages/provium"].get("extra-files", [])
+        self.assertIn(
+            {"type": "generic", "path": "/packages/provium-pipeline/pyproject.toml"},
+            extras,
+        )
+        text = (ROOT / "packages/provium-pipeline/pyproject.toml").read_text()
+        requirement = next(
+            Requirement(value)
+            for value in tomllib.loads(text)["project"]["dependencies"]
+            if Requirement(value).name == "provium"
+        )
+        self.assertTrue(all(spec.operator == ">=" for spec in requirement.specifier))
+        marked = [
+            line for line in text.splitlines() if "x-release-please-version" in line
+        ]
+        self.assertEqual(len(marked), 1)
+        self.assertIn(str(requirement), marked[0])
+
+    def test_workspace_dependencies_accept_current_versions(self):
+        projects = [
+            tomllib.loads(path.read_text())["project"]
+            for directory in ("packages", "examples")
+            for path in (ROOT / directory).glob("*/pyproject.toml")
+        ]
+        versions = {project["name"]: project["version"] for project in projects}
+        for project in projects:
+            for value in project.get("dependencies", []):
+                requirement = Requirement(value)
+                if requirement.name in versions:
+                    with self.subTest(package=project["name"], dependency=value):
+                        self.assertIn(versions[requirement.name], requirement.specifier)
+
+    def test_dependency_guard_runs_before_workspace_install(self):
+        steps = workflow("test.yml")["jobs"]["lint-format"]["steps"]
+        guard = next(
+            i
+            for i, step in enumerate(steps)
+            if "unittest discover" in step.get("run", "")
+        )
+        install = next(
+            i
+            for i, step in enumerate(steps)
+            if 'pip install -e "./packages/provium[test]"' in step.get("run", "")
+        )
+        self.assertLess(guard, install)
 
     def test_pipeline_ci_covers_supported_python_versions(self):
         ci = workflow("test.yml")
