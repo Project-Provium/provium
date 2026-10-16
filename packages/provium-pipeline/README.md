@@ -42,7 +42,6 @@ result reference while retaining immutable artifact versions for existing reader
 
 See the repository's [usage examples](../../docs/pipeline-api-examples.md) for
 definitions, profiles, selectors, Python callbacks, time limits, and deployment.
-The [requirements](../../docs/pipeline-requirements.md) define the supported behavior.
 
 ## Development
 
