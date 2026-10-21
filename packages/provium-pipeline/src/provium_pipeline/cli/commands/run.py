@@ -9,7 +9,13 @@ from typing import TYPE_CHECKING, Any
 
 from provium.cli.command import Command
 
-from ..arguments import assignments, configure_graph, require_pipeline
+from ..arguments import (
+    assignments,
+    configure_graph,
+    configure_queue,
+    require_execution_queue,
+    require_pipeline,
+)
 
 if TYPE_CHECKING:
     from ...runtime import Outcome
@@ -34,10 +40,12 @@ class RunCommand(Command):
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
         configure_graph(parser)
+        configure_queue(parser)
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             self._validate(arguments)
+            require_execution_queue(arguments)
             from ...persistence.factory import open_backend
             from ...preparation import prepare_pipeline
 
@@ -73,6 +81,7 @@ class RunCommand(Command):
                     only=arguments.only,
                     force=arguments.force,
                     backend=prepared.backend,
+                    queue_group=arguments.queue or "default",
                     idle_wait=arguments.idle_wait,
                 ) as context,
             ):

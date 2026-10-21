@@ -9,7 +9,13 @@ from typing import Any
 
 from provium.cli.command import Command
 
-from ..arguments import assignments, configure_graph, require_pipeline
+from ..arguments import (
+    assignments,
+    configure_graph,
+    configure_queue,
+    require_execution_queue,
+    require_pipeline,
+)
 
 
 class StatusCommand(Command):
@@ -18,10 +24,12 @@ class StatusCommand(Command):
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
         configure_graph(parser)
+        configure_queue(parser)
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             require_pipeline(arguments)
+            require_execution_queue(arguments)
             from ...persistence.factory import open_backend
             from ...preparation import prepare_pipeline
 
@@ -59,6 +67,7 @@ class StatusCommand(Command):
                     only=arguments.only,
                     force=arguments.force,
                     backend=prepared.backend,
+                    queue_group=arguments.queue or "default",
                     idle_wait=arguments.idle_wait,
                 ) as context,
             ):
@@ -66,7 +75,10 @@ class StatusCommand(Command):
                     rows: list[dict[str, Any]] = []
                     after = 0
                     while batch := backend.pending(
-                        graph.name, after, include_finished=True
+                        graph.name,
+                        after,
+                        include_finished=True,
+                        queue_group=arguments.queue,
                     ):
                         rows.extend(batch)
                         after = batch[-1]["id"]

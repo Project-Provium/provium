@@ -52,7 +52,12 @@ def test_management_dispatch(
 ):
     getattr(backend, method).return_value = result
     assert run(["pipeline", *arguments, "--database", "unused"]) == 0
-    getattr(backend, method).assert_called_once_with(*parameters)
+    keywords = (
+        {"queue_group": "default"}
+        if method in {"queue_info", "enqueue", "retry"}
+        else {}
+    )
+    getattr(backend, method).assert_called_once_with(*parameters, **keywords)
     assert json.loads(capsys.readouterr().out) == output
     assert {call[0] for call in backend.method_calls} <= {"get", method}
 
@@ -91,10 +96,10 @@ def test_management_selects_pipeline_from_file(backend, tmp_path, capsys, comman
     backend.retry.return_value = 3
     assert run(["pipeline", command, "-f", str(path), "--database", "unused"]) == 0
     if command == "enqueue":
-        backend.enqueue.assert_called_once_with("empty", {})
+        backend.enqueue.assert_called_once_with("empty", {}, queue_group="default")
         assert json.loads(capsys.readouterr().out) == {"id": 7}
     else:
-        backend.retry.assert_called_once_with("empty")
+        backend.retry.assert_called_once_with("empty", queue_group="default")
         assert json.loads(capsys.readouterr().out) == {"reset": 3}
     backend.get.assert_not_called()
 

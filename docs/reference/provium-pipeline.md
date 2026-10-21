@@ -142,3 +142,22 @@ through `provium.cli.command_catalogs` entry points. Matching group paths merge
 across packages; duplicate leaf command names are errors. Keep constructors and
 argument configuration lightweight and import execution dependencies after
 argument validation. See the [CLI API reference](provium-cli.md).
+
+## Queue selection API
+
+Queue operations accept a keyword-only `queue_group: str = "default"`:
+
+- `backend.enqueue(pipeline, inputs, queue_group="priority")`
+- `backend.pending(pipeline, after=0, limit=100, include_finished=False, queue_group="priority")`
+- `backend.retry(pipeline, queue_group="priority")`
+- `backend.queue_info(pipeline=None, queue_group="priority")`
+
+`queue_info` summaries include `pipeline`, `queue`, `total`, and `states`.
+Pending rows include their `queue_group`. Input IDs remain globally unique, so
+`progress` and lease admission continue to use the input ID.
+
+Pass `queue_group="priority"` to `ExecutionContext` to consume that group when
+using a backend. Python calls do not read CLI configuration; the omitted argument
+always selects `default`. Custom persistence implementations must accept the new
+keyword and restrict reads and retries to the selected group.
+See [Named queues](../guides/pipelines.md#named-queues) for CLI and migration details.

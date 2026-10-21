@@ -26,6 +26,7 @@ from .models import (
     Settings,
 )
 from .persistence.interface import Lease, QueueBackend
+from .persistence.queues import validate_queue_name
 from .planning import build_plan, matches, resolve_settings
 from .store import Artifact, ArtifactStore
 
@@ -88,9 +89,11 @@ class ExecutionContext:
         workers: list[dict[str, Any]] | None = None,
         force: list[str] | None = None,
         backend: QueueBackend | None = None,
+        queue_group: str = "default",
         idle_wait: float = 0,
         log_path: str | Path | None = None,
     ) -> None:
+        self.queue_group = validate_queue_name(queue_group)
         if backend:
             registered_definition = backend.definition(configuration.name)
             if registered_definition:
@@ -455,6 +458,7 @@ class ExecutionContext:
                             after,
                             limit=self.queue_page_size,
                             include_finished=bool(self.force),
+                            queue_group=self.queue_group,
                         )
                         if not rows:
                             break
@@ -494,6 +498,7 @@ class ExecutionContext:
             after,
             limit=self.queue_page_size,
             include_finished=True,
+            queue_group=self.queue_group,
         ):
             after = rows[-1]["id"]
             remaining = [

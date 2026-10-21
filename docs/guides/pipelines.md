@@ -227,3 +227,52 @@ Callbacks run serially on a dispatcher thread; keep them short. Call
 
 See the [Pipeline API reference](../reference/provium-pipeline.md) for
 definitions, preparation, persistence, and extension points.
+
+## Named queues
+
+Registered pipelines can have multiple named queues. Use `--queue NAME` or `-q NAME`
+to select one for enqueueing, execution, status, queue summaries, and retries:
+
+```bash
+provium pipeline enqueue documents -q priority --input document=report.pa
+provium pipeline run documents -q priority
+provium pipeline status documents -q priority --outputs
+provium pipeline queue documents -q priority
+provium pipeline retry documents -q priority
+```
+
+Queues are created implicitly on enqueue. Names are case-sensitive, nonempty
+strings without leading or trailing whitespace. Each command selects exactly one
+queue. Omitting a pipeline name from `pipeline queue` lists that queue's counts
+across registered pipelines, including empty queues.
+
+Deduplication is per pipeline and queue, so the same input can be queued independently
+in `priority` and `batch`. Workers, status, and retries operate only on the selected
+queue. Computation leases and cached artifacts remain shared: queue isolation does
+not force equivalent work to run again. Unregistering a pipeline removes its entries
+from every queue, while retaining shared computation results.
+
+Without an explicit queue, the CLI uses these defaults:
+
+```toml
+[pipeline.queue]
+default_enabled = true
+default_group = "default"
+```
+
+Set `default_enabled = false` to require `--queue` for queued operations.
+This disables implicit selection, not access to the queue named `default`.
+Explicit queue names still work. Local file-based execution does not require
+a queue and rejects `--queue`; enqueue/retry with `-f` still target a persisted queue.
+
+Settings use the normal user/project configuration and override rules:
+
+```bash
+export PROVIUM_CONFIG__PIPELINE__QUEUE__DEFAULT_GROUP=batch
+provium pipeline run documents --config pipeline.queue.default_group=priority
+```
+
+The PostgreSQL migration assigns existing entries to `default` without changing
+their IDs, states, or deduplication keys. Stop older workers before upgrading;
+older clients do not understand the new queue-scoped uniqueness constraint.
+Migration runs automatically when opening the backend.

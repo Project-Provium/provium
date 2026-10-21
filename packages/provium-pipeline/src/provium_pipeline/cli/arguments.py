@@ -81,6 +81,7 @@ def _apply_configuration(arguments: argparse.Namespace) -> None:
             setattr(arguments, name, value)
     if hasattr(arguments, "store") and arguments.store is None:
         arguments.store = "./.provium/artifacts"
+    arguments._provium_pipeline_settings = settings
     arguments._provium_settings_loaded = True
 
 
@@ -92,3 +93,36 @@ def assignments(values: list[str]) -> dict[str, str]:
             raise ValueError(f"invalid or duplicate binding: {value}")
         result[key] = item
     return result
+
+
+def configure_queue(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-q", "--queue", help="Queue to enqueue, consume, or inspect")
+
+
+def require_queue(arguments: argparse.Namespace) -> None:
+    """Resolve a queue before opening persistence; explicit names bypass defaults."""
+    from ..persistence.queues import validate_queue_name
+
+    _apply_configuration(arguments)
+    if arguments.queue is not None:
+        arguments.queue = validate_queue_name(arguments.queue)
+        return
+    settings = arguments._provium_pipeline_settings.get("queue", {})
+    if not isinstance(settings, dict):
+        raise TypeError("pipeline.queue must be a table")
+    values = cast(dict[str, object], settings)
+    enabled = values.get("default_enabled", True)
+    if not isinstance(enabled, bool):
+        raise TypeError("pipeline.queue.default_enabled must be a boolean")
+    if not enabled:
+        raise ValueError("No queue selected; use --queue or enable a default queue")
+    arguments.queue = validate_queue_name(
+        cast(str, values.get("default_group", "default"))
+    )
+
+
+def require_execution_queue(arguments: argparse.Namespace) -> None:
+    if arguments.pipeline:
+        require_queue(arguments)
+    elif arguments.queue is not None:
+        raise ValueError("--queue requires a registered pipeline")

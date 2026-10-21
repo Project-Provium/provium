@@ -8,7 +8,13 @@ import sys
 
 from provium.cli.command import Command
 
-from ..arguments import configure_graph, require_database, require_pipeline
+from ..arguments import (
+    configure_graph,
+    configure_queue,
+    require_database,
+    require_pipeline,
+    require_queue,
+)
 
 
 class RetryCommand(Command):
@@ -17,9 +23,11 @@ class RetryCommand(Command):
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
         configure_graph(parser)
+        configure_queue(parser)
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
+            require_queue(arguments)
             require_database(arguments)
             require_pipeline(arguments)
             from ...persistence.factory import open_backend
@@ -34,7 +42,11 @@ class RetryCommand(Command):
             )
             if backend is None:
                 backend = open_backend(arguments.database)
-            print(json.dumps({"reset": backend.retry(graph.name)}))
+            print(
+                json.dumps(
+                    {"reset": backend.retry(graph.name, queue_group=arguments.queue)}
+                )
+            )
         except Exception as error:
             print(f"provium pipeline: {error}", file=sys.stderr)
             return 2

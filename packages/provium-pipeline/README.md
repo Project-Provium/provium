@@ -152,3 +152,20 @@ python -m pytest packages/provium-pipeline/test
 Integration tests create unique records and buckets. Use a disposable test database.
 Slurm/AWS Batch deployment uses the same CLI with externally allocated resources;
 those scheduler services are not required for local integration tests.
+
+## Named queues
+
+Use `--queue NAME` (short form `-q`) with `enqueue`, `run`, `status`,
+`queue`, and `retry` to isolate queued work within a registered pipeline.
+Equivalent computations can still share cached results across queues.
+
+```sh
+provium pipeline enqueue tokenize-documents -q priority --input document=/data/document.pa
+provium pipeline run tokenize-documents -q priority
+provium pipeline queue tokenize-documents -q priority
+```
+
+The default queue is `default`. Configure `pipeline.queue.default_group` to choose
+another default, or set `pipeline.queue.default_enabled = false` to require explicit
+selection. Existing PostgreSQL rows migrate to `default`; stop older workers before
+upgrading. See [Named queues](../../docs/guides/pipelines.md#named-queues) for details.

@@ -74,6 +74,7 @@ def test_registry_listing_and_queue_counts(db):
     assert db.queue_info(name) == [
         {
             "pipeline": name,
+            "queue": "default",
             "total": 0,
             "states": {
                 "pending": 0,
