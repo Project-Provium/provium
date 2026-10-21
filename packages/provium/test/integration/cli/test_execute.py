@@ -36,7 +36,7 @@ def create_source(
         [
             "execute",
             "test.SourceTextV1",
-            "--config",
+            "--procedure-config",
             str(configuration),
             "--output",
             f"value={destination}",
@@ -113,9 +113,9 @@ def test_execute_supports_layered_configuration_and_all_binding_cardinalities(
     arguments = [
         "execute",
         "test.TransformTextV1",
-        "--config",
+        "--procedure-config",
         str(json_configuration),
-        "--config",
+        "--procedure-config",
         str(yaml_configuration),
         "--setup-input",
         f"setup={setup}",

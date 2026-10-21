@@ -221,7 +221,7 @@ def _invocation_arguments(
         _format_binding_argument("--output", field) for field in metadata.outputs
     )
     if metadata.configuration_target is not None:
-        arguments.append("[--config FILE ...]")
+        arguments.append("[--procedure-config FILE ...]")
     return arguments
 
 

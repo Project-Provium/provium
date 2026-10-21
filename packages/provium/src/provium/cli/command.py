@@ -18,6 +18,12 @@ class Command(ABC):
     def configure(self, parser: ArgumentParser) -> None:
         """Configure the command's arguments."""
 
+    def configuration(self, arguments: Namespace) -> dict[str, object]:
+        """Load application settings only when this command needs them."""
+        from .configuration import command_configuration
+
+        return command_configuration(arguments)
+
     @abstractmethod
     def execute(self, arguments: Namespace) -> int:
         """Execute the command and return its process exit code."""

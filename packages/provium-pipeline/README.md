@@ -58,6 +58,25 @@ result reference while retaining immutable artifact versions for existing reader
 See the repository's [usage examples](../../docs/guides/pipelines.md) for
 definitions, profiles, selectors, Python callbacks, time limits, and deployment.
 
+## Application settings
+
+Pipeline CLI defaults can be set in `~/.config/provium/*.toml` and overridden
+by the nearest project `.provium/*.toml` directory:
+
+```toml
+[pipeline]
+database = "postgresql://localhost/provium"
+store = "./.provium/artifacts"
+scratch_directory = "/tmp/provium"
+```
+
+Use `PROVIUM_CONFIG__PIPELINE__STORE=/data/artifacts` for an environment override,
+or `provium pipeline run -f pipeline.yaml --config pipeline.store=./artifacts`
+for an invocation override. Dedicated flags such as `--store` take highest priority.
+Existing `PROVIUM_DATABASE_URL` and `PROVIUM_PIPELINE_STORE` variables remain supported.
+See [Configuration](../../docs/guides/configuration.md) for discovery rules,
+precedence, and typed overrides.
+
 ## Package organization
 
 The CLI registers a native core `CommandGroup` under `pipeline`:

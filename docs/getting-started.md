@@ -40,7 +40,7 @@ Execute it by binding the fields declared by its contract:
 
 ```bash
 provium execute example.ProcessV1 \
-  --config settings.yaml \
+  --procedure-config settings.yaml \
   --input source=source.pa \
   --output result=result.pa
 ```

@@ -2,11 +2,11 @@
 
 import argparse
 import math
-import os
+from typing import cast
 
 
 def configure_connection(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--database", default=os.environ.get("PROVIUM_DATABASE_URL"))
+    parser.add_argument("--database")
     parser.add_argument("--json", action="store_true")
 
 
@@ -15,10 +15,7 @@ def configure_graph(parser: argparse.ArgumentParser) -> None:
     configure_connection(parser)
     parser.add_argument("pipeline", nargs="?")
     parser.add_argument("-f", "--file", action="append", default=[])
-    parser.add_argument(
-        "--store",
-        default=os.environ.get("PROVIUM_PIPELINE_STORE") or "./.provium/artifacts",
-    )
+    parser.add_argument("--store")
     parser.add_argument("--scratch-directory")
     parser.add_argument(
         "--definition", help="Python module:attribute containing a PipelineDefinition"
@@ -33,6 +30,7 @@ def configure_graph(parser: argparse.ArgumentParser) -> None:
 
 
 def require_database(arguments: argparse.Namespace) -> None:
+    _apply_configuration(arguments)
     if not arguments.database:
         raise ValueError("database required; use --database or PROVIUM_DATABASE_URL")
 
@@ -49,14 +47,41 @@ def validate_graph_options(arguments: argparse.Namespace) -> None:
 
 def require_pipeline(arguments: argparse.Namespace) -> None:
     validate_graph_options(arguments)
+    if not arguments.pipeline and not arguments.file:
+        raise ValueError("select exactly one pipeline with -f or a registered name")
+    _apply_configuration(arguments)
     if arguments.pipeline:
         require_database(arguments)
         if arguments.file:
             raise ValueError(
                 "registered execution cannot combine files or direct inputs"
             )
-    elif not arguments.file:
-        raise ValueError("select exactly one pipeline with -f or a registered name")
+
+
+def _apply_configuration(arguments: argparse.Namespace) -> None:
+    """Resolve defaults once per invocation, after argparse has accepted syntax."""
+    if getattr(arguments, "_provium_settings_loaded", False):
+        return
+    from provium.cli.configuration import command_configuration
+
+    settings = command_configuration(
+        arguments,
+        environment_aliases={
+            "pipeline.database": "PROVIUM_DATABASE_URL",
+            "pipeline.store": "PROVIUM_PIPELINE_STORE",
+        },
+    ).get("pipeline", {})
+    if not isinstance(settings, dict):
+        raise TypeError("pipeline configuration must be a table")
+    for name in ("database", "store", "scratch_directory"):
+        value = cast(dict[str, object], settings).get(name)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"pipeline.{name} must be a string")
+        if hasattr(arguments, name) and getattr(arguments, name) is None:
+            setattr(arguments, name, value)
+    if hasattr(arguments, "store") and arguments.store is None:
+        arguments.store = "./.provium/artifacts"
+    arguments._provium_settings_loaded = True
 
 
 def assignments(values: list[str]) -> dict[str, str]:

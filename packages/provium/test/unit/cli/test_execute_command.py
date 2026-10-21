@@ -283,7 +283,7 @@ def test_execute_builds_layered_typed_bindings(
             [
                 "execute",
                 DEFINITION.identifier,
-                "--config",
+                "--procedure-config",
                 str(configuration),
                 "--setup-input",
                 "model=model.pa",

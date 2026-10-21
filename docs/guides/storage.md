@@ -46,7 +46,7 @@ provium graph source s3://my-bucket/tokens.pa dot s3://my-bucket/lineage.dot
 The first two commands require the example procedure/artifact package to be
 installed. Artifact load/dump handlers still receive local paths, so existing
 implementations need no S3-specific code. Procedure configuration layers supplied
-through `--config` can also reside in S3.
+through `--procedure-config` can also reside in S3.
 
 ## Python usage
 

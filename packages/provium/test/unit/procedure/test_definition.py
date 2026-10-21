@@ -245,7 +245,7 @@ def test_procedure_definition_builds_an_ordered_invocation_synopsis() -> None:
         "  --input image=PATH \\\n"
         "  --input images=PATH ... (1..4 bindings) \\\n"
         "  [--output result=PATH] \\\n"
-        "  [--config FILE ...]"
+        "  [--procedure-config FILE ...]"
     )
 
 

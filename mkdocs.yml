@@ -35,6 +35,7 @@ nav:
       - Dumping and loading: guides/transfers.md
       - Local and S3 files: guides/storage.md
       - Provenance graphs: guides/graphing.md
+      - Configuration: guides/configuration.md
       - Command-line tools: guides/cli.md
       - Pipelines: guides/pipelines.md
   - API reference:

@@ -10,6 +10,7 @@ from provium import __version__
 
 from .catalog import CommandCatalog
 from .completion import enable_completion
+from .configuration import configure_configuration
 from .discovery import discover_command_catalogs
 from .errors import EXPECTED_CLI_ERRORS, print_cli_error
 from .group import COMMAND_DESTINATION, configure_catalog
@@ -26,6 +27,7 @@ def create_parser(catalog: CommandCatalog) -> argparse.ArgumentParser:
         action="version",
         version=f"provium {__version__}",
     )
+    configure_configuration(parser)
     configure_catalog(parser, catalog, destination="command_name")
     return parser
 
