@@ -8,7 +8,12 @@ import sys
 
 from provium.cli.command import Command
 
-from ..arguments import configure_connection, require_database
+from ..arguments import (
+    configure_connection,
+    configure_queue,
+    require_database,
+    require_queue,
+)
 
 
 class QueueCommand(Command):
@@ -17,16 +22,20 @@ class QueueCommand(Command):
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
         configure_connection(parser)
+        configure_queue(parser)
         parser.add_argument("pipeline", nargs="?")
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
+            require_queue(arguments)
             require_database(arguments)
             from ...persistence.factory import open_backend
 
             print(
                 json.dumps(
-                    open_backend(arguments.database).queue_info(arguments.pipeline)
+                    open_backend(arguments.database).queue_info(
+                        arguments.pipeline, queue_group=arguments.queue
+                    )
                 )
             )
         except Exception as error:

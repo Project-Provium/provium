@@ -13,6 +13,7 @@ from psycopg.types.json import Jsonb
 
 from ...models import ComputeProfile, PipelineConfiguration, PipelineDefinition
 from ..interface import Lease
+from ..queues import validate_queue_name
 
 MIGRATIONS = [
     """
@@ -41,6 +42,12 @@ MIGRATIONS = [
     """
     CREATE TABLE provium_definitions(name text PRIMARY KEY, document jsonb NOT NULL);
     ALTER TABLE provium_inputs ADD COLUMN definition jsonb;
+    """,
+    """
+    ALTER TABLE provium_inputs ADD COLUMN queue_group text NOT NULL DEFAULT 'default';
+    ALTER TABLE provium_inputs DROP CONSTRAINT provium_inputs_dedup_key;
+    ALTER TABLE provium_inputs ADD UNIQUE(queue_group, dedup);
+    CREATE INDEX ON provium_inputs(pipeline, queue_group, state, id);
     """,
 ]
 
@@ -146,16 +153,19 @@ class PostgresBackend:
                 )
             )
 
-    def queue_info(self, pipeline: str | None = None) -> list[dict[str, Any]]:
-        """Summarize persisted InputSet states, including empty pipeline queues."""
+    def queue_info(
+        self, pipeline: str | None = None, *, queue_group: str = "default"
+    ) -> list[dict[str, Any]]:
+        """Summarize states in one queue, including empty pipeline queues."""
+        validate_queue_name(queue_group)
         with self.connect() as connection:
             rows = connection.execute(
                 "SELECT r.name,i.state,count(i.id) AS count FROM provium_registry r "
-                "LEFT JOIN provium_inputs i ON i.pipeline=r.name "
+                "LEFT JOIN provium_inputs i ON i.pipeline=r.name AND i.queue_group=%s "
                 "WHERE r.kind='PipelineConfiguration' "
                 "AND (%s::text IS NULL OR r.name=%s) "
                 "GROUP BY r.name,i.state ORDER BY r.name,i.state",
-                (pipeline, pipeline),
+                (queue_group, pipeline, pipeline),
             )
             summaries: dict[str, dict[str, Any]] = {}
             for row in rows:
@@ -163,6 +173,7 @@ class PostgresBackend:
                     row["name"],
                     {
                         "pipeline": row["name"],
+                        "queue": queue_group,
                         "total": 0,
                         "states": dict.fromkeys(
                             ("pending", "partial", "cancelled", "failed", "completed"),
@@ -229,7 +240,10 @@ class PostgresBackend:
                 else PipelineDefinition.from_snapshot(row["document"])
             )
 
-    def enqueue(self, pipeline: str, inputs: dict[str, Any]) -> int:
+    def enqueue(
+        self, pipeline: str, inputs: dict[str, Any], *, queue_group: str = "default"
+    ) -> int:
+        validate_queue_name(queue_group)
         from ...store import ArtifactStore
 
         snapshot = self.get("PipelineConfiguration", pipeline)
@@ -280,8 +294,9 @@ class PostgresBackend:
             ):
                 raise ValueError("pipeline changed or was unregistered during enqueue")
             row = connection.execute(
-                "INSERT INTO provium_inputs(pipeline,snapshot,inputs,dedup,definition) "
-                "VALUES(%s,%s,%s,%s,%s) ON CONFLICT(dedup) DO UPDATE "
+                "INSERT INTO provium_inputs"
+                "(pipeline,snapshot,inputs,dedup,definition,queue_group) "
+                "VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(queue_group,dedup) DO UPDATE "
                 "SET dedup=EXCLUDED.dedup RETURNING id",
                 (
                     pipeline,
@@ -289,6 +304,7 @@ class PostgresBackend:
                     Jsonb(inputs),
                     key,
                     Jsonb(definition_payload),
+                    queue_group,
                 ),
             ).fetchone()
             return row["id"]
@@ -299,14 +315,18 @@ class PostgresBackend:
         after: int = 0,
         limit: int = 100,
         include_finished: bool = False,
+        *,
+        queue_group: str = "default",
     ) -> list[dict[str, Any]]:
+        validate_queue_name(queue_group)
         with self.connect() as connection:
             return list(
                 connection.execute(
-                    "SELECT * FROM provium_inputs WHERE pipeline=%s AND id>%s "
+                    "SELECT * FROM provium_inputs WHERE pipeline=%s "
+                    "AND queue_group=%s AND id>%s "
                     "AND (%s OR state IN ('pending','partial','cancelled')) "
                     "ORDER BY id LIMIT %s",
-                    (pipeline, after, include_finished, limit),
+                    (pipeline, queue_group, after, include_finished, limit),
                 )
             )
 
@@ -319,12 +339,13 @@ class PostgresBackend:
                 (state, Jsonb(detail), identity, state),
             )
 
-    def retry(self, pipeline: str) -> int:
+    def retry(self, pipeline: str, *, queue_group: str = "default") -> int:
+        validate_queue_name(queue_group)
         with self.connect() as connection:
             cursor = connection.execute(
                 "UPDATE provium_inputs SET state='pending' "
-                "WHERE pipeline=%s AND state='failed'",
-                (pipeline,),
+                "WHERE pipeline=%s AND queue_group=%s AND state='failed'",
+                (pipeline, queue_group),
             )
             return cursor.rowcount
 

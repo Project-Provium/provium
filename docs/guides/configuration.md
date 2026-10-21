@@ -120,3 +120,21 @@ command-specific flags. Shared helpers can use
 Application settings are separate from procedure configuration and pipeline graph
 documents. Loading these files does not configure procedure inputs or execute Python
 references.
+
+## Pipeline queue defaults
+
+Queued pipeline operations use `--queue NAME` / `-q NAME` when supplied.
+Otherwise they resolve:
+
+```toml
+[pipeline.queue]
+default_enabled = true
+default_group = "default"
+```
+
+Set `default_enabled = false` to require explicit selection before persistence is
+opened. Explicit names bypass default selection. Local execution remains available
+without a queue. Both settings support the usual environment and `--config`
+overrides, for example `PROVIUM_CONFIG__PIPELINE__QUEUE__DEFAULT_ENABLED=false`
+or `--config pipeline.queue.default_group=priority`.
+See [Named queues](pipelines.md#named-queues) for operation and migration semantics.

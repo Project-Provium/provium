@@ -8,7 +8,14 @@ import sys
 
 from provium.cli.command import Command
 
-from ..arguments import assignments, configure_graph, require_database, require_pipeline
+from ..arguments import (
+    assignments,
+    configure_graph,
+    configure_queue,
+    require_database,
+    require_pipeline,
+    require_queue,
+)
 
 
 class EnqueueCommand(Command):
@@ -17,9 +24,11 @@ class EnqueueCommand(Command):
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
         configure_graph(parser)
+        configure_queue(parser)
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
+            require_queue(arguments)
             require_database(arguments)
             require_pipeline(arguments)
             values = assignments(arguments.input)
@@ -35,7 +44,15 @@ class EnqueueCommand(Command):
             )
             if backend is None:
                 backend = open_backend(arguments.database)
-            print(json.dumps({"id": backend.enqueue(graph.name, values)}))
+            print(
+                json.dumps(
+                    {
+                        "id": backend.enqueue(
+                            graph.name, values, queue_group=arguments.queue
+                        )
+                    }
+                )
+            )
         except Exception as error:
             print(f"provium pipeline: {error}", file=sys.stderr)
             return 2
