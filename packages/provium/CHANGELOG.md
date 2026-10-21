@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/Project-Provium/provium/compare/provium-v0.11.0...provium-v0.12.0) (2026-10-21)
+
+
+### Features
+
+* add layered application configuration and CLI overrides ([7cce376](https://github.com/Project-Provium/provium/commit/7cce37689c529e31349651d5756489f60a3cc810))
+
 ## [0.11.0](https://github.com/Project-Provium/provium/compare/provium-v0.10.0...provium-v0.11.0) (2026-10-16)
 
 

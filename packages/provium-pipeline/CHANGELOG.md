@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.0](https://github.com/Project-Provium/provium/compare/provium-pipeline-v2.0.0...provium-pipeline-v2.1.0) (2026-10-21)
+
+
+### Features
+
+* add layered application configuration and CLI overrides ([7cce376](https://github.com/Project-Provium/provium/commit/7cce37689c529e31349651d5756489f60a3cc810))
+* add named pipeline queues and configurable defaults ([f39cd22](https://github.com/Project-Provium/provium/commit/f39cd2266172f63d05200ef4ada3183a8386b63a))
+
 ## [2.0.0](https://github.com/Project-Provium/provium/compare/provium-pipeline-v1.0.0...provium-pipeline-v2.0.0) (2026-10-16)
 
 
