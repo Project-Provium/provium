@@ -111,7 +111,7 @@ def test_local_pass_through_completes_with_declared_type(tmp_path):
 def test_enqueue_enforces_declarations_without_definition(tmp_path):
     from test_store import make_artifact
 
-    from provium_pipeline.database import PostgresBackend
+    from provium_pipeline.persistence.backends.postgres import PostgresBackend
 
     backend = PostgresBackend(os.environ["PROVIUM_TEST_DATABASE"])
     document = graph(name="declared-" + uuid4().hex).model_dump(mode="json")

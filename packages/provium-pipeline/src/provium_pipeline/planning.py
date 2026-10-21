@@ -9,7 +9,13 @@ from provium.procedure.config import ConfigurationSnapshot
 from provium.procedure.discovery import discover_procedure_catalogs
 from provium.provenance import ProcedureRecord
 
-from .models import PipelineConfiguration, PipelineDefinition, refs
+from .models import (
+    ComputeProfile,
+    PipelineConfiguration,
+    PipelineDefinition,
+    Settings,
+    refs,
+)
 
 
 @dataclass
@@ -131,3 +137,58 @@ def build_plan(
         order,
         {ref[8:]: kind for ref, kind in types.items() if ref.startswith("$inputs.")},
     )
+
+
+def matches(graph: PipelineConfiguration, node: str, selectors: list[str]) -> bool:
+    tags = graph.nodes[node].tags
+    return any(
+        selector == "all"
+        or selector == f"nodes.{node}"
+        or selector.startswith("tags.")
+        and selector[5:] in tags
+        for selector in selectors
+    )
+
+
+def resolve_settings(
+    graph: PipelineConfiguration,
+    profile: ComputeProfile,
+    *,
+    only: list[str],
+    force: list[str],
+    overrides: list[dict[str, Any]],
+) -> dict[str, Settings]:
+    for selector in only + force:
+        if selector == "all" and selector in force:
+            continue
+        if not selector.startswith(("nodes.", "tags.")) or not any(
+            matches(graph, node, [selector]) for node in graph.nodes
+        ):
+            raise ValueError(f"unknown or unmatched selector: {selector}")
+    rules: list[dict[str, Any]] = []
+    for rule in overrides:
+        if len(rule) != 1:
+            raise ValueError("worker override needs one selector")
+        selector, value = next(iter(rule.items()))
+        if selector.startswith("nodes."):
+            if selector[6:] not in graph.nodes:
+                raise ValueError(f"unknown node: {selector}")
+            selector = f"pipelines.{graph.name}.{selector}"
+        rules.append({selector: value})
+    ComputeProfile(name="overrides", workers=rules)
+    for rule in (
+        profile.workers + profile.soft_time_limits + profile.hard_time_limits + rules
+    ):
+        selector = next(iter(rule))
+        prefix = f"pipelines.{graph.name}."
+        applicable = (
+            selector[len(prefix) :] if selector.startswith(prefix) else selector
+        )
+        if applicable.startswith(("tags.", "nodes.")) and not any(
+            matches(graph, n, [applicable]) for n in graph.nodes
+        ):
+            raise ValueError(f"unknown or unmatched selector: {selector}")
+    return {
+        name: profile.settings(graph.name, name, node.tags, rules)
+        for name, node in graph.nodes.items()
+    }

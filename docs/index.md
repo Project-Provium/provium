@@ -32,7 +32,8 @@ flowchart LR
 - Streaming, body-relative I/O
 - Runtime artifact discovery through Python entry points
 - Optional configuration snapshots, including Pydantic v2 models
-- No required runtime dependencies
+- Optional pipeline execution with verified reuse and PostgreSQL queues
+- Optional S3 storage
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
 [Core API](reference/provium.md){ .md-button }

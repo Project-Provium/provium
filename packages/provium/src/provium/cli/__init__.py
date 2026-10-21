@@ -7,6 +7,7 @@ from .application import create_parser, main, run
 from .catalog import CommandCatalog
 from .command import Command
 from .discovery import discover_command_catalogs, reset_command_discovery
+from .group import CommandGroup
 from .plugin import CLI_PLUGIN_API_VERSION, CLI_PLUGIN_ENTRY_POINT_GROUP, CLIPlugin
 
 __version__ = version("provium")
@@ -17,6 +18,7 @@ __all__ = [
     "CLIPlugin",
     "Command",
     "CommandCatalog",
+    "CommandGroup",
     "__version__",
     "create_parser",
     "discover_command_catalogs",
