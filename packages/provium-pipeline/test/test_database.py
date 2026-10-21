@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from provium_pipeline.database import PostgresBackend
+from provium_pipeline.persistence.backends.postgres import PostgresBackend
 
 DSN = os.environ.get("PROVIUM_TEST_DATABASE")
 pytestmark = pytest.mark.skipif(
@@ -136,7 +136,7 @@ def test_migrations_serialize_and_reject_newer_versions():
     import psycopg
     from psycopg import sql
 
-    from provium_pipeline.database import MIGRATIONS
+    from provium_pipeline.persistence.backends.postgres import MIGRATIONS
 
     schema = "test_" + uuid4().hex
     with psycopg.connect(DSN, autocommit=True) as connection:
@@ -177,7 +177,7 @@ def test_failed_migration_rolls_back_schema_and_version(monkeypatch):
     import psycopg
     from psycopg import sql
 
-    import provium_pipeline.database as module
+    import provium_pipeline.persistence.backends.postgres as module
 
     schema = "test_" + uuid4().hex
     with psycopg.connect(DSN, autocommit=True) as connection:

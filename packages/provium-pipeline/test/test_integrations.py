@@ -14,8 +14,8 @@ from provium_pipeline import (
     ExecutionContext,
     InputSet,
     PipelineConfiguration,
-    PostgresBackend,
 )
+from provium_pipeline.persistence.backends.postgres import PostgresBackend
 
 DSN = os.environ.get("PROVIUM_TEST_DATABASE")
 
@@ -173,7 +173,7 @@ def test_lost_commit_acknowledgement_does_not_fail_or_reexecute(tmp_path, monkey
 def test_status_uses_recorded_store_after_default_changes(tmp_path, capsys):
     import json
 
-    from provium_pipeline.cli import run
+    from provium.cli import run
 
     backend = PostgresBackend(DSN)
     graph = configuration().model_copy(update={"name": "p-" + uuid4().hex})
@@ -186,6 +186,7 @@ def test_status_uses_recorded_store_after_default_changes(tmp_path, capsys):
     assert (
         run(
             [
+                "pipeline",
                 "status",
                 graph.name,
                 "--database",

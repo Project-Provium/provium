@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 from uuid import uuid4
 
 import psycopg
@@ -12,8 +11,8 @@ from provium.semantic import canonical_hash
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from .models import ComputeProfile, PipelineConfiguration, PipelineDefinition
-from .planning import build_plan
+from ...models import ComputeProfile, PipelineConfiguration, PipelineDefinition
+from ..interface import Lease
 
 MIGRATIONS = [
     """
@@ -44,50 +43,6 @@ MIGRATIONS = [
     ALTER TABLE provium_inputs ADD COLUMN definition jsonb;
     """,
 ]
-
-
-@dataclass(frozen=True)
-class Lease:
-    namespace: str
-    key: str
-    owner: str
-    generation: int
-    run: str
-
-
-class QueueBackend(Protocol):
-    """Storage-independent coordination contract used by the execution context."""
-
-    def definition(self, pipeline: str) -> PipelineDefinition | None: ...
-
-    def pending(
-        self,
-        pipeline: str,
-        after: int = 0,
-        limit: int = 100,
-        include_finished: bool = False,
-    ) -> list[dict[str, Any]]: ...
-
-    def progress(self, identity: int, state: str, detail: dict[str, Any]) -> None: ...
-
-    def result(self, namespace: str, key: str) -> dict[str, Any] | None: ...
-
-    def acquire(
-        self,
-        namespace: str,
-        key: str,
-        run: str,
-        *,
-        force: bool = False,
-        ttl: float = 60,
-        input_id: int | None = None,
-    ) -> Lease | None: ...
-
-    def renew(self, lease: Lease, *, ttl: float = 60) -> bool: ...
-
-    def complete(self, lease: Lease, outputs: dict[str, Any]) -> bool: ...
-
-    def fail(self, lease: Lease, error: str) -> None: ...
 
 
 class PostgresBackend:
@@ -134,6 +89,8 @@ class PostgresBackend:
         for doc in documents:
             if doc.get("kind") == "PipelineConfiguration":
                 graph = PipelineConfiguration.model_validate(doc)
+                from ...planning import build_plan
+
                 build_plan(graph, definitions.get(graph.name))
                 normalized.append(graph.model_dump(mode="json"))
             elif doc.get("kind") == "ComputeProfile":
@@ -273,7 +230,7 @@ class PostgresBackend:
             )
 
     def enqueue(self, pipeline: str, inputs: dict[str, Any]) -> int:
-        from .store import ArtifactStore
+        from ...store import ArtifactStore
 
         snapshot = self.get("PipelineConfiguration", pipeline)
         definition = self.definition(pipeline)

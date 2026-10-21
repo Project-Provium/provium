@@ -1,9 +1,8 @@
 import json
 
+from provium.cli import run
 from provium_text_pipeline_example.procedure.tokenize.definition import TOKENIZE
 from test_store import make_artifact
-
-from provium_pipeline.cli import run
 
 
 def config(tmp_path):
@@ -28,9 +27,9 @@ def test_direct_cli_and_read_only_status(tmp_path, capsys):
         "--store",
         str(tmp_path / "store"),
     ]
-    assert run(["run", *args]) == 0
+    assert run(["pipeline", "run", *args]) == 0
     capsys.readouterr()
-    assert run(["status", *args, "--outputs", "--json"]) == 0
+    assert run(["pipeline", "status", *args, "--outputs", "--json"]) == 0
     value = json.loads(capsys.readouterr().out)
     assert value[0]["state"] == "completed"
     assert value[0]["outputs"]["tokens"]["location"]
@@ -40,6 +39,7 @@ def test_item_failure_zero_but_bad_configuration_nonzero(tmp_path):
     assert (
         run(
             [
+                "pipeline",
                 "run",
                 "-f",
                 config(tmp_path),
@@ -54,6 +54,7 @@ def test_item_failure_zero_but_bad_configuration_nonzero(tmp_path):
     assert (
         run(
             [
+                "pipeline",
                 "run",
                 "-f",
                 config(tmp_path),

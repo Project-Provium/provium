@@ -54,6 +54,13 @@ Render an artifact's lineage or generate DOT and Mermaid source with
 `provium graph`. See [Provenance graphs](graphing.md) for backend setup, label
 options, output behavior, and Python examples.
 
+## Run pipelines
+
+Install `provium-pipeline` to add the `provium pipeline` command group.
+Use `provium pipeline --help` for commands to validate, inspect, run, register,
+and manage pipeline queues. PostgreSQL and S3 support are optional extras.
+See [Pipelines](pipelines.md) for installation, graph configuration, and examples.
+
 ## Enable tab completion
 
 Provium completes commands, options, discovered procedure and artifact

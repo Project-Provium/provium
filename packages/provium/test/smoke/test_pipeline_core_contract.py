@@ -16,6 +16,8 @@ class PublicContract:
 
 
 PIPELINE_CORE_CONTRACTS = (
+    PublicContract("provium.cli", "CommandGroup"),
+    PublicContract("provium.cli", "CommandCatalog"),
     PublicContract("provium", "ArtifactDefinition"),
     PublicContract("provium", "Artifact"),
     PublicContract("provium", "ArtifactReadBinding"),

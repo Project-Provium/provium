@@ -2,8 +2,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from provium import cli
 
-from provium_pipeline import cli
 from provium_pipeline.models import load_documents
 
 
@@ -57,6 +57,7 @@ def test_cli_remote_file_uses_scratch(tmp_path, remote, capsys):
     assert (
         cli.run(
             [
+                "pipeline",
                 "validate",
                 "-f",
                 "s3://configs/pipeline.yaml",
@@ -148,6 +149,7 @@ def test_localstack_core_artifacts_and_remote_pipeline_yaml(tmp_path, capsys):
         assert (
             cli.run(
                 [
+                    "pipeline",
                     "run",
                     "-f",
                     prefix + "/pipeline.yaml",

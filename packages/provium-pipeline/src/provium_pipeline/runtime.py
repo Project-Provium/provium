@@ -14,21 +14,23 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from provium.semantic import canonical_hash, computation_key, output_key
 
-from .database import Lease, QueueBackend
 from .models import (
     ComputeProfile,
     PipelineConfiguration,
     PipelineDefinition,
     Settings,
 )
-from .planning import build_plan
+from .persistence.interface import Lease, QueueBackend
+from .planning import build_plan, matches, resolve_settings
 from .store import Artifact, ArtifactStore
-from .workers import Worker
+
+if TYPE_CHECKING:
+    from .workers import Worker
 
 
 @dataclass(frozen=True)
@@ -150,54 +152,16 @@ class ExecutionContext:
         self.logger.propagate = False
 
     def _matches(self, node: str, selectors: list[str]) -> bool:
-        tags = self.plan.configuration.nodes[node].tags
-        return any(
-            selector == "all"
-            or selector == f"nodes.{node}"
-            or selector.startswith("tags.")
-            and selector[5:] in tags
-            for selector in selectors
-        )
+        return matches(self.plan.configuration, node, selectors)
 
     def _validate_settings(self) -> dict[str, Settings]:
-        graph = self.plan.configuration
-        for selector in self.only + self.force:
-            if selector == "all" and selector in self.force:
-                continue
-            if not selector.startswith(("nodes.", "tags.")) or not any(
-                self._matches(node, [selector]) for node in graph.nodes
-            ):
-                raise ValueError(f"unknown or unmatched selector: {selector}")
-        rules: list[dict[str, Any]] = []
-        for rule in self.overrides:
-            if len(rule) != 1:
-                raise ValueError("worker override needs one selector")
-            selector, value = next(iter(rule.items()))
-            if selector.startswith("nodes."):
-                if selector[6:] not in graph.nodes:
-                    raise ValueError(f"unknown node: {selector}")
-                selector = f"pipelines.{graph.name}.{selector}"
-            rules.append({selector: value})
-        ComputeProfile(name="overrides", workers=rules)
-        for rule in (
-            self.profile.workers
-            + self.profile.soft_time_limits
-            + self.profile.hard_time_limits
-            + rules
-        ):
-            selector = next(iter(rule))
-            prefix = f"pipelines.{graph.name}."
-            applicable = (
-                selector[len(prefix) :] if selector.startswith(prefix) else selector
-            )
-            if applicable.startswith(("tags.", "nodes.")) and not any(
-                self._matches(n, [applicable]) for n in graph.nodes
-            ):
-                raise ValueError(f"unknown or unmatched selector: {selector}")
-        return {
-            name: self.profile.settings(graph.name, name, node.tags, rules)
-            for name, node in graph.nodes.items()
-        }
+        return resolve_settings(
+            self.plan.configuration,
+            self.profile,
+            only=self.only,
+            force=self.force,
+            overrides=self.overrides,
+        )
 
     @property
     def settings(self) -> Mapping[str, Settings]:
@@ -668,6 +632,8 @@ class ExecutionContext:
         return ready
 
     def _run_node(self, first: Job, *, keep_workers: bool = False) -> None:
+        from .workers import Worker
+
         name = first.node
         settings = self._settings[name]
         if self._active != name or self._resident_setup != first.setup_key:

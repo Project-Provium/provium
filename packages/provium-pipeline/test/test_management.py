@@ -3,9 +3,11 @@ import os
 from uuid import uuid4
 
 import pytest
+from provium import cli
 from test_store import make_artifact
 
-from provium_pipeline import PipelineDefinition, PostgresBackend, cli
+from provium_pipeline import PipelineDefinition
+from provium_pipeline.persistence.backends.postgres import PostgresBackend
 
 DSN = os.environ.get("PROVIUM_TEST_DATABASE")
 
@@ -153,40 +155,40 @@ def test_management_cli(db, tmp_path, capsys):
         f"---\nkind: ComputeProfile\nname: {name}\n"
     )
     common = ["--database", DSN]
-    assert cli.run(["register", "-f", str(path), *common]) == 0
+    assert cli.run(["pipeline", "register", "-f", str(path), *common]) == 0
     db.enqueue(name, {})
     capsys.readouterr()
-    assert cli.run(["list", "pipelines", *common]) == 0
+    assert cli.run(["pipeline", "list", "pipelines", *common]) == 0
     assert {"kind": "PipelineConfiguration", "name": name} in json.loads(
         capsys.readouterr().out
     )
-    assert cli.run(["list", "profiles", *common]) == 0
+    assert cli.run(["pipeline", "list", "profiles", *common]) == 0
     assert {"kind": "ComputeProfile", "name": name} in json.loads(
         capsys.readouterr().out
     )
-    assert cli.run(["list", *common]) == 0
+    assert cli.run(["pipeline", "list", *common]) == 0
     capsys.readouterr()
-    assert cli.run(["queue", name, *common]) == 0
+    assert cli.run(["pipeline", "queue", name, *common]) == 0
     assert json.loads(capsys.readouterr().out)[0]["states"]["pending"] == 1
-    assert cli.run(["queue", *common]) == 0
+    assert cli.run(["pipeline", "queue", *common]) == 0
     capsys.readouterr()
-    assert cli.run(["unregister", "-f", str(path), *common]) == 0
+    assert cli.run(["pipeline", "unregister", "-f", str(path), *common]) == 0
     assert json.loads(capsys.readouterr().out) == {
         "unregistered": 2,
         "removed_inputs": 1,
     }
-    assert cli.run(["register", "-f", str(path), *common]) == 0
-    assert cli.run(["unregister", name, "--profile", name, *common]) == 0
-    assert cli.run(["unregister", *common]) == 2
-    assert cli.run(["unregister", name, "-f", str(path), *common]) == 2
-    assert cli.run(["unregister", "--profile", name, *common]) == 0
-    assert cli.run(["unregister", name, *common]) == 0
+    assert cli.run(["pipeline", "register", "-f", str(path), *common]) == 0
+    assert cli.run(["pipeline", "unregister", name, "--profile", name, *common]) == 0
+    assert cli.run(["pipeline", "unregister", *common]) == 2
+    assert cli.run(["pipeline", "unregister", name, "-f", str(path), *common]) == 2
+    assert cli.run(["pipeline", "unregister", "--profile", name, *common]) == 0
+    assert cli.run(["pipeline", "unregister", name, *common]) == 0
 
 
 def test_management_requires_database(monkeypatch):
     monkeypatch.delenv("PROVIUM_DATABASE_URL", raising=False)
     for command in (["list"], ["queue"], ["unregister", "missing"]):
-        assert cli.run(command) == 2
+        assert cli.run(["pipeline", *command]) == 2
 
 
 @pytest.mark.parametrize("phase", ["before_admission", "after_admission"])

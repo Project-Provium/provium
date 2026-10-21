@@ -53,3 +53,4 @@ publishes outputs transactionally, and embeds their complete provenance lineage.
 - Define [artifact classes and catalogs](guides/artifacts.md).
 - Define and run [typed procedures](guides/procedures.md).
 - Use the [command-line tools](guides/cli.md).
+- Connect procedures into [pipelines](guides/pipelines.md).

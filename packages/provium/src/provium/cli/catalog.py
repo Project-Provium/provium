@@ -31,8 +31,24 @@ class CommandCatalog:
         name = _metadata(command, "name")
         _metadata(command, "help")
         if name in self._commands:
-            raise ValueError(f"command name is already registered: {name}")
-        self._commands[name] = command
+            from .group import CommandGroup
+
+            existing = self._commands[name]
+            if not (
+                issubclass(existing, CommandGroup) and issubclass(command, CommandGroup)
+            ):
+                raise ValueError(f"command name is already registered: {name}")
+            merged = CommandCatalog()
+            for child in existing.catalog.commands.values():
+                merged.register(child)
+            for child in command.catalog.commands.values():
+                merged.register(child)
+            # Publish only after the recursive merge succeeds; source catalogs survive.
+            self._commands[name] = type(
+                existing.__name__, (existing,), {"catalog": merged}
+            )
+        else:
+            self._commands[name] = command
         return command
 
     def resolve(self, name: str) -> type[Command]:

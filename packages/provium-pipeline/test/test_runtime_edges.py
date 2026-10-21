@@ -17,7 +17,7 @@ from provium_pipeline import (
     Outcome,
     PipelineDefinition,
 )
-from provium_pipeline.database import Lease
+from provium_pipeline.persistence.interface import Lease
 
 
 def context(tmp_path, **options):

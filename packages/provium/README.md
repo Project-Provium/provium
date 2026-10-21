@@ -337,6 +337,76 @@ The output type is inferred from its extension. Library callers can use the
 functions in `provium.tool` to produce Mermaid or DOT source and to receive
 rendered images as bytes.
 
+## CLI command groups and plugins
+
+Declare commands with `Command`, collect them in a `CommandCatalog`, and nest
+catalogs with `CommandGroup`. Groups can contain further groups at any depth:
+
+```python
+from provium.cli import (
+    CLI_PLUGIN_API_VERSION,
+    CLIPlugin,
+    Command,
+    CommandCatalog,
+    CommandGroup,
+)
+
+
+class CheckCommand(Command):
+    name = "check"
+    help = "Check a pipeline"
+
+    def configure(self, parser):
+        parser.add_argument("name")
+
+    def execute(self, arguments):
+        # Validate local arguments before importing execution dependencies.
+        if not arguments.name.strip():
+            raise ValueError("pipeline name must not be empty")
+        from your_package.execution import check
+
+        return check(arguments.name)
+
+
+class AdminGroup(CommandGroup):
+    name = "admin"
+    help = "Pipeline administration"
+    catalog = CommandCatalog()
+
+
+AdminGroup.catalog.register(CheckCommand)
+
+
+class PipelineGroup(CommandGroup):
+    name = "pipeline"
+    help = "Pipeline commands"
+    catalog = CommandCatalog()
+
+
+PipelineGroup.catalog.register(AdminGroup)
+catalog = CommandCatalog()
+catalog.register(PipelineGroup)
+plugin = CLIPlugin(CLI_PLUGIN_API_VERSION, "your-package", catalog)
+```
+
+Expose the plugin in the distribution metadata:
+
+```toml
+[project.entry-points."provium.cli.command_catalogs"]
+your_package = "your_package.cli:plugin"
+```
+
+This adds `provium pipeline admin check NAME`. If another installed package
+registers `pipeline` or `pipeline admin`, their child commands merge recursively.
+No package owns or reserves a group path. Each merge preserves the source
+catalogs and publishes only after all children are accepted. Existing group
+metadata is retained; duplicate leaf names and group/leaf collisions are errors.
+
+Keep plugin modules, command constructors, and `configure()` lightweight: core
+loads them to discover the command tree and parse arguments. Put execution-only
+imports in `execute()`, after local validation. Argparse rejects invalid syntax
+and handles help before dispatching a leaf command.
+
 ## Development
 
 Create a virtual environment and install the project with its test dependencies:

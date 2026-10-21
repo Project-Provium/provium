@@ -12,8 +12,7 @@ from .catalog import CommandCatalog
 from .completion import enable_completion
 from .discovery import discover_command_catalogs
 from .errors import EXPECTED_CLI_ERRORS, print_cli_error
-
-_COMMAND_DESTINATION = "_provium_command"
+from .group import COMMAND_DESTINATION, configure_catalog
 
 
 def create_parser(catalog: CommandCatalog) -> argparse.ArgumentParser:
@@ -27,16 +26,7 @@ def create_parser(catalog: CommandCatalog) -> argparse.ArgumentParser:
         action="version",
         version=f"provium {__version__}",
     )
-    subparsers = parser.add_subparsers(dest="command_name", required=True)
-    for command_type in catalog.commands.values():
-        command = command_type()
-        command_parser = subparsers.add_parser(
-            command.name,
-            help=command.help,
-            add_help=command.add_help,
-        )
-        command.configure(command_parser)
-        command_parser.set_defaults(**{_COMMAND_DESTINATION: command})
+    configure_catalog(parser, catalog, destination="command_name")
     return parser
 
 
@@ -50,7 +40,7 @@ def run(
     parser = create_parser(selected_catalog)
     enable_completion(parser)
     parsed = parser.parse_args(arguments)
-    command = getattr(parsed, _COMMAND_DESTINATION)
+    command = getattr(parsed, COMMAND_DESTINATION)
     return command.execute(parsed)
 
 

@@ -7,7 +7,8 @@ Install the optional S3 dependency for standalone core usage:
 pip install 'provium[s3]'
 ```
 
-Provium Pipeline includes the S3 dependency. Credentials and AWS region use the
+For pipeline usage, install `provium-pipeline[s3]`; S3 is optional in both
+packages. Credentials and AWS region use the
 standard boto3 configuration, such as environment variables, AWS profiles, or an
 instance/task role.
 
@@ -85,11 +86,11 @@ uploads its output; an exception abandons the temporary file.
 Every pipeline command accepting `-f` can read local and S3 files in one invocation:
 
 ```sh
-provium-pipeline register \
+provium pipeline register \
   -f s3://my-bucket/pipeline.yaml -f profiles.yaml \
   --scratch-directory /tmp/provium
 
-provium-pipeline run \
+provium pipeline run \
   -f s3://my-bucket/pipeline.yaml -f s3://my-bucket/profiles.yaml \
   --profile cluster --input document=s3://my-bucket/source.pa \
   --store s3://my-bucket/artifacts --scratch-directory /tmp/provium
