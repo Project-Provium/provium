@@ -16,10 +16,8 @@ class Backend(Enum):
 def open_backend(
     connection: str, *, backend: Backend = Backend.Postgres
 ) -> PersistenceBackend:
-    if not isinstance(backend, Backend):
+    if backend is not Backend.Postgres:
         raise TypeError("backend must be a Backend member")
-    match backend:
-        case Backend.Postgres:
-            from .backends.postgres import PostgresBackend
+    from .backends.postgres import PostgresBackend
 
-            return PostgresBackend(connection)
+    return PostgresBackend(connection)

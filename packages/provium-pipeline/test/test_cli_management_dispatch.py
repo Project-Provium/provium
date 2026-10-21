@@ -79,3 +79,59 @@ def test_invalid_documents_do_not_open_backend(command, tmp_path, monkeypatch):
     monkeypatch.setattr(factory, "open_backend", opener)
     assert run(["pipeline", command, "-f", str(path), "--database", "unused"]) == 2
     opener.assert_not_called()
+
+
+@pytest.mark.parametrize("command", ["enqueue", "retry"])
+def test_management_selects_pipeline_from_file(backend, tmp_path, capsys, command):
+    path = tmp_path / "pipeline.yaml"
+    path.write_text(
+        "kind: PipelineConfiguration\nname: empty\ninputs: {}\nnodes: {}\noutputs: {}\n"
+    )
+    backend.enqueue.return_value = 7
+    backend.retry.return_value = 3
+    assert run(["pipeline", command, "-f", str(path), "--database", "unused"]) == 0
+    if command == "enqueue":
+        backend.enqueue.assert_called_once_with("empty", {})
+        assert json.loads(capsys.readouterr().out) == {"id": 7}
+    else:
+        backend.retry.assert_called_once_with("empty")
+        assert json.loads(capsys.readouterr().out) == {"reset": 3}
+    backend.get.assert_not_called()
+
+
+@pytest.mark.parametrize("command", ["register", "unregister"])
+def test_empty_documents_do_not_open_backend(tmp_path, monkeypatch, capsys, command):
+    path = tmp_path / "empty.yaml"
+    path.write_text("# no documents\n")
+    opener = Mock()
+    monkeypatch.setattr(factory, "open_backend", opener)
+    assert run(["pipeline", command, "-f", str(path), "--database", "unused"]) == 2
+    assert "requires" in capsys.readouterr().err
+    opener.assert_not_called()
+
+
+@pytest.mark.parametrize("command", ["inspect", "status"])
+@pytest.mark.parametrize("idle_wait", ["-1", "nan", "inf"])
+def test_invalid_idle_wait_reports_error(command, idle_wait, capsys):
+    assert run(["pipeline", command, "-f", "unused", "--idle-wait", idle_wait]) == 2
+    assert "idle wait must be finite and nonnegative" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("selector", ["default", "nodes.tokenize"])
+def test_inspect_resolves_worker_overrides(tmp_path, capsys, selector):
+    from test_commands import config
+
+    assert (
+        run(
+            [
+                "pipeline",
+                "inspect",
+                "-f",
+                config(tmp_path),
+                "--workers",
+                f"{selector}=2",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["settings"]["tokenize"]["workers"] == 2
