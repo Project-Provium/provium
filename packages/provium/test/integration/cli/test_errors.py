@@ -49,7 +49,7 @@ def create_source(
         [
             "execute",
             "test.SourceTextV1",
-            "--config",
+            "--procedure-config",
             str(configuration),
             "--output",
             f"value={destination}",
@@ -69,7 +69,7 @@ def create_source(
             [
                 "execute",
                 "test.TransformTextV1",
-                "--config",
+                "--procedure-config",
                 "configuration.txt",
             ],
             "unsupported configuration file type",
@@ -83,7 +83,7 @@ def create_source(
             "unknown binding field: unknown",
         ),
         (
-            ["execute", "test.SourceTextV1", "--config", "missing.json"],
+            ["execute", "test.SourceTextV1", "--procedure-config", "missing.json"],
             "No such file or directory",
         ),
         (
@@ -123,7 +123,7 @@ def test_missing_required_binding_and_invalid_configuration_are_reported(
     configuration = tmp_path / "source.json"
     configuration.write_text(json.dumps({"text": "value"}), encoding="utf-8")
     status, stdout, stderr = invoke(
-        ["execute", "test.SourceTextV1", "--config", str(configuration)],
+        ["execute", "test.SourceTextV1", "--procedure-config", str(configuration)],
         capsys,
     )
     assert status == 2
@@ -133,7 +133,7 @@ def test_missing_required_binding_and_invalid_configuration_are_reported(
     invalid = tmp_path / "invalid.json"
     invalid.write_text(json.dumps({"prefix": 1}), encoding="utf-8")
     status, stdout, stderr = invoke(
-        ["execute", "test.TransformTextV1", "--config", str(invalid)],
+        ["execute", "test.TransformTextV1", "--procedure-config", str(invalid)],
         capsys,
     )
     assert status == 2

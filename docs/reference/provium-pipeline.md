@@ -122,6 +122,15 @@ supplied persistence implementation. Backend selectors are enum members, not
 strings. There is no `provium_pipeline.database` facade or root-level
 `PostgresBackend` export.
 
+## Application settings
+
+The CLI consumes `pipeline.database`, `pipeline.store`, and
+`pipeline.scratch_directory` from the shared core configuration system.
+These defaults apply to CLI execution; Python APIs continue to accept explicit
+arguments and do not automatically read user or project configuration.
+See [Configuration](../guides/configuration.md) for files, environment overrides,
+and the global `--config KEY.PATH=VALUE` option.
+
 ## CLI extensions
 
 Pipeline commands are ordinary core `Command` classes with their own

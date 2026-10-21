@@ -23,6 +23,9 @@ def configure_catalog(
         child = subparsers.add_parser(
             command.name, help=command.help, add_help=command.add_help
         )
+        from .configuration import configure_configuration
+
+        configure_configuration(child)
         command.configure(child)
         child.set_defaults(**{COMMAND_DESTINATION: command})
 

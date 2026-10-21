@@ -8,6 +8,22 @@ provium --version
 python -m provium --version
 ```
 
+## Application configuration
+
+Every command supports repeatable `--config KEY.PATH=VALUE` overrides, including
+commands registered by plugins and commands inside nested groups:
+
+```bash
+provium pipeline run -f pipeline.yaml --config pipeline.store=./artifacts
+```
+
+User defaults in `~/.config/provium/*.toml` are overridden by project
+`.provium/*.toml` files, then environment variables such as
+`PROVIUM_CONFIG__PIPELINE__STORE`, then `--config` values. Dedicated flags such
+as `--store` take priority over these settings. See [Configuration](configuration.md)
+for full precedence and the Python API. Procedure JSON/YAML files use the separate
+`--procedure-config FILE` option.
+
 ## Discover procedures
 
 List lightweight definitions without importing procedure implementations:
@@ -26,13 +42,13 @@ provium execute example.DetectV1 --help
 ## Execute a procedure
 
 Bindings use `FIELD=PATH`. Repeat `--input` for a repeated field and repeat
-`--config` to apply JSON or YAML layers in order (later values override earlier
+`--procedure-config` to apply JSON or YAML layers in order (later values override earlier
 ones).
 
 ```bash
 provium execute example.DetectV1 \
-  --config defaults.yaml \
-  --config production.json \
+  --procedure-config defaults.yaml \
+  --procedure-config production.json \
   --setup-input model=model.pa \
   --input image=image.pa \
   --input references=reference-1.pa \

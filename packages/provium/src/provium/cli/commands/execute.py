@@ -124,7 +124,7 @@ class ExecuteCommand(Command):
             action="store_true",
             help="List available procedures",
         )
-        parser.add_argument("--config", action="append", default=[])
+        parser.add_argument("--procedure-config", action="append", default=[])
         parser.add_argument("--scratch-directory")
         setup_input = parser.add_argument("--setup-input", action="append", default=[])
         setup_input.completer = _complete_setup_bindings  # type: ignore[attr-defined]
@@ -150,7 +150,8 @@ class ExecuteCommand(Command):
                 definition = _definition(arguments.identifier)
                 contract = definition.resolve_contract()
                 layers = tuple(
-                    self._load_configuration(path) for path in arguments.config
+                    self._load_configuration(path)
+                    for path in arguments.procedure_config
                 )
                 setup_inputs = self._read_bindings(
                     contract.SetupInputs.fields if contract.SetupInputs else {},
