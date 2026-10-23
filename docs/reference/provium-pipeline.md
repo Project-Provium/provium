@@ -72,7 +72,11 @@ procedures=None)` validates an already-loaded graph.
 
 `provium_pipeline.runtime.ExecutionContext` takes a configuration and an
 `ArtifactStore`. Optional parameters include `definition`, `procedures`,
-`profile`, `workers`, `only`, `force`, `backend`, `idle_wait`, and `log_path`.
+`profile`, `workers`, `only`, `force`, `backend`, `idle_wait`, `log_path`, and
+`verify_artifacts` (default `False`). Set `verify_artifacts=True` to read and
+verify cached outputs on reuse; otherwise execution trusts committed metadata.
+Logs stream to stderr by default (`context.log_path` is `None`). Pass `log_path`
+to write logs to a file instead.
 Pass prepared values explicitly; preparing a graph does not start execution.
 
 `InputSet(inputs)` maps declared graph inputs to artifact locations or supported
@@ -87,8 +91,12 @@ is best effort; callbacks should not be the sole record of persistent work.
 
 `provium_pipeline.store.ArtifactStore(location, *, scratch=None)` manages
 verified local/S3 artifacts. Use it as a context manager. An `Artifact` has
-a durable `location`, a local `path`, an `identity`, and a `fingerprint`.
-Downloaded S3 paths belong to the store and must be used before it closes.
+a durable `location`, an optional local `path`, an `identity`, and a `fingerprint`.
+Cached references have `path=None` until materialized. Call
+`store.materialize(artifact)` to obtain a fetched, verified artifact with a local
+path before reading its bytes. `store.restore(outputs, expected)` loads committed
+references without file I/O; `store.verify(outputs, expected)` always verifies
+contents. Downloaded S3 paths belong to the store and must be used before it closes.
 
 ## Persistence
 
@@ -161,3 +169,27 @@ using a backend. Python calls do not read CLI configuration; the omitted argumen
 always selects `default`. Custom persistence implementations must accept the new
 keyword and restrict reads and retries to the selected group.
 See [Named queues](../guides/pipelines.md#named-queues) for CLI and migration details.
+
+## Input-set index and lookup
+
+`provium_pipeline.input_sets.inspect_inputs(store, bindings)` returns verified
+named location/identity/fingerprint records. `input_set_hash(records)` hashes
+only logical input names and fingerprints.
+
+`LocalInputSetIndex(store.root)` and `PostgresBackend` implement `InputSetIndex`:
+
+- `register_input_set(name, inputs)` returns `{"hash": ..., "inputs": ...}`.
+- `resolve_input_set(*, name=None, key=None)` resolves exactly one name or hash.
+- `find_input_sets(key)` returns sorted matching names.
+- `unregister_input_sets(*, name=None, key=None)` returns removed names,
+  preserving the input-set record.
+
+PostgreSQL adds the index through its normal automatic migration.
+`PersistenceBackend` implementations must provide these methods.
+
+`provium_pipeline.lookup.lookup_artifact(plan, store, inputs, selector,
+*, backend=None)` resolves `pipeline.nodes.node.output` or
+`pipeline.outputs.output` to an `Artifact` with `path=None`. The backend only
+needs `result(namespace, key)`; otherwise lookup reads store manifests. It
+does not execute procedures or read artifact bodies. Missing results raise
+`ValueError`. Call `store.materialize(artifact)` to fetch and verify the result.

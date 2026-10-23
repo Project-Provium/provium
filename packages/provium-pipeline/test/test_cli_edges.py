@@ -84,7 +84,7 @@ def test_persistent_commands_and_invalid_combinations(tmp_path, capsys):
     source = make_artifact(tmp_path / "source.pa")
     assert run(["pipeline", "enqueue", name, *common, "--input", f"x={source}"]) == 0
     capsys.readouterr()
-    assert run(["pipeline", "run", name, *common, "--profile", name]) == 0
+    assert run(["pipeline", "run", name, *common, "--profile", name, "--json"]) == 0
     assert json.loads(capsys.readouterr().out)[0]["state"] == "completed"
     assert run(["pipeline", "status", name, *common]) == 0
     assert run(["pipeline", "retry", name, *common]) == 0

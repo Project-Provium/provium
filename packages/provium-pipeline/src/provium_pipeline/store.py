@@ -24,7 +24,7 @@ from provium.semantic import artifact_fingerprint
 @dataclass(frozen=True)
 class Artifact:
     location: str
-    path: str
+    path: str | None
     identity: str
     fingerprint: dict[str, str]
 
@@ -199,6 +199,7 @@ class ArtifactStore:
         generation = uuid4().hex
         outputs: dict[str, dict[str, Any]] = {}
         for name, artifact in verified.items():
+            assert artifact.path is not None
             with Path(artifact.path).open("rb") as stream:
                 digest = hashlib.file_digest(stream, "sha256").hexdigest()
             relative = f"artifacts/{computation}/{generation}/{digest}.pa"
@@ -240,6 +241,46 @@ class ArtifactStore:
             return json.loads((self.root / relative).read_text())
         except FileNotFoundError:
             return None
+
+    def restore(
+        self, outputs: dict[str, Any], expected: dict[str, str]
+    ) -> dict[str, Artifact]:
+        """Load committed references without fetching or reading artifact files."""
+        if set(outputs) != set(expected):
+            raise ValueError("incomplete committed result")
+        result: dict[str, Artifact] = {}
+        for name, metadata in outputs.items():
+            fingerprint = metadata["fingerprint"]
+            if (
+                set(fingerprint) != {"type", "content", "provenance"}
+                or not all(
+                    isinstance(value, str) and value for value in fingerprint.values()
+                )
+                or fingerprint["provenance"] != expected[name]
+                or not isinstance(metadata["location"], str)
+                or not metadata["location"]
+                or not isinstance(metadata["identity"], str)
+                or not metadata["identity"]
+            ):
+                raise ValueError(f"invalid committed artifact metadata: {name}")
+            self._key(fingerprint["content"])
+            self._key(fingerprint["provenance"])
+            result[name] = Artifact(
+                metadata["location"], None, metadata["identity"], dict(fingerprint)
+            )
+        return result
+
+    def materialize(self, artifact: Artifact) -> Artifact:
+        """Fetch and verify a deferred reference before a procedure consumes it."""
+        if artifact.path is not None:
+            return artifact
+        verified = self.inspect(artifact.location)
+        if (
+            verified.identity != artifact.identity
+            or verified.fingerprint != artifact.fingerprint
+        ):
+            raise ValueError("committed artifact integrity/provenance mismatch")
+        return verified
 
     def verify(
         self, outputs: dict[str, Any], expected: dict[str, str]

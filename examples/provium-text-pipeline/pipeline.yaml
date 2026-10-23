@@ -1,0 +1,16 @@
+kind: PipelineConfiguration
+name: text-processing
+inputs:
+  document: provium_text_pipeline_example.DocumentV1
+nodes:
+  tokenize:
+    procedure: provium_text_pipeline_example.TokenizeV1
+    inputs:
+      source: $inputs.document
+  count_words:
+    procedure: provium_text_pipeline_example.CountWordsV1
+    inputs:
+      tokens: $nodes.tokenize.destination
+outputs:
+  tokens: $nodes.tokenize.destination
+  word_count: $nodes.count_words.word_count

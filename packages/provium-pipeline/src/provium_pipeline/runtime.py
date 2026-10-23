@@ -59,6 +59,7 @@ class State:
     values: dict[str, Artifact] = field(default_factory=dict[str, Artifact])
     steps: set[str] = field(default_factory=set[str])
     failed: bool = False
+    error: str | None = None
 
 
 @dataclass
@@ -92,6 +93,7 @@ class ExecutionContext:
         queue_group: str = "default",
         idle_wait: float = 0,
         log_path: str | Path | None = None,
+        verify_artifacts: bool = False,
     ) -> None:
         self.queue_group = validate_queue_name(queue_group)
         if backend:
@@ -105,6 +107,7 @@ class ExecutionContext:
                 definition = registered_definition
         self.plan = build_plan(configuration, definition, procedures)
         self.store = store
+        self.verify_artifacts = verify_artifacts
         self.profile = profile or ComputeProfile(name="default")
         if (
             profile is not None
@@ -145,12 +148,14 @@ class ExecutionContext:
         self._elapsed: dict[str, float] = {}
         self._started = 0.0
         self._settings = self._validate_settings()
-        self.log_path = Path(
-            log_path or Path(tempfile.gettempdir()) / f"provium-{self.run_id}.log"
-        )
+        self.log_path = Path(log_path) if log_path is not None else None
         self.logger = logging.getLogger(f"provium-pipeline.{self.run_id}")
         self.logger.setLevel(logging.INFO)
-        self._handler = logging.FileHandler(self.log_path)
+        self._handler = (
+            logging.FileHandler(self.log_path)
+            if self.log_path is not None
+            else logging.StreamHandler()
+        )
         self.logger.addHandler(self._handler)
         self.logger.propagate = False
 
@@ -209,7 +214,7 @@ class ExecutionContext:
         self.logger.removeHandler(self._handler)
         if self.error is not None:
             raise RuntimeError(
-                f"pipeline executor failed; see {self.log_path}"
+                f"pipeline executor failed; see {self.log_path or 'stderr'}"
             ) from self.error
 
     def inspect_inputs(self, items: list[InputSet]) -> list[dict[str, Any]]:
@@ -267,6 +272,7 @@ class ExecutionContext:
                     if len(outputs) == len(self.plan.configuration.outputs)
                     else "partial",
                     outputs,
+                    error=state.error,
                 )
             )
             report["nodes"] = {
@@ -364,11 +370,25 @@ class ExecutionContext:
         state = State(item, identity)
         self._states.append(state)
         self.max_resident_inputs = max(self.max_resident_inputs, len(self._states))
+        label = "Input set"
         try:
             expected_names = set(self.plan.configuration.inputs)
             if set(item.inputs) != expected_names:
-                raise ValueError("input names do not match pipeline definition")  # noqa: TRY301 -- converted to an item outcome
+                missing = ", ".join(sorted(expected_names - set(item.inputs))) or "none"
+                extra = ", ".join(sorted(set(item.inputs) - expected_names)) or "none"
+                raise ValueError(  # noqa: TRY301 -- converted to an item outcome
+                    f"input names do not match pipeline definition "
+                    f"(missing: {missing}; unexpected: {extra})"
+                )
             for name, value in item.inputs.items():
+                location = (
+                    value.location
+                    if isinstance(value, Artifact)
+                    else value.get("location")
+                    if isinstance(value, dict)
+                    else value
+                )
+                label = f"Input {name!r} ({location})"
                 if isinstance(value, Artifact):
                     artifact = self.store.inspect(value.location)
                     if (
@@ -387,10 +407,26 @@ class ExecutionContext:
                     artifact = self.store.inspect(value)
                 expected = self.plan.input_types.get(name)
                 if expected is not None and artifact.fingerprint["type"] != expected:
-                    raise ValueError(f"incompatible pipeline input: {name}")  # noqa: TRY301 -- converted to an item outcome
+                    raise ValueError(  # noqa: TRY301 -- converted to an item outcome
+                        f"incompatible pipeline input: {name}; "
+                        f"expected {expected}, found {artifact.fingerprint['type']}"
+                    )
                 state.values[f"$inputs.{name}"] = artifact
+        except (OSError, ValueError) as error:
+            state.failed = True
+            if isinstance(error, FileNotFoundError):
+                reason = "file not found; check the input path"
+            elif isinstance(error, IsADirectoryError):
+                reason = "expected a file, found a directory"
+            elif isinstance(error, PermissionError):
+                reason = "permission denied; check file access permissions"
+            else:
+                reason = str(error)
+            state.error = f"{label}: {reason}"
+            self.logger.error("%s", state.error)  # noqa: TRY400 -- expected input errors need no traceback
         except Exception:
             state.failed = True
+            state.error = traceback.format_exc()
             self.logger.exception("invalid input set %s", identity)
 
     def _load_page(self, rows: list[dict[str, Any]]) -> None:
@@ -432,7 +468,8 @@ class ExecutionContext:
                     },
                     "store": self.store.namespace,
                     "run": self.run_id,
-                    "log": str(self.log_path),
+                    "log": str(self.log_path) if self.log_path is not None else None,
+                    "error": state.error,
                 },
             )
         identity = state.identity if state.identity is not None else id(state)
@@ -440,7 +477,7 @@ class ExecutionContext:
             final or status in ("completed", "failed")
         ):
             self._pipeline_seen.add(identity)
-            event = Outcome(state.item, status, outputs)
+            event = Outcome(state.item, status, outputs, error=state.error)
             self.outcomes.append(event)
             self._notify(event)
 
@@ -587,6 +624,7 @@ class ExecutionContext:
     def _failure(self, job: Job, error: str) -> None:
         self._failed[job.key] = error
         job.state.failed = True
+        job.state.error = error
         job.state.steps.add(job.node)
         self.logger.error(
             "node=%s computation=%s input=%s: %s",
@@ -628,13 +666,39 @@ class ExecutionContext:
                     )
                     if manifest is not None and not forced:
                         self._accept(
-                            job, self.store.verify(manifest, job.expected), True
+                            job,
+                            self.store.verify(manifest, job.expected)
+                            if self.verify_artifacts
+                            else self.store.restore(manifest, job.expected),
+                            True,
                         )
                     elif self._allowed(name):
                         ready.append(job)
                 except Exception:
                     self._failure(job, traceback.format_exc())
         return ready
+
+    def _materialize(self, job: Job) -> None:
+        node = self.plan.configuration.nodes[job.node]
+
+        def resolve(reference: str) -> str:
+            artifact = self.store.materialize(job.state.values[reference])
+            job.state.values[reference] = artifact
+            assert artifact.path is not None
+            return artifact.path
+
+        for bindings, paths in (
+            (node.inputs, job.inputs),
+            (node.setup_inputs, job.setup),
+        ):
+            for name, value in bindings.items():
+                paths[name] = (
+                    None
+                    if value is None
+                    else [resolve(ref) for ref in value]
+                    if isinstance(value, list)
+                    else resolve(value)
+                )
 
     def _run_node(self, first: Job, *, keep_workers: bool = False) -> None:
         from .workers import Worker
@@ -670,6 +734,11 @@ class ExecutionContext:
                     )
                     if idle is None and len(self._workers) >= settings.workers:
                         break
+                    try:
+                        self._materialize(job)
+                    except Exception:
+                        self._failure(job, traceback.format_exc())
+                        continue
                     if self.backend:
                         job.lease = self.backend.acquire(
                             self.store.namespace,
