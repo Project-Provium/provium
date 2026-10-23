@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.0](https://github.com/Project-Provium/provium/compare/provium-pipeline-v2.1.0...provium-pipeline-v2.2.0) (2026-10-23)
+
+
+### Features
+
+* Input sets ([e680d14](https://github.com/Project-Provium/provium/commit/e680d14874193a759d88e10be0604f7a740201cd))
+* Input sets ([aebcdf7](https://github.com/Project-Provium/provium/commit/aebcdf74a6bcaa7dbc87abf7de73d21a42814e75))
+
 ## [2.1.0](https://github.com/Project-Provium/provium/compare/provium-pipeline-v2.0.0...provium-pipeline-v2.1.0) (2026-10-21)
 
 
