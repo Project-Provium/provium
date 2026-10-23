@@ -70,8 +70,20 @@ provium pipeline run -f pipeline.yaml --input document=document.pa --store ./art
 provium pipeline status -f pipeline.yaml --input document=document.pa --store ./artifacts
 ```
 
-Repeated equivalent work reuses verified artifacts. Commands print JSON to
-standard output. A run also reports its log path on standard error. Validation
+Repeated equivalent work trusts committed artifact metadata by default, so cached
+steps do not fetch or read intermediate or final artifact files. Their recorded
+content fingerprints determine downstream computation keys. Original pipeline
+inputs are still inspected and verified. Cached artifacts are fetched and verified
+when a procedure needs to consume them. Use `pipeline run --verify-artifacts` to
+verify cached files even when no procedure needs to run. Missing or corrupt cached
+files are otherwise not detected during a fully cached run. `pipeline status`
+continues to verify artifacts when inspecting outputs.
+
+Repeated equivalent work reuses cached artifacts. `pipeline run` prints a
+readable summary by default; add `--json` for structured results on standard
+output, including error details for failed input sets. Runs stream diagnostics
+to standard error; redirect stderr with
+`2>run.log` to save them. No run log file is created automatically. Validation
 and plan inspection do not create an artifact store or start worker processes.
 Status checks existing results without computing missing work.
 
@@ -276,3 +288,62 @@ The PostgreSQL migration assigns existing entries to `default` without changing
 their IDs, states, or deduplication keys. Stop older workers before upgrading;
 older clients do not understand the new queue-scoped uniqueness constraint.
 Migration runs automatically when opening the backend.
+
+## Named input sets and artifact lookup
+
+Register a set independently of any pipeline or run:
+
+```sh
+provium pipeline input-set register my-document --input document=document.pa
+provium pipeline input-set resolve my-document
+provium pipeline input-set find --input document=document.pa
+provium pipeline input-set unregister my-document
+provium pipeline input-set unregister --input document=document.pa
+```
+
+Names refer to a stable hash of logical input names and type/provenance/content
+fingerprints. File paths, filenames, artifact UUIDs, pipeline names, and run IDs
+are excluded. Binding order does not matter. Multiple names can identify the
+same set. Re-registering identical inputs is a no-op; changing the inputs under
+an existing name is rejected. The first recorded locations are retained.
+
+Look up intermediate or final artifacts without running procedures:
+
+```sh
+provium pipeline lookup text-processing.nodes.tokenize.destination -f examples/provium-text-pipeline/pipeline.yaml --input document=example_document.pa
+provium pipeline lookup text-processing.outputs.word_count -f examples/provium-text-pipeline/pipeline.yaml --input-set my-document
+```
+
+Omit `-f` for a registered pipeline. Select exactly one of `--input NAME=FILE`
+(repeat for multiple inputs), `--input-set NAME`, or `--input-set-hash HASH`.
+Hash lookup requires a previously indexed set. Human-readable lookup prints
+just the URI; `--json` also returns the input-set hash and artifact fingerprint.
+Input-set commands also support `--json`.
+
+Lookup follows only the selected output's dependencies and reads committed
+manifests, never cached artifact bodies. Direct input files are inspected;
+named/hash lookup uses saved fingerprints without reopening the input files.
+Missing results or invalid references return a concise error and exit status 2.
+Recorded URIs may refer to files that were subsequently removed or changed.
+The selected graph and current procedure contracts determine the computation.
+
+Without a configured database, the index is `input-sets.sqlite3` inside the
+artifact store, which defaults to `./.provium/artifacts`. Each operation opens
+and closes its own SQLite connection; concurrent writers serialize through
+SQLite transactions. With `pipeline.database`, the index lives in PostgreSQL
+and is shared across pipelines and stores. Named sets in S3 require PostgreSQL.
+Use the same `--store` as execution. File-based lookup reads result manifests;
+registered-pipeline lookup reads database results.
+
+Unregistration removes names only, preserving hash records, artifacts, results,
+and queued work. Registration does not enqueue or execute anything.
+
+## Extended text example
+
+The repository's `examples/provium-text-pipeline/pipeline.yaml` has no compute
+profile. It tokenizes a document, then counts the total number of tokens using
+`CountWordsV1`, publishing `tokens` and `word_count`.
+
+```sh
+provium pipeline run -f examples/provium-text-pipeline/pipeline.yaml --input document=example_document.pa -v
+```

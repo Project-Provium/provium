@@ -49,6 +49,15 @@ MIGRATIONS = [
     ALTER TABLE provium_inputs ADD UNIQUE(queue_group, dedup);
     CREATE INDEX ON provium_inputs(pipeline, queue_group, state, id);
     """,
+    """
+    CREATE TABLE provium_input_sets (
+        hash text PRIMARY KEY, inputs jsonb NOT NULL
+    );
+    CREATE TABLE provium_input_set_names (
+        name text PRIMARY KEY, hash text NOT NULL REFERENCES provium_input_sets(hash)
+    );
+    CREATE INDEX ON provium_input_set_names(hash);
+    """,
 ]
 
 
@@ -84,6 +93,89 @@ class PostgresBackend:
                 connection.execute(
                     "INSERT INTO provium_migrations VALUES (%s)", (index + 1,)
                 )
+
+    def register_input_set(self, name: str, inputs: dict[str, Any]) -> dict[str, Any]:
+        from ...input_sets import input_set_hash, validate_name
+
+        validate_name(name)
+        key = input_set_hash(inputs)
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO provium_input_sets VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (key, Jsonb(inputs)),
+            )
+            connection.execute(
+                "INSERT INTO provium_input_set_names VALUES (%s, %s) "
+                "ON CONFLICT DO NOTHING",
+                (name, key),
+            )
+            row = connection.execute(
+                "SELECT hash FROM provium_input_set_names WHERE name = %s FOR UPDATE",
+                (name,),
+            ).fetchone()
+            if row["hash"] != key:
+                raise ValueError(
+                    f"input-set name already registered to different inputs: {name}"
+                )
+            record = connection.execute(
+                "SELECT hash, inputs FROM provium_input_sets WHERE hash = %s", (key,)
+            ).fetchone()
+        return record
+
+    def resolve_input_set(
+        self, *, name: str | None = None, key: str | None = None
+    ) -> dict[str, Any]:
+        from ...input_sets import require_selector
+
+        require_selector(name, key)
+        with self.connect() as connection:
+            if name is not None:
+                row = connection.execute(
+                    "SELECT s.hash, s.inputs FROM provium_input_sets s "
+                    "JOIN provium_input_set_names n ON n.hash = s.hash "
+                    "WHERE n.name = %s",
+                    (name,),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    "SELECT hash, inputs FROM provium_input_sets WHERE hash = %s",
+                    (key,),
+                ).fetchone()
+        if row is None:
+            raise ValueError(f"unknown input set: {name if name is not None else key}")
+        return row
+
+    def find_input_sets(self, key: str) -> list[str]:
+        with self.connect() as connection:
+            return [
+                row["name"]
+                for row in connection.execute(
+                    "SELECT name FROM provium_input_set_names "
+                    "WHERE hash = %s ORDER BY name",
+                    (key,),
+                )
+            ]
+
+    def unregister_input_sets(
+        self, *, name: str | None = None, key: str | None = None
+    ) -> list[str]:
+        from ...input_sets import require_selector
+
+        require_selector(name, key)
+        with self.connect() as connection:
+            if name is not None:
+                rows = connection.execute(
+                    "DELETE FROM provium_input_set_names "
+                    "WHERE name = %s RETURNING name",
+                    (name,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "DELETE FROM provium_input_set_names "
+                    "WHERE hash = %s RETURNING name",
+                    (key,),
+                ).fetchall()
+        return sorted(row["name"] for row in rows)
 
     def register(
         self,

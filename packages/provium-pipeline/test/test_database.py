@@ -266,3 +266,94 @@ def test_registry_and_input_validation_errors(tmp_path):
     )
     with pytest.raises(ValueError, match="incompatible"):
         db.enqueue(wrong["name"], {"x": str(make_artifact(tmp_path / "source.pa"))})
+
+
+def test_registered_pipeline_lookup_uses_database_results(
+    tmp_path, capsys, monkeypatch
+):
+    import json
+    from pathlib import Path
+
+    from provium.cli import run
+    from test_commands import config
+    from test_store import make_artifact
+
+    from provium_pipeline.store import ArtifactStore
+
+    monkeypatch.chdir(tmp_path)
+    pipeline = config(tmp_path)
+    name = "lookup-" + uuid4().hex
+    Path(pipeline).write_text(
+        Path(pipeline).read_text().replace("name: tokenize", f"name: {name}")
+    )
+    source = make_artifact(tmp_path / "source.pa")
+    connection = ["--database", DSN]
+    storage = ["--store", str(tmp_path / "store")]
+    inputs = ["--input", f"document={source}"]
+    assert run(["pipeline", "register", "-f", pipeline, *connection]) == 0
+    capsys.readouterr()
+    assert run(["pipeline", "run", name, *connection, *storage]) == 0
+    assert capsys.readouterr().out == "No input sets processed.\n"
+    assert run(["pipeline", "enqueue", name, *inputs, *connection]) == 0
+    assert run(["pipeline", "run", name, *connection, *storage, "--json"]) == 0
+    captured = capsys.readouterr()
+    expected = json.loads(captured.out.splitlines()[-1])[0]["outputs"]["tokens"]
+    assert not list((tmp_path / "store").glob("results/*.json"))
+    assert (
+        run(["pipeline", "input-set", "register", name, *inputs, *connection, *storage])
+        == 0
+    )
+    capsys.readouterr()
+    source.unlink()
+    monkeypatch.setattr(
+        ArtifactStore, "fetch", lambda *args: pytest.fail("lookup fetched artifact")
+    )
+    assert (
+        run(
+            [
+                "pipeline",
+                "lookup",
+                f"{name}.outputs.tokens",
+                "--input-set",
+                name,
+                *connection,
+                *storage,
+                "--json",
+            ]
+        )
+        == 0
+    )
+    assert (
+        json.loads(capsys.readouterr().out)["artifact"]["location"]
+        == expected["location"]
+    )
+
+
+def test_input_set_names_are_atomic_and_independent_of_pipeline(tmp_path):
+    from test_store import make_artifact
+
+    from provium_pipeline.input_sets import input_set_hash, inspect_inputs
+    from provium_pipeline.store import ArtifactStore
+
+    db = backend()
+    name = "input-" + uuid4().hex
+    with ArtifactStore(str(tmp_path / "store")) as store:
+        inputs = inspect_inputs(
+            store, {"document": str(make_artifact(tmp_path / "source.pa", uuid4().hex))}
+        )
+    key = input_set_hash(inputs)
+    with ThreadPoolExecutor(4) as pool:
+        records = list(
+            pool.map(lambda _: db.register_input_set(name, inputs), range(8))
+        )
+    assert all(record["hash"] == key for record in records)
+    db.register_input_set(name + "-alias", inputs)
+    with pytest.raises(ValueError, match="already"):
+        db.register_input_set(name, {"different": inputs["document"]})
+    assert name in db.find_input_sets(key)
+    assert db.resolve_input_set(name=name)["inputs"] == inputs
+    assert db.unregister_input_sets(name=name) == [name]
+    assert name + "-alias" in db.unregister_input_sets(key=key)
+    assert db.resolve_input_set(key=key)["hash"] == key
+    with pytest.raises(ValueError, match="unknown"):
+        db.resolve_input_set(name=name)

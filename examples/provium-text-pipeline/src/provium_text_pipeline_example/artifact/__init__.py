@@ -9,6 +9,7 @@ _path = "provium_text_pipeline_example"
 if TYPE_CHECKING:
     from .document import DocumentV1Artifact
     from .tokens import TokensV1Artifact
+    from .word_count import WordCountV1Artifact
 
 DOCUMENT: ArtifactDefinition[DocumentV1Artifact] = ArtifactDefinition(
     identifier=f"{_path}.DocumentV1",
@@ -23,6 +24,13 @@ TOKENS: ArtifactDefinition[TokensV1Artifact] = ArtifactDefinition(
 )
 
 
+WORD_COUNT: ArtifactDefinition[WordCountV1Artifact] = ArtifactDefinition(
+    identifier=f"{_path}.WordCountV1",
+    target=f"{_path}.artifact.word_count:WordCountV1Artifact",
+    description="An artifact containing the total word count",
+)
+
 catalog = ArtifactCatalog()
 catalog.register(DOCUMENT)
 catalog.register(TOKENS)
+catalog.register(WORD_COUNT)

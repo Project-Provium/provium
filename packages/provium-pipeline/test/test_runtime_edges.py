@@ -273,7 +273,7 @@ def test_executor_failure_is_reported_on_close(tmp_path, monkeypatch):
     assert isinstance(execution.error, OSError)
 
 
-def test_unresponsive_callback_shutdown_is_bounded(tmp_path, monkeypatch):
+def test_unresponsive_callback_shutdown_is_bounded(tmp_path, monkeypatch, capsys):
     with context(tmp_path) as execution:
         fake_thread = Mock()
         fake_thread.is_alive.return_value = True
@@ -285,7 +285,7 @@ def test_unresponsive_callback_shutdown_is_bounded(tmp_path, monkeypatch):
         execution._run([])
         assert execution.finished
         assert execution.error is None
-        assert "shutdown grace" in execution.log_path.read_text()
+        assert "shutdown grace" in capsys.readouterr().err
 
 
 def test_duplicate_step_messages_notify_once(tmp_path):
@@ -331,7 +331,7 @@ def test_corrupt_cache_is_failure_not_recomputation(tmp_path):
     from pathlib import Path
 
     Path(execution.outcomes[0].outputs["tokens"].path).write_bytes(b"corrupt")
-    with context(tmp_path) as execution:
+    with context(tmp_path, verify_artifacts=True) as execution:
         execution.start([item])
     assert execution.outcomes[0].state == "failed"
     assert execution.worker_starts == 0

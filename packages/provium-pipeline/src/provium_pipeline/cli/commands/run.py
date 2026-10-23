@@ -41,6 +41,17 @@ class RunCommand(Command):
     def configure(self, parser: argparse.ArgumentParser) -> None:
         configure_graph(parser)
         configure_queue(parser)
+        parser.add_argument(
+            "--verify-artifacts",
+            action="store_true",
+            help="Read and verify cached artifact contents before reusing them",
+        )
+        parser.add_argument(
+            "--verbose",
+            "-v",
+            action="store_true",
+            help="Report procedures skipped because cached outputs were reused",
+        )
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
@@ -83,14 +94,36 @@ class RunCommand(Command):
                     backend=prepared.backend,
                     queue_group=arguments.queue or "default",
                     idle_wait=arguments.idle_wait,
+                    verify_artifacts=arguments.verify_artifacts,
                 ) as context,
             ):
                 items = (
                     [] if prepared.backend else [InputSet(assignments(arguments.input))]
                 )
-                context.start(items)
-            print(json.dumps([outcome_json(event) for event in context.outcomes]))
-            print(f"Run log: {context.log_path}", file=sys.stderr)
+
+                def report_step(event: Outcome) -> None:
+                    if event.reused:
+                        print(
+                            f"Skipped {event.node}: reused cached outputs",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+
+                context.start(
+                    items,
+                    on_step_finished=report_step if arguments.verbose else None,
+                )
+            if arguments.json:
+                print(json.dumps([outcome_json(event) for event in context.outcomes]))
+            else:
+                if not context.outcomes:
+                    print("No input sets processed.")
+                for index, event in enumerate(context.outcomes, start=1):
+                    print(f"Input set {index}: {event.state}")
+                    for name, artifact in event.outputs.items():
+                        print(f"  {name}: {artifact.location}")
+                    if event.error:
+                        print(f"  Error: {event.error.strip().splitlines()[-1]}")
         except Exception as error:
             print(f"provium pipeline: {error}", file=sys.stderr)
             return 2

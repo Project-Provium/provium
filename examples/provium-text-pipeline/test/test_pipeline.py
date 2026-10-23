@@ -138,7 +138,9 @@ print(json.dumps([artifacts, procedures, implementation_modules]))
 
     assert result.stdout == (
         '[["provium_text_pipeline_example.DocumentV1", '
-        '"provium_text_pipeline_example.TokensV1"], '
-        '["provium_text_pipeline_example.TokenizeV1"], []]\n'
+        '"provium_text_pipeline_example.TokensV1", '
+        '"provium_text_pipeline_example.WordCountV1"], '
+        '["provium_text_pipeline_example.CountWordsV1", '
+        '"provium_text_pipeline_example.TokenizeV1"], []]\n'
     )
     assert result.stderr == ""

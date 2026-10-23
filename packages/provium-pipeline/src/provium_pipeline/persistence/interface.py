@@ -65,6 +65,20 @@ class PersistenceBackend(QueueBackend, Protocol):
         definitions: dict[str, PipelineDefinition] | None = None,
     ) -> None: ...
 
+    def register_input_set(
+        self, name: str, inputs: dict[str, Any]
+    ) -> dict[str, Any]: ...
+
+    def resolve_input_set(
+        self, *, name: str | None = None, key: str | None = None
+    ) -> dict[str, Any]: ...
+
+    def find_input_sets(self, key: str) -> list[str]: ...
+
+    def unregister_input_sets(
+        self, *, name: str | None = None, key: str | None = None
+    ) -> list[str]: ...
+
     def registered(self, kind: str | None = None) -> list[dict[str, Any]]: ...
 
     def queue_info(

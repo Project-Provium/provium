@@ -30,7 +30,7 @@ def configure_graph(parser: argparse.ArgumentParser) -> None:
 
 
 def require_database(arguments: argparse.Namespace) -> None:
-    _apply_configuration(arguments)
+    apply_configuration(arguments)
     if not arguments.database:
         raise ValueError("database required; use --database or PROVIUM_DATABASE_URL")
 
@@ -49,7 +49,7 @@ def require_pipeline(arguments: argparse.Namespace) -> None:
     validate_graph_options(arguments)
     if not arguments.pipeline and not arguments.file:
         raise ValueError("select exactly one pipeline with -f or a registered name")
-    _apply_configuration(arguments)
+    apply_configuration(arguments)
     if arguments.pipeline:
         require_database(arguments)
         if arguments.file:
@@ -58,7 +58,7 @@ def require_pipeline(arguments: argparse.Namespace) -> None:
             )
 
 
-def _apply_configuration(arguments: argparse.Namespace) -> None:
+def apply_configuration(arguments: argparse.Namespace) -> None:
     """Resolve defaults once per invocation, after argparse has accepted syntax."""
     if getattr(arguments, "_provium_settings_loaded", False):
         return
@@ -103,7 +103,7 @@ def require_queue(arguments: argparse.Namespace) -> None:
     """Resolve a queue before opening persistence; explicit names bypass defaults."""
     from ..persistence.queues import validate_queue_name
 
-    _apply_configuration(arguments)
+    apply_configuration(arguments)
     if arguments.queue is not None:
         arguments.queue = validate_queue_name(arguments.queue)
         return

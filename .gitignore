@@ -1,5 +1,8 @@
 .gh_token
 
+# Local Provium configuration, indexes, and artifacts
+.provium/
+
 # Assets
 assets/
 

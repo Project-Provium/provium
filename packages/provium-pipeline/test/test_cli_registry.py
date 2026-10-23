@@ -25,6 +25,8 @@ def test_pipeline_uses_core_registry(capsys):
         "status",
         "validate",
         "inspect",
+        "input-set",
+        "lookup",
     }
     assert "artifact" in catalog.commands
     assert "execute" in catalog.commands
@@ -44,6 +46,8 @@ def test_pipeline_uses_core_registry(capsys):
         "status",
         "validate",
         "inspect",
+        "input-set",
+        "lookup",
     ):
         assert action in help_text
 
@@ -194,7 +198,16 @@ assert not blocked, blocked
 @pytest.mark.parametrize("name", sorted(cli.PipelineCommand.catalog.commands))
 def test_commands_own_configuration_and_execution(name):
     command_type = cli.PipelineCommand.catalog.commands[name]
-    assert command_type.__module__ == f"provium_pipeline.cli.commands.{name}"
+    module_name = name.replace("-", "_")
+    assert command_type.__module__ == f"provium_pipeline.cli.commands.{module_name}"
+    if issubclass(command_type, CommandGroup):
+        assert set(command_type.catalog.commands) == {
+            "register",
+            "unregister",
+            "resolve",
+            "find",
+        }
+        return
     assert "configure" in command_type.__dict__
     assert "execute" in command_type.__dict__
 
