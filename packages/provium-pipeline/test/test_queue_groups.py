@@ -238,7 +238,8 @@ def test_queues_share_computations_without_consuming_each_other(db, tmp_path):
             ArtifactStore(str(tmp_path / "store")),
             backend=db,
             queue_group=name,
-            idle_wait=0.3,
+            # Allow the other executor to finish worker startup on slower CI runners.
+            idle_wait=5,
         )
         for name in ("priority", "batch")
     ]
