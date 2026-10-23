@@ -291,6 +291,9 @@ def test_registered_pipeline_lookup_uses_database_results(
     storage = ["--store", str(tmp_path / "store")]
     inputs = ["--input", f"document={source}"]
     assert run(["pipeline", "register", "-f", pipeline, *connection]) == 0
+    capsys.readouterr()
+    assert run(["pipeline", "run", name, *connection, *storage]) == 0
+    assert capsys.readouterr().out == "No input sets processed.\n"
     assert run(["pipeline", "enqueue", name, *inputs, *connection]) == 0
     assert run(["pipeline", "run", name, *connection, *storage, "--json"]) == 0
     captured = capsys.readouterr()

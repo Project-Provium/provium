@@ -151,6 +151,7 @@ def test_localstack_core_artifacts_and_remote_pipeline_yaml(tmp_path, capsys):
                 [
                     "pipeline",
                     "run",
+                    "--json",
                     "-f",
                     prefix + "/pipeline.yaml",
                     "--input",
