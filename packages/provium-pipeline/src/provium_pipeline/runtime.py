@@ -28,7 +28,7 @@ from .models import (
 from .planning import Plan, build_plan, matches, resolve_settings, select_targets
 from .publication import FilePublisher, Publisher
 from .requests import InputSet
-from .store import Artifact, ArtifactStore
+from .store import Artifact, ArtifactCache
 
 if TYPE_CHECKING:
     from .workers import Worker
@@ -75,7 +75,7 @@ class ExecutionContext:
     def __init__(
         self,
         configuration: PipelineConfiguration,
-        store: ArtifactStore,
+        store: ArtifactCache,
         *,
         definition: PipelineDefinition | None = None,
         procedures: dict[str, Any] | None = None,
@@ -441,7 +441,13 @@ class ExecutionContext:
         }
         identity = state.identity if state.identity is not None else id(state)
         destinations = state.item.output_destinations
-        if final and destinations is not None and identity not in self._pipeline_seen:
+        if (
+            destinations is not None
+            and identity not in self._pipeline_seen
+            and (
+                final or state.failed or len(outputs) == len(plan.configuration.outputs)
+            )
+        ):
             try:
                 for name, artifact in outputs.items():
                     state.published[name] = self.publisher.publish(

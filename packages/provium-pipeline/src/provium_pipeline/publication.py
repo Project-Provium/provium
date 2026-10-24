@@ -18,7 +18,7 @@ from provium.files import (
 )
 
 from .requests import InputSet
-from .store import Artifact, ArtifactStore
+from .store import Artifact, ArtifactCache
 
 
 class Publisher(Protocol):
@@ -32,7 +32,7 @@ class Publisher(Protocol):
 class FilePublisher:
     """Copy through the core file protocols; local installation is atomic."""
 
-    def __init__(self, store: ArtifactStore) -> None:
+    def __init__(self, store: ArtifactCache) -> None:
         self.store = store
 
     def validate(self, requests: Sequence[InputSet]) -> None:

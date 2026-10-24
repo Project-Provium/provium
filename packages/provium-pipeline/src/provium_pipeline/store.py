@@ -9,10 +9,10 @@ import re
 import shutil
 import tempfile
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
@@ -38,6 +38,35 @@ def local_path(location: str) -> Path:
     if parsed.scheme:
         raise ValueError(f"unsupported storage protocol: {parsed.scheme}")
     return Path(location).resolve()
+
+
+@runtime_checkable
+class ArtifactCache(Protocol):
+    """Storage used by execution, lookup, and publication.
+
+    Implementations may persist bytes in files, object storage, or a database.
+    Materialization returns a verified local file for procedure readers.
+    The writer guard must cover the entire direct execution, including publication.
+    """
+
+    namespace: str
+    scratch: Path
+    root: Path | None
+
+    def writer_lock(self) -> AbstractContextManager[None]: ...
+    def inspect(self, location: str) -> Artifact: ...
+    def stage(
+        self, computation: str, paths: dict[str, str], expected: dict[str, str]
+    ) -> dict[str, dict[str, Any]]: ...
+    def commit(self, computation: str, outputs: dict[str, Any]) -> None: ...
+    def manifest(self, computation: str) -> dict[str, Any] | None: ...
+    def restore(
+        self, outputs: dict[str, Any], expected: dict[str, str]
+    ) -> dict[str, Artifact]: ...
+    def materialize(self, artifact: Artifact) -> Artifact: ...
+    def verify(
+        self, outputs: dict[str, Any], expected: dict[str, str]
+    ) -> dict[str, Artifact]: ...
 
 
 class ArtifactStore:

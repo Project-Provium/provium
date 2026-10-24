@@ -25,13 +25,39 @@ class EnqueueCommand(Command):
     def configure(self, parser: argparse.ArgumentParser) -> None:
         configure_graph(parser)
         configure_queue(parser)
+        parser.add_argument(
+            "--output", action="append", default=[], metavar="TARGET=PATH"
+        )
+        parser.add_argument("--csv", help="CSV inputs and per-row output destinations")
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             require_queue(arguments)
             require_database(arguments)
             require_pipeline(arguments)
-            values = assignments(arguments.input)
+            if arguments.csv and (arguments.input or arguments.output):
+                raise ValueError(  # noqa: TRY301 -- command reports validation errors
+                    "--csv cannot be combined with --input or --output"
+                )
+            from provium.files import local_file
+            from provium_pipeline.requests import CSVSource, ExecutionRequest, InputSet
+
+            if arguments.csv:
+                with (
+                    local_file(
+                        arguments.csv, scratch_directory=arguments.scratch_directory
+                    ) as path,
+                    path.open(newline="", encoding="utf-8-sig") as stream,
+                ):
+                    requests = list(CSVSource(stream))
+            elif arguments.output:
+                requests = [
+                    ExecutionRequest(
+                        assignments(arguments.input), assignments(arguments.output)
+                    )
+                ]
+            else:
+                requests = [InputSet(assignments(arguments.input))]
             from ...persistence.factory import open_backend
             from ...preparation import load_pipeline
 
@@ -44,13 +70,24 @@ class EnqueueCommand(Command):
             )
             if backend is None:
                 backend = open_backend(arguments.database)
+            identities: list[int] = []
+            for request in requests:
+                options = (
+                    {"destinations": dict(request.output_destinations)}
+                    if request.output_destinations is not None
+                    else {}
+                )
+                identities.append(
+                    backend.enqueue(
+                        graph.name,
+                        dict(request.inputs),
+                        queue_group=arguments.queue,
+                        **options,
+                    )
+                )
             print(
                 json.dumps(
-                    {
-                        "id": backend.enqueue(
-                            graph.name, values, queue_group=arguments.queue
-                        )
-                    }
+                    {"ids": identities} if arguments.csv else {"id": identities[0]}
                 )
             )
         except Exception as error:

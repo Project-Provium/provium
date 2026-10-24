@@ -15,6 +15,22 @@ class Lease:
     run: str
 
 
+class WorkQueue(Protocol):
+    """Cursor-paged requests and durable outcome reporting for schedulers."""
+
+    def pending(
+        self,
+        pipeline: str,
+        after: int = 0,
+        limit: int = 100,
+        include_finished: bool = False,
+        *,
+        queue_group: str = "default",
+    ) -> list[dict[str, Any]]: ...
+
+    def progress(self, identity: int, state: str, detail: dict[str, Any]) -> None: ...
+
+
 class Coordinator(Protocol):
     def result(self, namespace: str, key: str) -> dict[str, Any] | None: ...
 

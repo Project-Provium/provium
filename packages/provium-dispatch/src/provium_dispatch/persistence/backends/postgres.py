@@ -60,6 +60,9 @@ MIGRATIONS = [
     );
     CREATE INDEX ON provium_input_set_names(hash);
     """,
+    """
+    ALTER TABLE provium_inputs ADD COLUMN destinations jsonb;
+    """,
 ]
 
 
@@ -335,7 +338,12 @@ class PostgresBackend:
             )
 
     def enqueue(
-        self, pipeline: str, inputs: dict[str, Any], *, queue_group: str = "default"
+        self,
+        pipeline: str,
+        inputs: dict[str, Any],
+        *,
+        queue_group: str = "default",
+        destinations: dict[str, str] | None = None,
     ) -> int:
         validate_queue_name(queue_group)
         from provium_pipeline.store import ArtifactStore
@@ -343,6 +351,22 @@ class PostgresBackend:
         snapshot = self.get("PipelineConfiguration", pipeline)
         definition = self.definition(pipeline)
         definition_payload = definition.snapshot() if definition else None
+        declared_inputs = PipelineConfiguration.model_validate(snapshot).inputs
+        expected_inputs = declared_inputs
+        if destinations is not None:
+            from provium_pipeline.planning import build_plan, select_targets
+            from provium_pipeline.requests import ExecutionRequest
+
+            request = ExecutionRequest(inputs, destinations)
+            destinations = dict(request.output_destinations or {})
+            selected = select_targets(
+                build_plan(PipelineConfiguration.model_validate(snapshot), definition),
+                list(destinations),
+            )
+            expected_inputs = selected.input_types
+        if not expected_inputs.keys() <= inputs.keys() <= declared_inputs.keys():
+            raise ValueError("input names differ from pipeline configuration")
+        inputs = {name: inputs[name] for name in expected_inputs}
         pinned: dict[str, Any] = {}
         with tempfile.TemporaryDirectory(prefix="provium-enqueue-") as directory:
             reader = ArtifactStore(directory, scratch=directory)
@@ -354,9 +378,6 @@ class PostgresBackend:
                     "fingerprint": artifact.fingerprint,
                 }
         inputs = pinned
-        expected_inputs = PipelineConfiguration.model_validate(snapshot).inputs
-        if inputs.keys() != expected_inputs.keys():
-            raise ValueError("input names differ from pipeline configuration")
         for name, artifact in inputs.items():
             if artifact["fingerprint"]["type"] != expected_inputs[name]:
                 raise ValueError(f"incompatible pipeline input: {name}")
@@ -373,6 +394,8 @@ class PostgresBackend:
                 },
             }
         )
+        if destinations is not None:
+            key = canonical_hash({"request": key, "destinations": destinations})
         with self.connect() as connection:
             connection.execute("SELECT pg_advisory_xact_lock(742819406)")
             current = connection.execute(
@@ -389,8 +412,8 @@ class PostgresBackend:
                 raise ValueError("pipeline changed or was unregistered during enqueue")
             row = connection.execute(
                 "INSERT INTO provium_inputs"
-                "(pipeline,snapshot,inputs,dedup,definition,queue_group) "
-                "VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(queue_group,dedup) DO UPDATE "
+                "(pipeline,snapshot,inputs,dedup,definition,queue_group,destinations) "
+                "VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(queue_group,dedup) DO UPDATE "
                 "SET dedup=EXCLUDED.dedup RETURNING id",
                 (
                     pipeline,
@@ -399,6 +422,7 @@ class PostgresBackend:
                     key,
                     Jsonb(definition_payload),
                     queue_group,
+                    Jsonb(destinations),
                 ),
             ).fetchone()
             return row["id"]

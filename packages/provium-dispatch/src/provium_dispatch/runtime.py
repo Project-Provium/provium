@@ -112,7 +112,15 @@ class ExecutionContext(BasicContext):
             )
             if row.get("definition") != expected_definition:
                 raise ValueError("queued definition differs from execution")
-            self._add(InputSet(row["inputs"]), identity)
+            from provium_pipeline.requests import ExecutionRequest
+
+            request = (
+                ExecutionRequest(row["inputs"], row["destinations"])
+                if row.get("destinations") is not None
+                else InputSet(row["inputs"])
+            )
+            self.publisher.validate([request])
+            self._add(request, identity)
 
     def _run_queued_items(self) -> None:
         assert self.backend is not None

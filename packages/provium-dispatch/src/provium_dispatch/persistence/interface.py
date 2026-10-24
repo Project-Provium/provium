@@ -4,29 +4,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol
 
-from provium_pipeline.coordination import Coordinator
+from provium_pipeline.coordination import Coordinator, WorkQueue
 from provium_pipeline.coordination import Lease as Lease
 
 if TYPE_CHECKING:
     from provium_pipeline.models import PipelineDefinition
 
 
-class QueueBackend(Coordinator, Protocol):
+class QueueBackend(Coordinator, WorkQueue, Protocol):
     """Storage-independent coordination contract used by the execution context."""
 
     def definition(self, pipeline: str) -> PipelineDefinition | None: ...
-
-    def pending(
-        self,
-        pipeline: str,
-        after: int = 0,
-        limit: int = 100,
-        include_finished: bool = False,
-        *,
-        queue_group: str = "default",
-    ) -> list[dict[str, Any]]: ...
-
-    def progress(self, identity: int, state: str, detail: dict[str, Any]) -> None: ...
 
 
 class PersistenceBackend(QueueBackend, Protocol):
@@ -64,7 +52,12 @@ class PersistenceBackend(QueueBackend, Protocol):
     def get(self, kind: str, name: str) -> dict[str, Any]: ...
 
     def enqueue(
-        self, pipeline: str, inputs: dict[str, Any], *, queue_group: str = "default"
+        self,
+        pipeline: str,
+        inputs: dict[str, Any],
+        *,
+        queue_group: str = "default",
+        destinations: dict[str, str] | None = None,
     ) -> int: ...
 
     def retry(self, pipeline: str, *, queue_group: str = "default") -> int: ...
