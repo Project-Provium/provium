@@ -15,6 +15,7 @@ def test_pipeline_uses_core_registry(capsys):
     assert catalog.commands["pipeline"] is cli.PipelineCommand
     assert issubclass(cli.PipelineCommand, CommandGroup)
     assert set(cli.PipelineCommand.catalog.commands) == {
+        "cache",
         "run",
         "status",
         "validate",
@@ -186,8 +187,11 @@ def test_commands_own_configuration_and_execution(name):
     command_type = cli.PipelineCommand.catalog.commands[name]
     module_name = name.replace("-", "_")
     assert command_type.__module__ == f"provium_pipeline.cli.commands.{module_name}"
-    assert "configure" in command_type.__dict__
-    assert "execute" in command_type.__dict__
+    if issubclass(command_type, CommandGroup):
+        assert command_type.catalog.commands
+    else:
+        assert "configure" in command_type.__dict__
+        assert "execute" in command_type.__dict__
 
 
 def test_command_can_be_registered_under_another_name(tmp_path):

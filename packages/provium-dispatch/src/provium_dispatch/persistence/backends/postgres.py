@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Generator, Sequence
+from contextlib import contextmanager
 from typing import Any
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import psycopg
@@ -70,6 +73,53 @@ class PostgresBackend:
     def __init__(self, connection: str) -> None:
         self.connection = connection
         self.migrate()
+
+    @contextmanager
+    def reader(self, namespace: str) -> Generator[None]:
+        """Protect all artifacts consumed by one execution across its lifetime."""
+        with self.connect() as connection:
+            connection.execute(
+                "SELECT pg_advisory_xact_lock_shared(hashtext(%s), 83451)",
+                (namespace,),
+            )
+            yield
+
+    @contextmanager
+    def hold(self, namespace: str) -> Generator[None]:
+        """Exclude admission and readers before checking the durable queue."""
+        with self.connect() as connection:
+            admission = connection.execute(
+                "SELECT pg_try_advisory_xact_lock(742819407) AS acquired"
+            ).fetchone()
+            readers = connection.execute(
+                "SELECT pg_try_advisory_xact_lock(hashtext(%s), 83451) AS acquired",
+                (namespace,),
+            ).fetchone()
+            if not admission["acquired"] or not readers["acquired"]:
+                raise RuntimeError("cache is protected by active work")
+            queued = connection.execute(
+                "SELECT EXISTS(SELECT 1 FROM provium_inputs "
+                "WHERE state IN ('pending','partial','cancelled')) AS protected"
+            ).fetchone()
+            if queued["protected"]:
+                raise RuntimeError("cache is protected by queued work")
+            active = connection.execute(
+                "SELECT EXISTS(SELECT 1 FROM provium_computations "
+                "WHERE namespace=%s AND state='running' "
+                "AND expires>clock_timestamp()) AS protected",
+                (namespace,),
+            ).fetchone()
+            if active["protected"]:
+                raise RuntimeError("cache is protected by active computations")
+            yield
+
+    def forget(self, namespace: str, keys: Sequence[str]) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE provium_computations SET result=NULL,state='available' "
+                "WHERE namespace=%s AND key=ANY(%s)",
+                (namespace, list(keys)),
+            )
 
     def connect(self) -> Any:
         return psycopg.Connection[dict[str, Any]].connect(
@@ -345,8 +395,22 @@ class PostgresBackend:
         queue_group: str = "default",
         destinations: dict[str, str] | None = None,
     ) -> int:
+        with self.connect() as connection:
+            connection.execute("SELECT pg_advisory_xact_lock_shared(742819407)")
+            return self._enqueue(
+                pipeline, inputs, queue_group=queue_group, destinations=destinations
+            )
+
+    def _enqueue(
+        self,
+        pipeline: str,
+        inputs: dict[str, Any],
+        *,
+        queue_group: str = "default",
+        destinations: dict[str, str] | None = None,
+    ) -> int:
         validate_queue_name(queue_group)
-        from provium_pipeline.store import ArtifactStore
+        from provium_pipeline.store import ArtifactStore, local_path
 
         snapshot = self.get("PipelineConfiguration", pipeline)
         definition = self.definition(pipeline)
@@ -358,7 +422,12 @@ class PostgresBackend:
             from provium_pipeline.requests import ExecutionRequest
 
             request = ExecutionRequest(inputs, destinations)
-            destinations = dict(request.output_destinations or {})
+            destinations = {
+                name: str(local_path(path))
+                if urlparse(path).scheme in ("", "file")
+                else path
+                for name, path in request.output_destinations.items()
+            }
             selected = select_targets(
                 build_plan(PipelineConfiguration.model_validate(snapshot), definition),
                 list(destinations),
@@ -490,6 +559,10 @@ class PostgresBackend:
     ) -> Lease | None:
         owner = uuid4().hex
         with self.connect() as connection:
+            connection.execute(
+                "SELECT pg_advisory_xact_lock_shared(hashtext(%s), 83451)",
+                (namespace,),
+            )
             # Admission and deletion serialize on the InputSet row. A lease already
             # admitted may finish; deleting a queue never revokes shared computation.
             if input_id is not None:

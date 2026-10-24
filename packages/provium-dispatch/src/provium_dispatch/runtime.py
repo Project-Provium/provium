@@ -12,7 +12,7 @@ from provium_pipeline.publication import Publisher
 from provium_pipeline.requests import InputSet
 from provium_pipeline.runtime import ExecutionContext as BasicContext
 from provium_pipeline.runtime import State
-from provium_pipeline.store import Artifact, ArtifactStore
+from provium_pipeline.store import Artifact, ArtifactCache
 
 from .models import ComputeProfile, definition_snapshot
 from .persistence.interface import QueueBackend
@@ -23,7 +23,7 @@ class ExecutionContext(BasicContext):
     def __init__(
         self,
         configuration: PipelineConfiguration,
-        store: ArtifactStore,
+        store: ArtifactCache,
         *,
         definition: PipelineDefinition | None = None,
         procedures: dict[str, Any] | None = None,
@@ -78,7 +78,13 @@ class ExecutionContext(BasicContext):
 
     def _execute(self, items: Iterable[InputSet]) -> None:
         if self.backend is not None:
-            self._run_queued()
+            with (
+                self.store.writer_lock(shared=True),
+                self.backend.reader(self.store.namespace),
+            ):
+                if self.store.root is not None:
+                    (self.store.root / ".dispatch-cache").touch()
+                self._run_queued()
         else:
             super()._execute(items)
 

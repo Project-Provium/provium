@@ -39,6 +39,11 @@ class RunCommand(Command):
     def configure(self, parser: argparse.ArgumentParser) -> None:
         configure_graph(parser)
         parser.add_argument(
+            "--discard-cache",
+            action="store_true",
+            help="Remove this run's cache after successful output publication",
+        )
+        parser.add_argument(
             "--output", action="append", default=[], metavar="TARGET=PATH"
         )
         parser.add_argument(
@@ -126,6 +131,12 @@ class RunCommand(Command):
                 context.start(
                     items,
                     on_step_finished=report_step if arguments.verbose else None,
+                )
+            if arguments.discard_cache:
+                from provium_pipeline.cache import discard_published_cache
+
+                discard_published_cache(
+                    store, context.outcomes, context.computation_keys
                 )
             if arguments.json:
                 print(json.dumps([outcome_json(event) for event in context.outcomes]))

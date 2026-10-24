@@ -3,6 +3,7 @@
 from provium.cli.catalog import CommandCatalog
 from provium.cli.group import CommandGroup
 
+from .cache import CacheCommand
 from .inspect import InspectCommand
 from .lookup import LookupCommand
 from .run import RunCommand
@@ -17,6 +18,7 @@ class PipelineCommand(CommandGroup):
 
 
 for command in (
+    CacheCommand,
     LookupCommand,
     RunCommand,
     StatusCommand,

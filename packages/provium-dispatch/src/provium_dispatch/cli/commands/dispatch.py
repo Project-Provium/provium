@@ -3,6 +3,7 @@
 from provium.cli.catalog import CommandCatalog
 from provium.cli.group import CommandGroup
 
+from .cache import CacheCommand
 from .enqueue import EnqueueCommand
 from .input_set import InputSetCommand
 from .inspect import InspectCommand
@@ -24,6 +25,7 @@ class DispatchCommand(CommandGroup):
 
 
 for command in (
+    CacheCommand,
     RunCommand,
     StatusCommand,
     InspectCommand,

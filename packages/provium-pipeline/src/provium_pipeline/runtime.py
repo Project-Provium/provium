@@ -112,6 +112,7 @@ class ExecutionContext:
         self.error: BaseException | None = None
         self.outcomes: list[Outcome] = []
         self.worker_starts = 0
+        self.computation_keys: set[str] = set()
         self.max_resident_inputs = 0
         self._step_seen: set[tuple[int, str]] = set()
         self._pipeline_seen: set[int] = set()
@@ -433,20 +434,18 @@ class ExecutionContext:
             self.logger.exception("invalid input set %s", identity)
 
     def _record(self, state: State, *, final: bool = False) -> None:
+        identity = state.identity if state.identity is not None else id(state)
+        if identity in self._pipeline_seen:
+            return
         plan = state.plan or self.plan
         outputs = {
             name: state.values[ref]
             for name, ref in plan.configuration.outputs.items()
             if ref in state.values
         }
-        identity = state.identity if state.identity is not None else id(state)
         destinations = state.item.output_destinations
-        if (
-            destinations is not None
-            and identity not in self._pipeline_seen
-            and (
-                final or state.failed or len(outputs) == len(plan.configuration.outputs)
-            )
+        if destinations is not None and (
+            final or state.failed or len(outputs) == len(plan.configuration.outputs)
         ):
             try:
                 for name, artifact in outputs.items():
@@ -473,10 +472,7 @@ class ExecutionContext:
             else "partial"
         )
         self._progress(state, status, outputs)
-        identity = state.identity if state.identity is not None else id(state)
-        if identity not in self._pipeline_seen and (
-            final or status in ("completed", "failed")
-        ):
+        if final or status in ("completed", "failed"):
             self._pipeline_seen.add(identity)
             event = Outcome(state.item, status, outputs, error=state.error)
             self.outcomes.append(event)
@@ -528,6 +524,7 @@ class ExecutionContext:
         key = computation_key(
             self.plan.records[name], input_fingerprints, setup_fingerprints
         )
+        self.computation_keys.add(key)
         expected = {
             output: output_key(key, output, artifact_type)
             for output, artifact_type in self.plan.output_types[name].items()

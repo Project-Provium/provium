@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
 import re
 import shutil
 import tempfile
+import warnings
 from collections.abc import Generator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
@@ -53,7 +55,7 @@ class ArtifactCache(Protocol):
     scratch: Path
     root: Path | None
 
-    def writer_lock(self) -> AbstractContextManager[None]: ...
+    def writer_lock(self, *, shared: bool = False) -> AbstractContextManager[None]: ...
     def inspect(self, location: str) -> Artifact: ...
     def stage(
         self, computation: str, paths: dict[str, str], expected: dict[str, str]
@@ -108,7 +110,7 @@ class ArtifactStore:
         self.close()
 
     @contextmanager
-    def writer_lock(self) -> Generator[None]:
+    def writer_lock(self, *, shared: bool = False) -> Generator[None]:
         """Reject overlapping direct writers on this host."""
         import fcntl
 
@@ -120,7 +122,8 @@ class ArtifactStore:
         )
         with path.open("a") as stream:
             try:
-                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+                fcntl.flock(stream, mode | fcntl.LOCK_NB)
             except BlockingIOError as error:
                 raise RuntimeError(
                     "another direct writer owns this store; use PostgreSQL"
@@ -171,6 +174,22 @@ class ArtifactStore:
         if fingerprint["content"] != inspection.body_digest:
             raise ValueError("artifact lineage content disagrees with body")
         return Artifact(location, str(path), reference.identity, fingerprint)
+
+    def _write(self, relative: str, source: Path) -> None:
+        try:
+            self._put(relative, source)
+        except OSError as error:
+            if (
+                error.errno == errno.ENOSPC
+                and self.root is not None
+                and any((self.root / "artifacts").glob("*/*/*.pa"))
+            ):
+                warnings.warn(
+                    "Out of space. Clearing unused cached artifacts may free space.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            raise
 
     def _put(self, relative: str, source: Path) -> None:
         if self.remote:
@@ -232,7 +251,7 @@ class ArtifactStore:
             with Path(artifact.path).open("rb") as stream:
                 digest = hashlib.file_digest(stream, "sha256").hexdigest()
             relative = f"artifacts/{computation}/{generation}/{digest}.pa"
-            self._put(relative, Path(artifact.path))
+            self._write(relative, Path(artifact.path))
             outputs[name] = {
                 "location": self._location(relative),
                 "identity": artifact.identity,
@@ -246,7 +265,7 @@ class ArtifactStore:
         temporary = self.scratch / f"manifest-{uuid4().hex}.json"
         try:
             temporary.write_text(json.dumps(outputs, sort_keys=True))
-            self._put(f"results/{computation}.json", temporary)
+            self._write(f"results/{computation}.json", temporary)
         finally:
             temporary.unlink(missing_ok=True)
 

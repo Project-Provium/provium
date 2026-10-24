@@ -65,9 +65,28 @@ def test_queued_destinations_are_pinned_and_share_computation(
             == store.inspect(second["result"]).fingerprint
         )
         assert not backend.pending(graph.name)
+        with ExecutionContext(
+            graph,
+            store,
+            backend=backend,
+            procedures={COPY.identifier: COPY},
+            strategy=strategy,
+            force=["all"],
+        ) as forced:
+            forced.start()
+        assert [outcome.state for outcome in forced.outcomes] == [
+            "completed",
+            "completed",
+        ]
+        for row in backend.pending(graph.name, include_finished=True):
+            assert row["detail"]["outputs"]["result"] in {
+                store.inspect(first["result"]).location,
+                store.inspect(second["result"]).location,
+            }
 
 
-def test_enqueue_csv_paths_and_blank_outputs(tmp_path, capsys):
+def test_enqueue_csv_paths_and_blank_outputs(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     backend = PostgresBackend(os.environ["PROVIUM_TEST_DATABASE"])
     graph = PipelineConfiguration(
         name="csv-" + uuid4().hex,
@@ -104,11 +123,20 @@ def test_enqueue_csv_paths_and_blank_outputs(tmp_path, capsys):
             "--input",
             f"source={source}",
             "--output",
-            f"second={tmp_path / 'second.pa'}",
+            "second=second.pa",
         ]
     )
     assert command.execute(direct) == 0
     assert len(backend.pending(graph.name)) == 2
+    assert backend.pending(graph.name)[1]["destinations"]["second"] == str(
+        tmp_path / "second.pa"
+    )
+    backend.enqueue(
+        graph.name,
+        {"source": str(source)},
+        destinations={"first": "s3://example/results/output.pa"},
+    )
+    assert backend.pending(graph.name)[2]["destinations"]["first"].startswith("s3://")
     args.input = [f"source={source}"]
     assert command.execute(args) == 2
     assert "--csv cannot" in capsys.readouterr().err

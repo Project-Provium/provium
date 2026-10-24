@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Any, Protocol
 
+from provium_pipeline.cache import MaintenanceGuard
 from provium_pipeline.coordination import Coordinator, WorkQueue
 from provium_pipeline.coordination import Lease as Lease
 
@@ -14,10 +16,12 @@ if TYPE_CHECKING:
 class QueueBackend(Coordinator, WorkQueue, Protocol):
     """Storage-independent coordination contract used by the execution context."""
 
+    def reader(self, namespace: str) -> AbstractContextManager[None]: ...
+
     def definition(self, pipeline: str) -> PipelineDefinition | None: ...
 
 
-class PersistenceBackend(QueueBackend, Protocol):
+class PersistenceBackend(QueueBackend, MaintenanceGuard, Protocol):
     """Registry and input management in addition to execution coordination."""
 
     def register(
