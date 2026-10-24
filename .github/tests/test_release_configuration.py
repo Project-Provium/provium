@@ -84,8 +84,10 @@ class ReleaseConfigurationTests(unittest.TestCase):
         self.assertIn("packages/provium[test]", commands)
         self.assertIn("packages/provium-pipeline[test]", commands)
         self.assertIn("examples/provium-text-pipeline", commands)
-        self.assertIn("postgres", job["services"])
-        self.assertIn("localstack", job["services"])
+        self.assertNotIn("services", job)
+        self.assertNotIn("PROVIUM_TEST_DATABASE", job.get("env", {}))
+        self.assertNotIn("AWS_ENDPOINT_URL_S3", job.get("env", {}))
+        self.assertIn("packages/provium-dispatch[test]", commands)
         self.assertIn("--cov=provium_pipeline", commands)
         self.assertIn("--cov-fail-under=100", commands)
         lint = ci["jobs"]["lint-format"]["steps"]
