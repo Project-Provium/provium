@@ -126,3 +126,9 @@ def require_execution_queue(arguments: argparse.Namespace) -> None:
         require_queue(arguments)
     elif arguments.queue is not None:
         raise ValueError("--queue requires a registered pipeline")
+
+
+def configure_storage(parser: argparse.ArgumentParser) -> None:
+    configure_connection(parser)
+    parser.add_argument("--store")
+    parser.add_argument("--scratch-directory")

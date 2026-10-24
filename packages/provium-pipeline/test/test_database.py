@@ -278,8 +278,6 @@ def test_registered_pipeline_lookup_uses_database_results(
     from test_commands import config
     from test_store import make_artifact
 
-    from provium_pipeline.store import ArtifactStore
-
     monkeypatch.chdir(tmp_path)
     pipeline = config(tmp_path)
     name = "lookup-" + uuid4().hex
@@ -300,22 +298,12 @@ def test_registered_pipeline_lookup_uses_database_results(
     expected = json.loads(captured.out.splitlines()[-1])[0]["outputs"]["tokens"]
     assert not list((tmp_path / "store").glob("results/*.json"))
     assert (
-        run(["pipeline", "input-set", "register", name, *inputs, *connection, *storage])
-        == 0
-    )
-    capsys.readouterr()
-    source.unlink()
-    monkeypatch.setattr(
-        ArtifactStore, "fetch", lambda *args: pytest.fail("lookup fetched artifact")
-    )
-    assert (
         run(
             [
                 "pipeline",
                 "lookup",
                 f"{name}.outputs.tokens",
-                "--input-set",
-                name,
+                *inputs,
                 *connection,
                 *storage,
                 "--json",

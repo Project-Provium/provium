@@ -152,6 +152,8 @@ def test_localstack_core_artifacts_and_remote_pipeline_yaml(tmp_path, capsys):
                     "pipeline",
                     "run",
                     "--json",
+                    "--output",
+                    "tokens=" + prefix + "/published.pa",
                     "-f",
                     prefix + "/pipeline.yaml",
                     "--input",
@@ -167,7 +169,7 @@ def test_localstack_core_artifacts_and_remote_pipeline_yaml(tmp_path, capsys):
         outcomes = json.loads(capsys.readouterr().out)
         assert outcomes[0]["state"] == "completed"
         with session(scratch_directory=tmp_path):
-            with TOKENS.resolve().open(prefix + "/tokens.pa") as reader:
+            with TOKENS.resolve().open(prefix + "/published.pa") as reader:
                 assert reader.body.read()
     finally:
         objects = client.list_objects_v2(Bucket=bucket).get("Contents", [])

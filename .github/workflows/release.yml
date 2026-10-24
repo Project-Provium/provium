@@ -26,6 +26,8 @@ jobs:
       provium_release_created: ${{ steps.release.outputs['packages/provium--release_created'] }}
       provium_tag: ${{ steps.release.outputs['packages/provium--tag_name'] }}
       pipeline_release_created: ${{ steps.release.outputs['packages/provium-pipeline--release_created'] }}
+      dispatch_release_created: ${{ steps.release.outputs['packages/provium-dispatch--release_created'] }}
+      dispatch_tag: ${{ steps.release.outputs['packages/provium-dispatch--tag_name'] }}
       pipeline_tag: ${{ steps.release.outputs['packages/provium-pipeline--tag_name'] }}
 
     steps:
@@ -73,13 +75,13 @@ jobs:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       AWS_DEFAULT_REGION: us-east-1
-      PACKAGE_NAME: ${{ matrix.path == 'packages/provium' && 'provium' || 'provium-pipeline' }}
-      PACKAGE_IMPORT: ${{ matrix.path == 'packages/provium' && 'provium' || 'provium_pipeline' }}
+      PACKAGE_NAME: ${{ matrix.path == 'packages/provium' && 'provium' || matrix.path == 'packages/provium-pipeline' && 'provium-pipeline' || 'provium-dispatch' }}
+      PACKAGE_IMPORT: ${{ matrix.path == 'packages/provium' && 'provium' || matrix.path == 'packages/provium-pipeline' && 'provium_pipeline' || 'provium_dispatch' }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.path == 'packages/provium' && needs.release-please.outputs.provium_tag || needs.release-please.outputs.pipeline_tag }}
+          ref: ${{ matrix.path == 'packages/provium' && needs.release-please.outputs.provium_tag || matrix.path == 'packages/provium-pipeline' && needs.release-please.outputs.pipeline_tag || needs.release-please.outputs.dispatch_tag }}
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -89,7 +91,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e "../provium[test]"
-          python -m pip install -e ".[test]" -e "../../examples/provium-text-pipeline[test]" build twine
+          python -m pip install -e "../provium-pipeline[test]" -e "../provium-dispatch[test]" -e ".[test]" -e "../../examples/provium-text-pipeline[test]" build twine
       - name: Check lint, formatting, and types
         run: |
           ruff check .
@@ -148,6 +150,31 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: provium-pipeline-distributions
+          path: dist
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-dispatch:
+    name: Publish Provium Dispatch to PyPI
+    needs: [release-please, build, publish-provium, publish-pipeline]
+    if: >-
+      always() && !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.release-please.outputs.dispatch_release_created == 'true' &&
+      (needs.publish-provium.result == 'success' || needs.publish-provium.result == 'skipped') &&
+      (needs.publish-pipeline.result == 'success' || needs.publish-pipeline.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/provium-dispatch
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: provium-dispatch-distributions
           path: dist
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

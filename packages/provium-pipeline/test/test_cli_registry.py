@@ -25,7 +25,6 @@ def test_pipeline_uses_core_registry(capsys):
         "status",
         "validate",
         "inspect",
-        "input-set",
         "lookup",
     }
     assert "artifact" in catalog.commands
@@ -46,7 +45,6 @@ def test_pipeline_uses_core_registry(capsys):
         "status",
         "validate",
         "inspect",
-        "input-set",
         "lookup",
     ):
         assert action in help_text

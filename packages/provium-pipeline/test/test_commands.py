@@ -27,7 +27,19 @@ def test_direct_cli_and_read_only_status(tmp_path, capsys):
         "--store",
         str(tmp_path / "store"),
     ]
-    assert run(["pipeline", "run", *args, "--json"]) == 0
+    assert (
+        run(
+            [
+                "pipeline",
+                "run",
+                *args,
+                "--output",
+                f"tokens={tmp_path / 'tokens.pa'}",
+                "--json",
+            ]
+        )
+        == 0
+    )
     captured = capsys.readouterr()
     assert json.loads(captured.out)[0]["state"] == "completed"
     assert "run=" in captured.err
@@ -38,12 +50,14 @@ def test_direct_cli_and_read_only_status(tmp_path, capsys):
     assert value[0]["outputs"]["tokens"]["location"]
 
 
-def test_item_failure_zero_but_bad_configuration_nonzero(tmp_path):
+def test_item_failure_and_bad_configuration_have_distinct_exit_codes(tmp_path):
     assert (
         run(
             [
                 "pipeline",
                 "run",
+                "--output",
+                f"tokens={tmp_path / 'tokens.pa'}",
                 "-f",
                 config(tmp_path),
                 "--input",
@@ -52,13 +66,15 @@ def test_item_failure_zero_but_bad_configuration_nonzero(tmp_path):
                 str(tmp_path / "store"),
             ]
         )
-        == 0
+        == 1
     )
     assert (
         run(
             [
                 "pipeline",
                 "run",
+                "--output",
+                f"tokens={tmp_path / 'tokens.pa'}",
                 "-f",
                 config(tmp_path),
                 "--workers",
@@ -79,6 +95,8 @@ def test_missing_input_reports_error_and_releases_writer_lock(tmp_path, capsys):
     args = [
         "pipeline",
         "run",
+        "--output",
+        f"tokens={tmp_path / 'tokens.pa'}",
         "-f",
         config(tmp_path),
         "--input",
@@ -87,7 +105,7 @@ def test_missing_input_reports_error_and_releases_writer_lock(tmp_path, capsys):
         str(store_path),
         "--json",
     ]
-    assert run(args) == 0
+    assert run(args) == 1
     captured = capsys.readouterr()
     outcome = json.loads(captured.out)[0]
     assert outcome["state"] == "failed"
@@ -108,6 +126,8 @@ def test_run_defaults_to_readable_output(tmp_path, capsys):
     args = [
         "pipeline",
         "run",
+        "--output",
+        f"tokens={tmp_path / 'tokens.pa'}",
         "-f",
         config(tmp_path),
         "--input",
@@ -115,7 +135,7 @@ def test_run_defaults_to_readable_output(tmp_path, capsys):
         "--store",
         str(tmp_path / "store"),
     ]
-    assert run(args) == 0
+    assert run(args) == 1
     captured = capsys.readouterr()
     assert captured.out.startswith("Input set 1: failed\n")
     assert "file not found" in captured.out
@@ -133,6 +153,8 @@ def test_verbose_reports_cached_skips_without_polluting_json(tmp_path, capsys):
     args = [
         "pipeline",
         "run",
+        "--output",
+        f"tokens={tmp_path / 'tokens.pa'}",
         "-f",
         config(tmp_path),
         "--input",

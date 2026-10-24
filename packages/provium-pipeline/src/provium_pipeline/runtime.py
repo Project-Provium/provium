@@ -13,7 +13,6 @@ from collections.abc import Callable, Iterable, Mapping
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
@@ -27,19 +26,13 @@ from .models import (
 )
 from .persistence.interface import Lease, QueueBackend
 from .persistence.queues import validate_queue_name
-from .planning import build_plan, matches, resolve_settings
+from .planning import Plan, build_plan, matches, resolve_settings, select_targets
+from .publication import FilePublisher, Publisher
+from .requests import InputSet
 from .store import Artifact, ArtifactStore
 
 if TYPE_CHECKING:
     from .workers import Worker
-
-
-@dataclass(frozen=True)
-class InputSet:
-    inputs: Mapping[str, str | Artifact | dict[str, Any]]
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "inputs", MappingProxyType(dict(self.inputs)))
 
 
 @dataclass(frozen=True)
@@ -56,6 +49,8 @@ class Outcome:
 class State:
     item: InputSet
     identity: int | None = None
+    plan: Plan | None = None
+    published: dict[str, Artifact] = field(default_factory=dict[str, Artifact])
     values: dict[str, Artifact] = field(default_factory=dict[str, Artifact])
     steps: set[str] = field(default_factory=set[str])
     failed: bool = False
@@ -94,7 +89,13 @@ class ExecutionContext:
         idle_wait: float = 0,
         log_path: str | Path | None = None,
         verify_artifacts: bool = False,
+        strategy: str = "stage",
+        targets: list[str] | None = None,
+        publisher: Publisher | None = None,
     ) -> None:
+        if strategy not in {"item", "stage"}:
+            raise ValueError("strategy must be item or stage")
+        self.strategy = strategy
         self.queue_group = validate_queue_name(queue_group)
         if backend:
             registered_definition = backend.definition(configuration.name)
@@ -105,8 +106,13 @@ class ExecutionContext:
                 ):
                     raise ValueError("definition differs from registered snapshot")
                 definition = registered_definition
+        if backend is not None and targets is not None:
+            raise ValueError("target selection currently requires direct inputs")
         self.plan = build_plan(configuration, definition, procedures)
+        if targets is not None:
+            self.plan = select_targets(self.plan, targets)
         self.store = store
+        self.publisher = publisher if publisher is not None else FilePublisher(store)
         self.verify_artifacts = verify_artifacts
         self.profile = profile or ComputeProfile(name="default")
         if (
@@ -224,8 +230,9 @@ class ExecutionContext:
         for item in items:
             self._add(item)
             state = self._states[-1]
+            plan = state.plan or self.plan
             steps: dict[str, Any] = {}
-            for node in self.plan.order:
+            for node in plan.order:
                 job = self._job(state, node)
                 if job is None:
                     steps[node] = {"state": "blocked"}
@@ -260,7 +267,7 @@ class ExecutionContext:
                     steps[node] = {"state": "invalid", "error": str(error)}
             outputs = {
                 name: state.values[ref]
-                for name, ref in self.plan.configuration.outputs.items()
+                for name, ref in plan.configuration.outputs.items()
                 if ref in state.values
             }
             report = _outcome_json(
@@ -269,7 +276,7 @@ class ExecutionContext:
                     "failed"
                     if state.failed
                     else "completed"
-                    if len(outputs) == len(self.plan.configuration.outputs)
+                    if len(outputs) == len(plan.configuration.outputs)
                     else "partial",
                     outputs,
                     error=state.error,
@@ -372,15 +379,32 @@ class ExecutionContext:
         self.max_resident_inputs = max(self.max_resident_inputs, len(self._states))
         label = "Input set"
         try:
-            expected_names = set(self.plan.configuration.inputs)
-            if set(item.inputs) != expected_names:
+            destinations = item.output_destinations
+            if destinations is not None:
+                if self.backend is not None:
+                    raise ValueError("output destinations require direct requests")  # noqa: TRY301
+                state.plan = select_targets(self.plan, list(destinations))
+            else:
+                state.plan = self.plan
+            expected_names = set(state.plan.configuration.inputs)
+            allowed_names = (
+                set(self.plan.input_types)
+                if destinations is not None
+                else expected_names
+            )
+            if (
+                expected_names - item.inputs.keys()
+                or item.inputs.keys() - allowed_names
+            ):
                 missing = ", ".join(sorted(expected_names - set(item.inputs))) or "none"
-                extra = ", ".join(sorted(set(item.inputs) - expected_names)) or "none"
+                extra = ", ".join(sorted(set(item.inputs) - allowed_names)) or "none"
                 raise ValueError(  # noqa: TRY301 -- converted to an item outcome
                     f"input names do not match pipeline definition "
                     f"(missing: {missing}; unexpected: {extra})"
                 )
             for name, value in item.inputs.items():
+                if name not in expected_names:
+                    continue
                 location = (
                     value.location
                     if isinstance(value, Artifact)
@@ -444,16 +468,35 @@ class ExecutionContext:
             self._add(InputSet(row["inputs"]), identity)
 
     def _record(self, state: State, *, final: bool = False) -> None:
+        plan = state.plan or self.plan
         outputs = {
             name: state.values[ref]
-            for name, ref in self.plan.configuration.outputs.items()
+            for name, ref in plan.configuration.outputs.items()
             if ref in state.values
         }
+        identity = state.identity if state.identity is not None else id(state)
+        destinations = state.item.output_destinations
+        if final and destinations is not None and identity not in self._pipeline_seen:
+            try:
+                for name, artifact in outputs.items():
+                    state.published[name] = self.publisher.publish(
+                        artifact, destinations[name], overwrite=bool(self.force)
+                    )
+                if len(outputs) != len(plan.configuration.outputs) and not state.failed:
+                    raise ValueError(  # noqa: TRY301 -- reported as an item failure
+                        "requested outputs unavailable; "
+                        "required procedures may be filtered out"
+                    )
+            except Exception as error:
+                state.failed = True
+                state.error = f"output publication: {error}"
+                self.logger.error("%s", state.error)  # noqa: TRY400
+            outputs = dict(state.published)
         status = (
             "failed"
             if state.failed
             else "completed"
-            if len(outputs) == len(self.plan.configuration.outputs)
+            if len(outputs) == len(plan.configuration.outputs)
             else "cancelled"
             if self._stop.is_set()
             else "partial"
@@ -481,7 +524,38 @@ class ExecutionContext:
             self.outcomes.append(event)
             self._notify(event)
 
+    def _run_queued_items(self) -> None:
+        assert self.backend is not None
+        after = 0
+        idle_start = time.monotonic()
+        while not self._stop.is_set():
+            rows = self.backend.pending(
+                self.plan.configuration.name,
+                after,
+                limit=self.queue_page_size,
+                include_finished=bool(self.force),
+                queue_group=self.queue_group,
+            )
+            if not rows:
+                if (
+                    not any(self._allowed(node) for node in self.plan.order)
+                    or time.monotonic() - idle_start >= self.idle_wait
+                ):
+                    break
+                self._stop.wait(min(0.1, self.idle_wait))
+                continue
+            for row in rows:
+                if self._stop.is_set():
+                    return
+                after = row["id"]
+                self._load_page([row])
+                self._run_local()
+            idle_start = time.monotonic()
+
     def _run_queued(self) -> None:
+        if self.strategy == "item":
+            self._run_queued_items()
+            return
         assert self.backend is not None
         idle_start = time.monotonic()
         while not self._stop.is_set():
@@ -549,7 +623,12 @@ class ExecutionContext:
                 self._record(state, final=True)
 
     def _job(self, state: State, name: str) -> Job | None:
-        if state.failed or name in state.steps:
+        if (
+            state.failed
+            or name in state.steps
+            or state.plan is not None
+            and name not in state.plan.configuration.nodes
+        ):
             return None
         node = self.plan.configuration.nodes[name]
 
@@ -939,25 +1018,49 @@ class ExecutionContext:
             if self.backend:
                 self._run_queued()
                 return
-            for item in items:
-                self._add(item)
-            idle_start = time.monotonic()
-            while not self._stop.is_set():
-                ready = self._ready()
-                if ready:
-                    before = sum(len(state.steps) for state in self._states)
-                    self._run_node(ready[0])
-                    after = sum(len(state.steps) for state in self._states)
-                    if after > before:
-                        idle_start = time.monotonic()
-                        continue
-                if not any(self._allowed(node) for node in self.plan.order):
-                    break
-                if time.monotonic() - idle_start >= self.idle_wait:
-                    break
-                time.sleep(min(0.1, self.idle_wait))
-            for state in self._states:
-                self._record(state, final=True)
+            items = list(items)
+            if any(item.output_destinations is not None for item in items):
+                self.publisher.validate(items)
+            if self.strategy == "item":
+                states: list[State] = []
+                for item in items:
+                    self._states = []
+                    self._add(item)
+                    states.extend(self._states)
+                    self._run_local()
+                self._states = states
+            else:
+                for item in items:
+                    self._add(item)
+                self._run_local()
+
+    def _run_local(self) -> None:
+        idle_start = time.monotonic()
+        while not self._stop.is_set():
+            ready = self._ready()
+            if ready:
+                before = sum(len(state.steps) for state in self._states)
+                self._run_node(ready[0])
+                after = sum(len(state.steps) for state in self._states)
+                if after > before:
+                    idle_start = time.monotonic()
+                    continue
+            if self._states and all(
+                state.failed
+                or all(
+                    ref in state.values
+                    for ref in (state.plan or self.plan).configuration.outputs.values()
+                )
+                for state in self._states
+            ):
+                break
+            if not any(self._allowed(node) for node in self.plan.order):
+                break
+            if time.monotonic() - idle_start >= self.idle_wait:
+                break
+            time.sleep(min(0.1, self.idle_wait))
+        for state in self._states:
+            self._record(state, final=True)
 
 
 def _outcome_json(event: Outcome) -> dict[str, Any]:

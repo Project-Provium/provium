@@ -42,6 +42,18 @@ class RunCommand(Command):
         configure_graph(parser)
         configure_queue(parser)
         parser.add_argument(
+            "--output", action="append", default=[], metavar="TARGET=PATH"
+        )
+        parser.add_argument(
+            "--csv", help="CSV requests with inputs.NAME and target/output columns"
+        )
+        parser.add_argument(
+            "--strategy",
+            choices=("item", "stage"),
+            default="stage",
+            help="Complete each input in turn or reuse loaded procedures across inputs",
+        )
+        parser.add_argument(
             "--verify-artifacts",
             action="store_true",
             help="Read and verify cached artifact contents before reusing them",
@@ -56,7 +68,6 @@ class RunCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             self._validate(arguments)
-            require_execution_queue(arguments)
             from ...persistence.factory import open_backend
             from ...preparation import prepare_pipeline
 
@@ -77,9 +88,30 @@ class RunCommand(Command):
                 only=arguments.only,
                 force=arguments.force,
             )
-            from ...runtime import ExecutionContext, InputSet
+            from provium.files import local_file
+
+            from ...requests import CSVSource, ExecutionRequest
+            from ...runtime import ExecutionContext
             from ...store import ArtifactStore
 
+            if arguments.csv:
+                with (
+                    local_file(
+                        arguments.csv, scratch_directory=arguments.scratch_directory
+                    ) as path,
+                    path.open(newline="", encoding="utf-8-sig") as stream,
+                ):
+                    items = list(CSVSource(stream))
+            else:
+                items = (
+                    []
+                    if prepared.backend
+                    else [
+                        ExecutionRequest(
+                            assignments(arguments.input), assignments(arguments.output)
+                        )
+                    ]
+                )
             store = ArtifactStore(arguments.store, scratch=arguments.scratch_directory)
             with (
                 store,
@@ -95,11 +127,9 @@ class RunCommand(Command):
                     queue_group=arguments.queue or "default",
                     idle_wait=arguments.idle_wait,
                     verify_artifacts=arguments.verify_artifacts,
+                    strategy=arguments.strategy,
                 ) as context,
             ):
-                items = (
-                    [] if prepared.backend else [InputSet(assignments(arguments.input))]
-                )
 
                 def report_step(event: Outcome) -> None:
                     if event.reused:
@@ -127,12 +157,21 @@ class RunCommand(Command):
         except Exception as error:
             print(f"provium pipeline: {error}", file=sys.stderr)
             return 2
-        return 0
+        return 1 if any(event.state == "failed" for event in context.outcomes) else 0
 
     @staticmethod
     def _validate(arguments: argparse.Namespace) -> None:
         require_pipeline(arguments)
-        if arguments.pipeline and arguments.input:
+        require_execution_queue(arguments)
+        if arguments.pipeline and (
+            arguments.input or arguments.output or arguments.csv
+        ):
             raise ValueError(
                 "registered execution cannot combine files or direct inputs"
+            )
+        if arguments.csv and (arguments.input or arguments.output):
+            raise ValueError("--csv cannot be combined with --input or --output")
+        if not arguments.pipeline and not arguments.csv and not arguments.output:
+            raise ValueError(
+                "execution requires at least one --output TARGET=PATH or --csv"
             )

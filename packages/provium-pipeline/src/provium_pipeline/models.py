@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 NAME = re.compile(r"^[^.$\s/]+$")
 REFERENCE = re.compile(r"^\$(inputs\.[^.$\s/]+|nodes\.[^.$\s/]+\.[^.$\s/]+)$")
@@ -65,7 +65,12 @@ class PipelineConfiguration(Document):
     kind: Literal["PipelineConfiguration"] = "PipelineConfiguration"
     inputs: dict[str, str]
     nodes: dict[str, Node]
-    outputs: dict[str, str]
+    outputs: dict[str, str] = Field(validation_alias=AliasChoices("targets", "outputs"))
+
+    @property
+    def targets(self) -> dict[str, str]:
+        """Named output references; legacy snapshots retain the outputs key."""
+        return self.outputs
 
     @field_validator("inputs")
     @classmethod

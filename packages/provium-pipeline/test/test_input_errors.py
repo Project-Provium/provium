@@ -19,6 +19,8 @@ def test_known_input_errors_are_concise(tmp_path, capsys, bad_file):
             [
                 "pipeline",
                 "run",
+                "--output",
+                f"tokens={tmp_path / 'tokens.pa'}",
                 "-f",
                 config(tmp_path),
                 "--input",
@@ -28,7 +30,7 @@ def test_known_input_errors_are_concise(tmp_path, capsys, bad_file):
                 "--json",
             ]
         )
-        == 0
+        == 1
     )
     captured = capsys.readouterr()
     outcome = json.loads(captured.out)[0]

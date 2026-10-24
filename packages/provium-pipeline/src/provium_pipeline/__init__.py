@@ -11,6 +11,8 @@ if TYPE_CHECKING:
         PipelineDefinition,
         load_documents,
     )
+    from .publication import FilePublisher, Publisher
+    from .requests import CSVSource, ExecutionRequest, RequestSource
     from .runtime import ExecutionContext, InputSet, Outcome
     from .store import Artifact, ArtifactStore
 
@@ -19,6 +21,11 @@ __all__ = [
     "Artifact",
     "ArtifactStore",
     "ComputeProfile",
+    "CSVSource",
+    "ExecutionRequest",
+    "FilePublisher",
+    "Publisher",
+    "RequestSource",
     "ExecutionContext",
     "InputSet",
     "Outcome",
@@ -32,6 +39,11 @@ _EXPORTS = {
     "Artifact": ".store",
     "ArtifactStore": ".store",
     "ComputeProfile": ".models",
+    "CSVSource": ".requests",
+    "ExecutionRequest": ".requests",
+    "FilePublisher": ".publication",
+    "Publisher": ".publication",
+    "RequestSource": ".requests",
     "ExecutionContext": ".runtime",
     "InputSet": ".runtime",
     "Outcome": ".runtime",
