@@ -11,7 +11,16 @@ def test_dispatch_owns_input_set_commands(capsys):
 
     catalog = discover_command_catalogs()
     dispatch = catalog.commands["dispatch"]
-    assert set(dispatch.catalog.commands) == {"input-set", "lookup"}
+    assert set(dispatch.catalog.commands) == {
+        "input-set",
+        "lookup",
+        "register",
+        "unregister",
+        "enqueue",
+        "retry",
+        "list",
+        "queue",
+    }
     assert "input-set" not in catalog.commands["pipeline"].catalog.commands
     with pytest.raises(SystemExit) as result:
         run(["dispatch", "--help"])

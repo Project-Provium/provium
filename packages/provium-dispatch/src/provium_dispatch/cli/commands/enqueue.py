@@ -7,8 +7,7 @@ import json
 import sys
 
 from provium.cli.command import Command
-
-from ..arguments import (
+from provium_pipeline.cli.arguments import (
     assignments,
     configure_graph,
     configure_queue,
@@ -32,8 +31,8 @@ class EnqueueCommand(Command):
             require_database(arguments)
             require_pipeline(arguments)
             values = assignments(arguments.input)
-            from ...persistence.factory import open_backend
-            from ...preparation import load_pipeline
+            from provium_pipeline.persistence.factory import open_backend
+            from provium_pipeline.preparation import load_pipeline
 
             backend = open_backend(arguments.database) if arguments.pipeline else None
             graph = load_pipeline(
@@ -54,6 +53,6 @@ class EnqueueCommand(Command):
                 )
             )
         except Exception as error:
-            print(f"provium pipeline: {error}", file=sys.stderr)
+            print(f"provium dispatch: {error}", file=sys.stderr)
             return 2
         return 0

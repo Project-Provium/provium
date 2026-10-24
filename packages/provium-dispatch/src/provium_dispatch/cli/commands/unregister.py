@@ -7,8 +7,11 @@ import json
 import sys
 
 from provium.cli.command import Command
-
-from ..arguments import configure_graph, require_database, validate_graph_options
+from provium_pipeline.cli.arguments import (
+    configure_graph,
+    require_database,
+    validate_graph_options,
+)
 
 
 class UnregisterCommand(Command):
@@ -22,11 +25,11 @@ class UnregisterCommand(Command):
         try:
             self._validate(arguments)
             identities = self._identities(arguments)
-            from ...persistence.factory import open_backend
+            from provium_pipeline.persistence.factory import open_backend
 
             print(json.dumps(open_backend(arguments.database).unregister(identities)))
         except Exception as error:
-            print(f"provium pipeline: {error}", file=sys.stderr)
+            print(f"provium dispatch: {error}", file=sys.stderr)
             return 2
         return 0
 
@@ -41,7 +44,7 @@ class UnregisterCommand(Command):
 
     @staticmethod
     def _identities(arguments: argparse.Namespace) -> list[dict[str, str]]:
-        from ...models import load_documents
+        from provium_pipeline.models import load_documents
 
         documents = load_documents(
             arguments.file, scratch_directory=arguments.scratch_directory

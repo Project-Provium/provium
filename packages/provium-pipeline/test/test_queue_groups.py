@@ -51,7 +51,7 @@ def test_cli_group_selection_and_status(db, tmp_path, capsys):
     name = "queues-" + uuid4().hex
     db.register([document(name)])
     common = ["--database", db.connection]
-    assert cli.run(["pipeline", "enqueue", name, "-q", "priority", *common]) == 0
+    assert cli.run(["dispatch", "enqueue", name, "-q", "priority", *common]) == 0
     assert db.pending(name) == []
     priority = db.pending(name, queue_group="priority")[0]["id"]
     db.enqueue(name, {})
@@ -109,7 +109,7 @@ def test_cli_group_selection_and_status(db, tmp_path, capsys):
         == 0
     )
     assert [row["id"] for row in json.loads(capsys.readouterr().out)] == [priority]
-    assert cli.run(["pipeline", "queue", name, "-q", "priority", *common]) == 0
+    assert cli.run(["dispatch", "queue", name, "-q", "priority", *common]) == 0
     summary = json.loads(capsys.readouterr().out)[0]
     assert summary["queue"] == "priority"
     assert summary["states"]["completed"] == 1
@@ -118,7 +118,7 @@ def test_cli_group_selection_and_status(db, tmp_path, capsys):
         connection.execute(
             "UPDATE provium_inputs SET state='failed' WHERE id=%s", (priority,)
         )
-    assert cli.run(["pipeline", "retry", name, "-q", "priority", *common]) == 0
+    assert cli.run(["dispatch", "retry", name, "-q", "priority", *common]) == 0
     assert json.loads(capsys.readouterr().out) == {"reset": 1}
 
 
@@ -268,7 +268,8 @@ def test_disabled_default_fails_before_backend(command, tmp_path, monkeypatch, c
     monkeypatch.setenv("PROVIUM_CONFIG__PIPELINE__QUEUE__DEFAULT_ENABLED", "false")
     opener = Mock(side_effect=AssertionError("backend must not load"))
     monkeypatch.setattr(factory, "open_backend", opener)
-    assert cli.run(["pipeline", command, "example", "--database", "unused"]) == 2
+    group = "dispatch" if command in {"enqueue", "retry", "queue"} else "pipeline"
+    assert cli.run([group, command, "example", "--database", "unused"]) == 2
     assert "--queue" in capsys.readouterr().err
     opener.assert_not_called()
 

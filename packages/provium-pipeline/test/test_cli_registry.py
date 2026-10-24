@@ -16,12 +16,6 @@ def test_pipeline_uses_core_registry(capsys):
     assert issubclass(cli.PipelineCommand, CommandGroup)
     assert set(cli.PipelineCommand.catalog.commands) == {
         "run",
-        "register",
-        "unregister",
-        "enqueue",
-        "retry",
-        "list",
-        "queue",
         "status",
         "validate",
         "inspect",
@@ -36,12 +30,6 @@ def test_pipeline_uses_core_registry(capsys):
     assert "provium pipeline" in help_text
     for action in (
         "run",
-        "register",
-        "unregister",
-        "enqueue",
-        "retry",
-        "list",
-        "queue",
         "status",
         "validate",
         "inspect",
@@ -98,7 +86,7 @@ def test_distribution_registers_only_core_cli_plugin():
         (["pipeline", "run", "--help"], 0),
         (["pipeline", "missing"], 2),
         (["pipeline", "run"], 2),
-        (["pipeline", "register", "--database", "unused"], 2),
+        (["dispatch", "register", "--database", "unused"], 2),
         (["pipeline", "run", "saved", "-f", "unused", "--database", "unused"], 2),
         (["pipeline", "run", "-f", "unused", "--workers", "broken"], 2),
         (["pipeline", "run", "-f", "unused", "--idle-wait", "nan"], 2),
@@ -198,14 +186,6 @@ def test_commands_own_configuration_and_execution(name):
     command_type = cli.PipelineCommand.catalog.commands[name]
     module_name = name.replace("-", "_")
     assert command_type.__module__ == f"provium_pipeline.cli.commands.{module_name}"
-    if issubclass(command_type, CommandGroup):
-        assert set(command_type.catalog.commands) == {
-            "register",
-            "unregister",
-            "resolve",
-            "find",
-        }
-        return
     assert "configure" in command_type.__dict__
     assert "execute" in command_type.__dict__
 

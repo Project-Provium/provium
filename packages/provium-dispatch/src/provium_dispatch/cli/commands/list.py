@@ -7,8 +7,7 @@ import json
 import sys
 
 from provium.cli.command import Command
-
-from ..arguments import configure_connection, require_database
+from provium_pipeline.cli.arguments import configure_connection, require_database
 
 
 class ListCommand(Command):
@@ -24,7 +23,7 @@ class ListCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             require_database(arguments)
-            from ...persistence.factory import open_backend
+            from provium_pipeline.persistence.factory import open_backend
 
             backend = open_backend(arguments.database)
             kind = {
@@ -33,6 +32,6 @@ class ListCommand(Command):
             }.get(arguments.resource)
             print(json.dumps(backend.registered(kind)))
         except Exception as error:
-            print(f"provium pipeline: {error}", file=sys.stderr)
+            print(f"provium dispatch: {error}", file=sys.stderr)
             return 2
         return 0

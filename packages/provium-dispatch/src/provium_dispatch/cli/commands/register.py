@@ -10,9 +10,13 @@ from typing import TYPE_CHECKING
 from provium.cli.command import Command
 
 if TYPE_CHECKING:
-    from ...models import ComputeProfile, PipelineConfiguration
+    from provium_pipeline.models import ComputeProfile, PipelineConfiguration
 
-from ..arguments import configure_graph, require_database, validate_graph_options
+from provium_pipeline.cli.arguments import (
+    configure_graph,
+    require_database,
+    validate_graph_options,
+)
 
 
 class RegisterCommand(Command):
@@ -25,10 +29,13 @@ class RegisterCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             self._validate(arguments)
-            from ...definitions import load_definition
-            from ...models import PipelineConfiguration, PipelineDefinition
-            from ...persistence.factory import open_backend
-            from ...planning import build_plan
+            from provium_pipeline.definitions import load_definition
+            from provium_pipeline.models import (
+                PipelineConfiguration,
+                PipelineDefinition,
+            )
+            from provium_pipeline.persistence.factory import open_backend
+            from provium_pipeline.planning import build_plan
 
             documents = self._documents(arguments)
             definitions: dict[str, PipelineDefinition] = {}
@@ -45,7 +52,7 @@ class RegisterCommand(Command):
             )
             print(json.dumps({"registered": len(documents)}))
         except Exception as error:
-            print(f"provium pipeline: {error}", file=sys.stderr)
+            print(f"provium dispatch: {error}", file=sys.stderr)
             return 2
         return 0
 
@@ -60,7 +67,7 @@ class RegisterCommand(Command):
     def _documents(
         arguments: argparse.Namespace,
     ) -> list[PipelineConfiguration | ComputeProfile]:
-        from ...models import load_documents
+        from provium_pipeline.models import load_documents
 
         documents = load_documents(
             arguments.file, scratch_directory=arguments.scratch_directory
