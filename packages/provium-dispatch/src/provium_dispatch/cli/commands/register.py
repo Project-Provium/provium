@@ -10,9 +10,11 @@ from typing import TYPE_CHECKING
 from provium.cli.command import Command
 
 if TYPE_CHECKING:
-    from provium_pipeline.models import ComputeProfile, PipelineConfiguration
+    from provium_pipeline.models import PipelineConfiguration
 
-from provium_pipeline.cli.arguments import (
+    from ...models import ComputeProfile
+
+from ..arguments import (
     configure_graph,
     require_database,
     validate_graph_options,
@@ -34,8 +36,9 @@ class RegisterCommand(Command):
                 PipelineConfiguration,
                 PipelineDefinition,
             )
-            from provium_pipeline.persistence.factory import open_backend
             from provium_pipeline.planning import build_plan
+
+            from ...persistence.factory import open_backend
 
             documents = self._documents(arguments)
             definitions: dict[str, PipelineDefinition] = {}
@@ -67,7 +70,7 @@ class RegisterCommand(Command):
     def _documents(
         arguments: argparse.Namespace,
     ) -> list[PipelineConfiguration | ComputeProfile]:
-        from provium_pipeline.models import load_documents
+        from ...documents import load_documents
 
         documents = load_documents(
             arguments.file, scratch_directory=arguments.scratch_directory

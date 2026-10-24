@@ -138,7 +138,7 @@ def test_database_cached_manifests_need_no_output_reads(tmp_path, monkeypatch):
         with ExecutionContext(
             graph(),
             store,
-            backend=backend,
+            coordinator=backend,
             procedures={COPY.identifier: COPY},
         ) as context:
             context._add(InputSet({"document": str(source)}))

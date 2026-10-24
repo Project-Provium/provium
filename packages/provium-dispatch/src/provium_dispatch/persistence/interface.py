@@ -2,23 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
+from provium_pipeline.coordination import Coordinator
+from provium_pipeline.coordination import Lease as Lease
+
 if TYPE_CHECKING:
-    from ..models import PipelineDefinition
+    from provium_pipeline.models import PipelineDefinition
 
 
-@dataclass(frozen=True)
-class Lease:
-    namespace: str
-    key: str
-    owner: str
-    generation: int
-    run: str
-
-
-class QueueBackend(Protocol):
+class QueueBackend(Coordinator, Protocol):
     """Storage-independent coordination contract used by the execution context."""
 
     def definition(self, pipeline: str) -> PipelineDefinition | None: ...
@@ -34,25 +27,6 @@ class QueueBackend(Protocol):
     ) -> list[dict[str, Any]]: ...
 
     def progress(self, identity: int, state: str, detail: dict[str, Any]) -> None: ...
-
-    def result(self, namespace: str, key: str) -> dict[str, Any] | None: ...
-
-    def acquire(
-        self,
-        namespace: str,
-        key: str,
-        run: str,
-        *,
-        force: bool = False,
-        ttl: float = 60,
-        input_id: int | None = None,
-    ) -> Lease | None: ...
-
-    def renew(self, lease: Lease, *, ttl: float = 60) -> bool: ...
-
-    def complete(self, lease: Lease, outputs: dict[str, Any]) -> bool: ...
-
-    def fail(self, lease: Lease, error: str) -> None: ...
 
 
 class PersistenceBackend(QueueBackend, Protocol):

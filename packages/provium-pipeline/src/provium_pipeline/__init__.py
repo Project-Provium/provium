@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .models import (
-        ComputeProfile,
+        ExecutionSettings,
         PipelineConfiguration,
         PipelineDefinition,
         load_documents,
@@ -20,7 +20,7 @@ __version__ = version("provium-pipeline")
 __all__ = [
     "Artifact",
     "ArtifactStore",
-    "ComputeProfile",
+    "ExecutionSettings",
     "CSVSource",
     "ExecutionRequest",
     "FilePublisher",
@@ -38,7 +38,7 @@ __all__ = [
 _EXPORTS = {
     "Artifact": ".store",
     "ArtifactStore": ".store",
-    "ComputeProfile": ".models",
+    "ExecutionSettings": ".models",
     "CSVSource": ".requests",
     "ExecutionRequest": ".requests",
     "FilePublisher": ".publication",

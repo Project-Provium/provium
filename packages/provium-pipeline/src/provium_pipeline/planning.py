@@ -10,7 +10,7 @@ from provium.procedure.discovery import discover_procedure_catalogs
 from provium.provenance import ProcedureRecord
 
 from .models import (
-    ComputeProfile,
+    ExecutionSettings,
     PipelineConfiguration,
     PipelineDefinition,
     Settings,
@@ -39,7 +39,7 @@ def build_plan(
         configuration.model_dump_json()
     )
     if definition is not None:
-        definition = PipelineDefinition.from_snapshot(definition.snapshot())
+        definition = type(definition).from_snapshot(definition.snapshot())
     catalog: Any = discover_procedure_catalogs() if procedures is None else None
     resolved: dict[str, Any] = {}
     records: dict[str, ProcedureRecord] = {}
@@ -217,7 +217,7 @@ def matches(graph: PipelineConfiguration, node: str, selectors: list[str]) -> bo
 
 def resolve_settings(
     graph: PipelineConfiguration,
-    profile: ComputeProfile,
+    profile: ExecutionSettings,
     *,
     only: list[str],
     force: list[str],
@@ -240,7 +240,7 @@ def resolve_settings(
                 raise ValueError(f"unknown node: {selector}")
             selector = f"pipelines.{graph.name}.{selector}"
         rules.append({selector: value})
-    ComputeProfile(name="overrides", workers=rules)
+    ExecutionSettings(workers=rules)
     for rule in (
         profile.workers + profile.soft_time_limits + profile.hard_time_limits + rules
     ):

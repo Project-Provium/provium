@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from provium_pipeline.preparation import load_pipeline, prepare_pipeline
+from provium_dispatch.preparation import load_pipeline, prepare_pipeline
 
 
 def test_prepare_local_files(tmp_path):
@@ -65,7 +65,8 @@ def test_missing_graph_rejected(prepare):
 @pytest.mark.parametrize("explicit", [False, True])
 def test_registered_definition_snapshot_used(explicit, monkeypatch):
     from provium_pipeline import definitions
-    from provium_pipeline.models import PipelineDefinition
+
+    from provium_dispatch import PipelineDefinition
 
     definition = PipelineDefinition({}, {}, frozenset({"local"}))
     backend = Mock()
@@ -90,7 +91,8 @@ def test_registered_definition_snapshot_used(explicit, monkeypatch):
 
 def test_registered_definition_mismatch_rejected(monkeypatch):
     from provium_pipeline import definitions
-    from provium_pipeline.models import PipelineDefinition
+
+    from provium_dispatch import PipelineDefinition
 
     backend = Mock()
     backend.get.return_value = {
@@ -110,7 +112,8 @@ def test_registered_definition_mismatch_rejected(monkeypatch):
 
 def test_profile_allowlist_enforced(monkeypatch):
     from provium_pipeline import definitions
-    from provium_pipeline.models import PipelineDefinition
+
+    from provium_dispatch import PipelineDefinition
 
     backend = Mock()
     backend.get.side_effect = [

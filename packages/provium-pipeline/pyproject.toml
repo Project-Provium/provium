@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "provium-pipeline"
 version = "2.1.0"
-description = "Provenance-addressed local and PostgreSQL-backed procedure pipelines"
+description = "Reusable provenance-addressed procedure pipeline execution"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -19,9 +19,8 @@ dependencies = [
 pipeline = "provium_pipeline.cli:plugin"
 
 [project.optional-dependencies]
-postgres = ["psycopg[binary]>=3.2"]
 s3 = ["boto3>=1.35"]
-test = ["psycopg[binary]>=3.2", "boto3>=1.35", "pytest>=8.3", "pytest-cov>=6", "ruff>=0.16", "pyright>=1.1.411", "build>=1.2", "types-PyYAML>=6", "boto3-stubs[s3]>=1.35"]
+test = ["boto3>=1.35", "pytest>=8.3", "pytest-cov>=6", "ruff>=0.16", "pyright>=1.1.411", "build>=1.2", "types-PyYAML>=6", "boto3-stubs[s3]>=1.35"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -5,17 +5,12 @@ from uuid import uuid4
 
 import pytest
 from pipeline_fixtures import SLOW, SOURCE
+from provium_pipeline import ArtifactStore, InputSet, PipelineConfiguration
 from test_runtime import configuration
 from test_store import make_artifact
 
-from provium_pipeline import (
-    ArtifactStore,
-    ComputeProfile,
-    ExecutionContext,
-    InputSet,
-    PipelineConfiguration,
-)
-from provium_pipeline.persistence.backends.postgres import PostgresBackend
+from provium_dispatch import ComputeProfile, ExecutionContext
+from provium_dispatch.persistence.backends.postgres import PostgresBackend
 
 DSN = os.environ.get("PROVIUM_TEST_DATABASE")
 
@@ -186,7 +181,7 @@ def test_status_uses_recorded_store_after_default_changes(tmp_path, capsys):
     assert (
         run(
             [
-                "pipeline",
+                "dispatch",
                 "status",
                 graph.name,
                 "--database",

@@ -21,20 +21,14 @@ class InspectCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             require_pipeline(arguments)
-            from ...persistence.factory import open_backend
             from ...preparation import prepare_pipeline
 
             print(
                 json.dumps(
                     prepare_pipeline(
                         files=arguments.file,
-                        name=arguments.pipeline,
-                        backend=open_backend(arguments.database)
-                        if arguments.pipeline
-                        else None,
                         scratch_directory=arguments.scratch_directory,
                         definition_reference=arguments.definition,
-                        profile_name=arguments.profile,
                         workers=[
                             {key: int(count)}
                             for value in arguments.workers

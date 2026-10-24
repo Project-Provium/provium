@@ -7,7 +7,8 @@ import json
 import sys
 
 from provium.cli.command import Command
-from provium_pipeline.cli.arguments import (
+
+from ..arguments import (
     configure_connection,
     configure_queue,
     require_database,
@@ -28,7 +29,7 @@ class QueueCommand(Command):
         try:
             require_queue(arguments)
             require_database(arguments)
-            from provium_pipeline.persistence.factory import open_backend
+            from ...persistence.factory import open_backend
 
             print(
                 json.dumps(

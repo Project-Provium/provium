@@ -7,7 +7,8 @@ import pytest
 from provium.cli import run
 from provium_pipeline import definitions
 from provium_pipeline.models import PipelineDefinition
-from provium_pipeline.persistence import factory
+
+from provium_dispatch.persistence import factory
 
 
 @pytest.fixture

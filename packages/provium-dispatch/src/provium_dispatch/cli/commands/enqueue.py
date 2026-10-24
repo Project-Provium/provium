@@ -7,7 +7,8 @@ import json
 import sys
 
 from provium.cli.command import Command
-from provium_pipeline.cli.arguments import (
+
+from ..arguments import (
     assignments,
     configure_graph,
     configure_queue,
@@ -31,8 +32,8 @@ class EnqueueCommand(Command):
             require_database(arguments)
             require_pipeline(arguments)
             values = assignments(arguments.input)
-            from provium_pipeline.persistence.factory import open_backend
-            from provium_pipeline.preparation import load_pipeline
+            from ...persistence.factory import open_backend
+            from ...preparation import load_pipeline
 
             backend = open_backend(arguments.database) if arguments.pipeline else None
             graph = load_pipeline(

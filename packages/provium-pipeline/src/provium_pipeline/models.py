@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -141,7 +141,6 @@ class PipelineConfiguration(Document):
 class PipelineDefinition:
     inputs: Mapping[str, Any]
     outputs: Mapping[str, Any]
-    profiles: frozenset[str] = field(default_factory=frozenset[str])
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -153,14 +152,11 @@ class PipelineDefinition:
                 name: value if isinstance(value, str) else value.identifier
                 for name, value in self.outputs.items()
             },
-            "profiles": sorted(self.profiles),
         }
 
     @classmethod
     def from_snapshot(cls, value: dict[str, Any]) -> PipelineDefinition:
-        return cls(
-            dict(value["inputs"]), dict(value["outputs"]), frozenset(value["profiles"])
-        )
+        return cls(dict(value["inputs"]), dict(value["outputs"]))
 
 
 @dataclass(frozen=True)
@@ -198,8 +194,10 @@ def specificity(selector: str, pipeline: str, node: str, tags: Iterable[str]) ->
     return -1
 
 
-class ComputeProfile(Document):
-    kind: Literal["ComputeProfile"] = "ComputeProfile"
+class ExecutionSettings(BaseModel):
+    """Worker and time budgets for one execution, without registry identity."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
     workers: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
     soft_time_limits: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
     hard_time_limits: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
@@ -256,7 +254,7 @@ def load_documents(
     paths: Iterable[str | Path],
     *,
     scratch_directory: str | Path | None = None,
-) -> list[PipelineConfiguration | ComputeProfile]:
+) -> list[PipelineConfiguration]:
     """Load documents on demand without coupling model imports to file I/O."""
     from .documents import load_documents as load
 

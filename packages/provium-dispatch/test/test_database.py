@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from provium_pipeline.persistence.backends.postgres import PostgresBackend
+from provium_dispatch.persistence.backends.postgres import PostgresBackend
 
 DSN = os.environ.get("PROVIUM_TEST_DATABASE")
 pytestmark = pytest.mark.skipif(
@@ -108,7 +108,7 @@ def test_registered_definition_is_pinned_and_checked(tmp_path):
     from provium_text_pipeline_example.artifact import DOCUMENT
     from test_store import make_artifact
 
-    from provium_pipeline import PipelineDefinition
+    from provium_dispatch import PipelineDefinition
 
     db = backend()
     name = "p-" + uuid4().hex
@@ -136,7 +136,7 @@ def test_migrations_serialize_and_reject_newer_versions():
     import psycopg
     from psycopg import sql
 
-    from provium_pipeline.persistence.backends.postgres import MIGRATIONS
+    from provium_dispatch.persistence.backends.postgres import MIGRATIONS
 
     schema = "test_" + uuid4().hex
     with psycopg.connect(DSN, autocommit=True) as connection:
@@ -177,7 +177,7 @@ def test_failed_migration_rolls_back_schema_and_version(monkeypatch):
     import psycopg
     from psycopg import sql
 
-    import provium_pipeline.persistence.backends.postgres as module
+    import provium_dispatch.persistence.backends.postgres as module
 
     schema = "test_" + uuid4().hex
     with psycopg.connect(DSN, autocommit=True) as connection:
@@ -236,7 +236,7 @@ def test_registry_and_input_validation_errors(tmp_path):
     from provium_text_pipeline_example.artifact import DOCUMENT, TOKENS
     from test_store import make_artifact
 
-    from provium_pipeline import PipelineDefinition
+    from provium_dispatch import PipelineDefinition
 
     db = backend()
     with pytest.raises(ValueError, match="kind"):
@@ -290,17 +290,17 @@ def test_registered_pipeline_lookup_uses_database_results(
     inputs = ["--input", f"document={source}"]
     assert run(["dispatch", "register", "-f", pipeline, *connection]) == 0
     capsys.readouterr()
-    assert run(["pipeline", "run", name, *connection, *storage]) == 0
+    assert run(["dispatch", "run", name, *connection, *storage]) == 0
     assert capsys.readouterr().out == "No input sets processed.\n"
     assert run(["dispatch", "enqueue", name, *inputs, *connection]) == 0
-    assert run(["pipeline", "run", name, *connection, *storage, "--json"]) == 0
+    assert run(["dispatch", "run", name, *connection, *storage, "--json"]) == 0
     captured = capsys.readouterr()
     expected = json.loads(captured.out.splitlines()[-1])[0]["outputs"]["tokens"]
     assert not list((tmp_path / "store").glob("results/*.json"))
     assert (
         run(
             [
-                "pipeline",
+                "dispatch",
                 "lookup",
                 f"{name}.outputs.tokens",
                 *inputs,
@@ -318,10 +318,9 @@ def test_registered_pipeline_lookup_uses_database_results(
 
 
 def test_input_set_names_are_atomic_and_independent_of_pipeline(tmp_path):
-    from test_store import make_artifact
-
     from provium_pipeline.input_sets import input_set_hash, inspect_inputs
     from provium_pipeline.store import ArtifactStore
+    from test_store import make_artifact
 
     db = backend()
     name = "input-" + uuid4().hex

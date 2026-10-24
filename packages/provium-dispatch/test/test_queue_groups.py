@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from provium import cli
 
-from provium_pipeline.persistence.backends.postgres import PostgresBackend
+from provium_dispatch.persistence.backends.postgres import PostgresBackend
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ def test_cli_group_selection_and_status(db, tmp_path, capsys):
     assert (
         cli.run(
             [
-                "pipeline",
+                "dispatch",
                 "status",
                 name,
                 "--queue",
@@ -77,7 +77,7 @@ def test_cli_group_selection_and_status(db, tmp_path, capsys):
     assert (
         cli.run(
             [
-                "pipeline",
+                "dispatch",
                 "run",
                 name,
                 "-q",
@@ -95,7 +95,7 @@ def test_cli_group_selection_and_status(db, tmp_path, capsys):
     assert (
         cli.run(
             [
-                "pipeline",
+                "dispatch",
                 "status",
                 name,
                 "-q",
@@ -123,7 +123,7 @@ def test_cli_group_selection_and_status(db, tmp_path, capsys):
 
 
 def test_default_selection_configuration(tmp_path, monkeypatch):
-    from provium_pipeline.cli.arguments import configure_queue, require_queue
+    from provium_dispatch.cli.arguments import configure_queue, require_queue
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
@@ -135,11 +135,11 @@ def test_default_selection_configuration(tmp_path, monkeypatch):
     directory = tmp_path / ".provium"
     directory.mkdir()
     path = directory / "config.toml"
-    path.write_text('[pipeline.queue]\ndefault_group = "batch"\n')
+    path.write_text('[dispatch.queue]\ndefault_group = "batch"\n')
     args = parser.parse_args([])
     require_queue(args)
     assert args.queue == "batch"
-    path.write_text("[pipeline.queue]\ndefault_enabled = false\n")
+    path.write_text("[dispatch.queue]\ndefault_enabled = false\n")
     with pytest.raises(ValueError, match="--queue"):
         require_queue(parser.parse_args([]))
     args = parser.parse_args(["-q", "priority"])
@@ -157,18 +157,18 @@ def test_invalid_queue_names(db, value):
     "text",
     [
         "queue = 1",
-        '[pipeline.queue]\ndefault_enabled = "no"',
-        '[pipeline.queue]\ndefault_group = ""',
+        '[dispatch.queue]\ndefault_enabled = "no"',
+        '[dispatch.queue]\ndefault_group = ""',
     ],
 )
 def test_invalid_queue_configuration(tmp_path, monkeypatch, text):
-    from provium_pipeline.cli.arguments import configure_queue, require_queue
+    from provium_dispatch.cli.arguments import configure_queue, require_queue
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
     directory = tmp_path / ".provium"
     directory.mkdir()
-    (directory / "config.toml").write_text("[pipeline]\n" + text)
+    (directory / "config.toml").write_text("[dispatch]\n" + text)
     parser = argparse.ArgumentParser()
     configure_queue(parser)
     with pytest.raises((ValueError, TypeError), match="queue"):
@@ -181,7 +181,7 @@ def test_upgrade_preserves_existing_queue_and_dedup(db, monkeypatch):
     from psycopg import sql
     from psycopg.types.json import Jsonb
 
-    import provium_pipeline.persistence.backends.postgres as module
+    import provium_dispatch.persistence.backends.postgres as module
 
     schema = "queue_upgrade_" + uuid4().hex
     with db.connect() as connection:
@@ -222,10 +222,11 @@ def test_upgrade_preserves_existing_queue_and_dedup(db, monkeypatch):
 def test_queues_share_computations_without_consuming_each_other(db, tmp_path):
     from concurrent.futures import ThreadPoolExecutor
 
+    from provium_pipeline import ArtifactStore
     from test_runtime import configuration
     from test_store import make_artifact
 
-    from provium_pipeline import ArtifactStore, ExecutionContext
+    from provium_dispatch import ExecutionContext
 
     graph = configuration().model_copy(update={"name": "queues-" + uuid4().hex})
     db.register([graph.model_dump(mode="json")])
@@ -261,14 +262,14 @@ def test_queues_share_computations_without_consuming_each_other(db, tmp_path):
 def test_disabled_default_fails_before_backend(command, tmp_path, monkeypatch, capsys):
     from unittest.mock import Mock
 
-    from provium_pipeline.persistence import factory
+    from provium_dispatch.persistence import factory
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("PROVIUM_CONFIG__PIPELINE__QUEUE__DEFAULT_ENABLED", "false")
+    monkeypatch.setenv("PROVIUM_CONFIG__DISPATCH__QUEUE__DEFAULT_ENABLED", "false")
     opener = Mock(side_effect=AssertionError("backend must not load"))
     monkeypatch.setattr(factory, "open_backend", opener)
-    group = "dispatch" if command in {"enqueue", "retry", "queue"} else "pipeline"
+    group = "dispatch"
     assert cli.run([group, command, "example", "--database", "unused"]) == 2
     assert "--queue" in capsys.readouterr().err
     opener.assert_not_called()
@@ -276,5 +277,5 @@ def test_disabled_default_fails_before_backend(command, tmp_path, monkeypatch, c
 
 @pytest.mark.parametrize("command", ["run", "status"])
 def test_queue_not_silently_ignored_for_local_execution(command, capsys):
-    assert cli.run(["pipeline", command, "-f", "missing.yaml", "-q", "priority"]) == 2
+    assert cli.run(["dispatch", command, "-f", "missing.yaml", "-q", "priority"]) == 2
     assert "--queue requires a registered pipeline" in capsys.readouterr().err

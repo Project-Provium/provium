@@ -145,17 +145,18 @@ def test_selected_target_still_requires_its_inputs(tmp_path):
         assert execution.worker_starts == 0
 
 
-def test_target_selection_rejects_legacy_queue_backend(tmp_path):
-    from types import SimpleNamespace
+def test_target_selection_accepts_custom_coordinator(tmp_path):
+    from unittest.mock import Mock
 
     with ArtifactStore(str(tmp_path / "store")) as store:
-        with pytest.raises(ValueError, match="target selection"):
-            ExecutionContext(
-                graph(),
-                store,
-                backend=SimpleNamespace(definition=lambda name: None),
-                targets=["left"],
-            )
+        with ExecutionContext(
+            graph(),
+            store,
+            procedures={COPY.identifier: COPY},
+            coordinator=Mock(),
+            targets=["left"],
+        ) as context:
+            assert list(context.plan.configuration.outputs) == ["left"]
 
 
 def test_targets_accept_legacy_outputs_but_reject_both():

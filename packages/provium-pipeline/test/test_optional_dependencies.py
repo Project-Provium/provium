@@ -15,7 +15,7 @@ def test_backend_dependencies_are_optional():
         for requirement in project["dependencies"]
     )
     extras = project["optional-dependencies"]
-    assert "psycopg[binary]>=3.2" in extras["postgres"]
+    assert "postgres" not in extras
     assert "boto3>=1.35" in extras["s3"]
 
 

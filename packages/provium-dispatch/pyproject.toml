@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "provium-dispatch"
 version = "0.1.0"
-description = "Persistent input management for Provium pipelines"
+description = "Durable pipeline execution, queues, and input sets"
 requires-python = ">=3.12"
 dependencies = [
     "provium-pipeline>=2.1.0", # x-release-please-version

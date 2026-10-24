@@ -12,6 +12,10 @@ def test_dispatch_owns_input_set_commands(capsys):
     catalog = discover_command_catalogs()
     dispatch = catalog.commands["dispatch"]
     assert set(dispatch.catalog.commands) == {
+        "run",
+        "status",
+        "inspect",
+        "validate",
         "input-set",
         "lookup",
         "register",

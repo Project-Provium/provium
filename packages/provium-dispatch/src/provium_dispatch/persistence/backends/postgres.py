@@ -8,10 +8,12 @@ from uuid import uuid4
 
 import psycopg
 from provium.semantic import canonical_hash
+from provium_pipeline.models import PipelineConfiguration
+from provium_pipeline.models import PipelineDefinition as BasicDefinition
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from ...models import ComputeProfile, PipelineConfiguration, PipelineDefinition
+from ...models import ComputeProfile, PipelineDefinition, definition_snapshot
 from ..interface import Lease
 from ..queues import validate_queue_name
 
@@ -95,7 +97,7 @@ class PostgresBackend:
                 )
 
     def register_input_set(self, name: str, inputs: dict[str, Any]) -> dict[str, Any]:
-        from ...input_sets import input_set_hash, validate_name
+        from provium_pipeline.input_sets import input_set_hash, validate_name
 
         validate_name(name)
         key = input_set_hash(inputs)
@@ -125,7 +127,7 @@ class PostgresBackend:
     def resolve_input_set(
         self, *, name: str | None = None, key: str | None = None
     ) -> dict[str, Any]:
-        from ...input_sets import require_selector
+        from provium_pipeline.input_sets import require_selector
 
         require_selector(name, key)
         with self.connect() as connection:
@@ -159,7 +161,7 @@ class PostgresBackend:
     def unregister_input_sets(
         self, *, name: str | None = None, key: str | None = None
     ) -> list[str]:
-        from ...input_sets import require_selector
+        from provium_pipeline.input_sets import require_selector
 
         require_selector(name, key)
         with self.connect() as connection:
@@ -181,14 +183,14 @@ class PostgresBackend:
         self,
         documents: list[dict[str, Any]],
         *,
-        definitions: dict[str, PipelineDefinition] | None = None,
+        definitions: dict[str, BasicDefinition] | None = None,
     ) -> None:
         definitions = definitions or {}
         normalized: list[dict[str, Any]] = []
         for doc in documents:
             if doc.get("kind") == "PipelineConfiguration":
                 graph = PipelineConfiguration.model_validate(doc)
-                from ...planning import build_plan
+                from provium_pipeline.planning import build_plan
 
                 build_plan(graph, definitions.get(graph.name))
                 normalized.append(graph.model_dump(mode="json"))
@@ -205,7 +207,7 @@ class PostgresBackend:
         with self.connect() as connection:
             connection.execute("SELECT pg_advisory_xact_lock(742819406)")
             for name, definition in definitions.items():
-                payload = definition.snapshot()
+                payload = definition_snapshot(definition)
                 connection.execute(
                     "INSERT INTO provium_definitions VALUES(%s,%s) "
                     "ON CONFLICT DO NOTHING",
@@ -336,7 +338,7 @@ class PostgresBackend:
         self, pipeline: str, inputs: dict[str, Any], *, queue_group: str = "default"
     ) -> int:
         validate_queue_name(queue_group)
-        from ...store import ArtifactStore
+        from provium_pipeline.store import ArtifactStore
 
         snapshot = self.get("PipelineConfiguration", pipeline)
         definition = self.definition(pipeline)

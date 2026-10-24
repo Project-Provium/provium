@@ -224,21 +224,40 @@ def test_filtered_required_procedure_is_a_failed_request(tmp_path):
         assert execution.worker_starts == 0
 
 
-def test_legacy_queue_rejects_publication_requests(tmp_path):
+def test_custom_coordinator_supports_publication_without_queue_methods(tmp_path):
     from types import SimpleNamespace
+    from unittest.mock import Mock
 
-    request = ExecutionRequest({"left": "unused.pa"}, {"left": "saved.pa"})
-    backend = SimpleNamespace(definition=lambda name: None)
+    from provium_pipeline.coordination import Lease
+
+    source = make_artifact(tmp_path / "source.pa")
+    destination = tmp_path / "saved.pa"
+    request = ExecutionRequest({"left": str(source)}, {"left": str(destination)})
     with ArtifactStore(str(tmp_path / "cache")) as store:
+
+        def complete(lease, outputs):
+            store.commit(lease.key, outputs)
+            return True
+
+        coordinator = SimpleNamespace(
+            result=lambda namespace, key: store.manifest(key),
+            acquire=lambda namespace, key, run, **options: Lease(
+                namespace, key, "owner", 1, run
+            ),
+            renew=lambda lease: True,
+            complete=complete,
+            fail=Mock(),
+        )
         with ExecutionContext(
             graph(),
             store,
             procedures={COPY.identifier: COPY},
-            backend=backend,
+            coordinator=coordinator,
         ) as execution:
-            report = execution.inspect_inputs([request])[0]
-        assert report["state"] == "failed"
-        assert "output destinations require direct requests" in report["error"]
+            execution.start([request])
+        assert execution.outcomes[0].state == "completed"
+        assert destination.exists()
+        coordinator.fail.assert_not_called()
 
 
 def test_public_request_and_publication_exports():

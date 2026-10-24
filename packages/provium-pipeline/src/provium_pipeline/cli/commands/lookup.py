@@ -12,6 +12,8 @@ from provium.cli.command import Command
 from ..arguments import apply_configuration, assignments, configure_storage
 
 if TYPE_CHECKING:
+    from ...lookup import ResultReader
+    from ...planning import Plan
     from ...store import ArtifactStore
 
 
@@ -21,13 +23,31 @@ class LookupCommand(Command):
     help = "Locate a cached artifact by pipeline output reference and input set"
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
-        configure_storage(parser)
+        self.configure_storage(parser)
         parser.add_argument(
             "reference", help="pipeline.nodes.node.output or pipeline.outputs.output"
         )
         parser.add_argument("-f", "--file", action="append", default=[])
         parser.add_argument("--definition")
         self.configure_inputs(parser)
+
+    def configure_storage(self, parser: argparse.ArgumentParser) -> None:
+        configure_storage(parser)
+
+    def prepare(
+        self, arguments: argparse.Namespace
+    ) -> tuple[Plan, ResultReader | None]:
+        from ...preparation import prepare_pipeline
+
+        apply_configuration(arguments)
+        if not arguments.file:
+            raise ValueError("provide -f for a local pipeline")
+        prepared = prepare_pipeline(
+            files=arguments.file,
+            scratch_directory=arguments.scratch_directory,
+            definition_reference=arguments.definition,
+        )
+        return prepared.plan, None
 
     def configure_inputs(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
@@ -44,34 +64,16 @@ class LookupCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             from ...input_sets import input_set_hash
-            from ...lookup import lookup_artifact, split_selector
-            from ...persistence.factory import open_backend
-            from ...preparation import prepare_pipeline
+            from ...lookup import lookup_artifact
             from ...store import ArtifactStore
 
-            apply_configuration(arguments)
-            pipeline, _ = split_selector(arguments.reference)
-            backend = None
-            if not arguments.file:
-                if not arguments.database:
-                    raise ValueError(  # noqa: TRY301
-                        "provide -f for a local pipeline or --database "
-                        "for a registered pipeline"
-                    )
-                backend = open_backend(arguments.database)
-            prepared = prepare_pipeline(
-                files=arguments.file,
-                name=None if arguments.file else pipeline,
-                backend=backend,
-                scratch_directory=arguments.scratch_directory,
-                definition_reference=arguments.definition,
-            )
+            plan, backend = self.prepare(arguments)
             with ArtifactStore(
                 arguments.store, scratch=arguments.scratch_directory
             ) as store:
                 inputs = self.resolve_inputs(arguments, store)
                 artifact = lookup_artifact(
-                    prepared.plan, store, inputs, arguments.reference, backend=backend
+                    plan, store, inputs, arguments.reference, backend=backend
                 )
             if arguments.json:
                 print(

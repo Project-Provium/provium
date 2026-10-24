@@ -9,7 +9,7 @@ from typing import Any, cast
 import yaml
 from provium.files import local_file
 
-from .models import ComputeProfile, PipelineConfiguration
+from .models import PipelineConfiguration
 
 
 class UniqueLoader(yaml.SafeLoader):
@@ -35,8 +35,8 @@ def load_documents(
     paths: Iterable[str | Path],
     *,
     scratch_directory: str | Path | None = None,
-) -> list[PipelineConfiguration | ComputeProfile]:
-    documents: list[PipelineConfiguration | ComputeProfile] = []
+) -> list[PipelineConfiguration]:
+    documents: list[PipelineConfiguration] = []
     seen: set[tuple[str, str]] = set()
     for path in paths:
         with local_file(path, scratch_directory=scratch_directory) as local:
@@ -50,7 +50,6 @@ def load_documents(
                 kind = cast(dict[str, Any], value).get("kind", "")
                 model = {
                     "PipelineConfiguration": PipelineConfiguration,
-                    "ComputeProfile": ComputeProfile,
                 }.get(kind)
                 if model is None:
                     raise ValueError(f"unknown document kind: {kind}")

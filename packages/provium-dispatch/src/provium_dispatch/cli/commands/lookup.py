@@ -10,11 +10,46 @@ from provium_pipeline.cli.commands.lookup import LookupCommand as PipelineLookup
 from .input_set import open_index
 
 if TYPE_CHECKING:
+    from provium_pipeline.lookup import ResultReader
+    from provium_pipeline.planning import Plan
     from provium_pipeline.store import ArtifactStore
 
 
 class LookupCommand(PipelineLookupCommand):
     group = "dispatch"
+
+    def configure_storage(self, parser: argparse.ArgumentParser) -> None:
+        from ..arguments import configure_storage
+
+        configure_storage(parser)
+
+    def prepare(
+        self, arguments: argparse.Namespace
+    ) -> tuple[Plan, ResultReader | None]:
+        from provium_pipeline.lookup import split_selector
+
+        from ...persistence.factory import open_backend
+        from ...preparation import prepare_pipeline
+        from ..arguments import apply_configuration
+
+        apply_configuration(arguments)
+        pipeline, _ = split_selector(arguments.reference)
+        backend = None
+        if not arguments.file:
+            if not arguments.database:
+                raise ValueError(
+                    "provide -f for a local pipeline or --database "
+                    "for a registered pipeline"
+                )
+            backend = open_backend(arguments.database)
+        prepared = prepare_pipeline(
+            files=arguments.file,
+            name=None if arguments.file else pipeline,
+            backend=backend,
+            scratch_directory=arguments.scratch_directory,
+            definition_reference=arguments.definition,
+        )
+        return prepared.plan, backend
 
     def configure_inputs(self, parser: argparse.ArgumentParser) -> None:
         selection = parser.add_mutually_exclusive_group(required=True)

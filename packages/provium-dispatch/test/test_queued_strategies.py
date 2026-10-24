@@ -6,12 +6,12 @@ from uuid import uuid4
 
 import pytest
 from pipeline_fixtures import COPY
+from provium_pipeline.store import ArtifactStore
 from test_cache_reads import graph
 from test_store import make_artifact
 
-from provium_pipeline.persistence.backends.postgres import PostgresBackend
-from provium_pipeline.runtime import ExecutionContext
-from provium_pipeline.store import ArtifactStore
+from provium_dispatch import ExecutionContext
+from provium_dispatch.persistence.backends.postgres import PostgresBackend
 
 DSN = os.environ.get("PROVIUM_TEST_DATABASE")
 pytestmark = pytest.mark.skipif(not DSN, reason="requires PostgreSQL")

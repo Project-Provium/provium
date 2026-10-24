@@ -12,8 +12,6 @@ from provium.cli.command import Command
 from ..arguments import (
     assignments,
     configure_graph,
-    configure_queue,
-    require_execution_queue,
     require_pipeline,
 )
 
@@ -40,7 +38,6 @@ class RunCommand(Command):
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
         configure_graph(parser)
-        configure_queue(parser)
         parser.add_argument(
             "--output", action="append", default=[], metavar="TARGET=PATH"
         )
@@ -68,18 +65,12 @@ class RunCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             self._validate(arguments)
-            from ...persistence.factory import open_backend
             from ...preparation import prepare_pipeline
 
             prepared = prepare_pipeline(
                 files=arguments.file,
-                name=arguments.pipeline,
-                backend=open_backend(arguments.database)
-                if arguments.pipeline
-                else None,
                 scratch_directory=arguments.scratch_directory,
                 definition_reference=arguments.definition,
-                profile_name=arguments.profile,
                 workers=[
                     {key: int(count)}
                     for value in arguments.workers
@@ -103,15 +94,11 @@ class RunCommand(Command):
                 ):
                     items = list(CSVSource(stream))
             else:
-                items = (
-                    []
-                    if prepared.backend
-                    else [
-                        ExecutionRequest(
-                            assignments(arguments.input), assignments(arguments.output)
-                        )
-                    ]
-                )
+                items = [
+                    ExecutionRequest(
+                        assignments(arguments.input), assignments(arguments.output)
+                    )
+                ]
             store = ArtifactStore(arguments.store, scratch=arguments.scratch_directory)
             with (
                 store,
@@ -119,12 +106,9 @@ class RunCommand(Command):
                     prepared.plan.configuration,
                     store,
                     definition=prepared.definition,
-                    profile=prepared.profile,
                     workers=prepared.overrides,
                     only=arguments.only,
                     force=arguments.force,
-                    backend=prepared.backend,
-                    queue_group=arguments.queue or "default",
                     idle_wait=arguments.idle_wait,
                     verify_artifacts=arguments.verify_artifacts,
                     strategy=arguments.strategy,
@@ -162,16 +146,9 @@ class RunCommand(Command):
     @staticmethod
     def _validate(arguments: argparse.Namespace) -> None:
         require_pipeline(arguments)
-        require_execution_queue(arguments)
-        if arguments.pipeline and (
-            arguments.input or arguments.output or arguments.csv
-        ):
-            raise ValueError(
-                "registered execution cannot combine files or direct inputs"
-            )
         if arguments.csv and (arguments.input or arguments.output):
             raise ValueError("--csv cannot be combined with --input or --output")
-        if not arguments.pipeline and not arguments.csv and not arguments.output:
+        if not arguments.csv and not arguments.output:
             raise ValueError(
                 "execution requires at least one --output TARGET=PATH or --csv"
             )

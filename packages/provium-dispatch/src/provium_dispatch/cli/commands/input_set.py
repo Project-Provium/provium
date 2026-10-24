@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 from provium.cli.catalog import CommandCatalog
 from provium.cli.command import Command
 from provium.cli.group import CommandGroup
-from provium_pipeline.cli.arguments import (
+
+from ..arguments import (
     apply_configuration,
     assignments,
     configure_storage,
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
 
 def open_index(arguments: argparse.Namespace, store: ArtifactStore) -> InputSetIndex:
     if arguments.database:
-        from provium_pipeline.persistence.factory import open_backend
+        from ...persistence.factory import open_backend
 
         return open_backend(arguments.database)
     from ...input_sets import LocalInputSetIndex

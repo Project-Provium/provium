@@ -4,8 +4,8 @@ from uuid import uuid4
 import pytest
 from test_store import make_artifact
 
-from provium_pipeline import PipelineDefinition
-from provium_pipeline.persistence.backends.postgres import PostgresBackend
+from provium_dispatch import PipelineDefinition
+from provium_dispatch.persistence.backends.postgres import PostgresBackend
 
 DSN = os.environ.get("PROVIUM_TEST_DATABASE")
 
@@ -149,9 +149,10 @@ def test_enqueue_racing_unregister_does_not_restore_deleted_queue(
 def test_unregister_stops_loaded_pending_work_but_allows_admitted_result(
     db, tmp_path, monkeypatch, phase
 ):
+    from provium_pipeline import ArtifactStore
     from test_runtime import configuration
 
-    from provium_pipeline import ArtifactStore, ExecutionContext
+    from provium_dispatch import ExecutionContext
 
     graph = configuration().model_copy(update={"name": "p-" + uuid4().hex})
     db.register([graph.model_dump(mode="json")])

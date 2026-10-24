@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from provium import cli
 
-from provium_pipeline.models import load_documents
+from provium_dispatch.documents import load_documents
 
 
 @pytest.fixture
@@ -57,7 +57,7 @@ def test_cli_remote_file_uses_scratch(tmp_path, remote, capsys):
     assert (
         cli.run(
             [
-                "pipeline",
+                "dispatch",
                 "validate",
                 "-f",
                 "s3://configs/pipeline.yaml",
@@ -149,7 +149,7 @@ def test_localstack_core_artifacts_and_remote_pipeline_yaml(tmp_path, capsys):
         assert (
             cli.run(
                 [
-                    "pipeline",
+                    "dispatch",
                     "run",
                     "--json",
                     "--output",
