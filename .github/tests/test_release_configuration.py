@@ -123,13 +123,28 @@ class ReleaseConfigurationTests(unittest.TestCase):
         for check in ("ruff check", "ruff format --check", "pyright", "twine check"):
             self.assertIn(check, commands)
         self.assertIn("examples/provium-text-pipeline", commands)
-        self.assertIn("postgres", build["services"])
-        self.assertIn("localstack", build["services"])
+        self.assertNotIn("services", build)
+        self.assertNotIn("PROVIUM_TEST_DATABASE", build["env"])
+        self.assertNotIn("AWS_ENDPOINT_URL_S3", build["env"])
         outputs = jobs["release-please"]["outputs"]
         self.assertIn(
             "packages/provium-pipeline--release_created",
             outputs["pipeline_release_created"],
         )
+
+    def test_extension_releases_use_the_ci_integration_suite(self):
+        build = workflow("release.yml")["jobs"]["build"]
+        tests = [step for step in build["steps"] if "pytest" in step.get("run", "")]
+        self.assertEqual(len(tests), 2)
+        core = next(step for step in tests if "!=" not in step.get("if", ""))
+        self.assertIn("matrix.path == 'packages/provium'", core["if"])
+        self.assertIn('--cov="$PACKAGE_IMPORT"', core["run"])
+        extensions = next(step for step in tests if "!=" in step.get("if", ""))
+        self.assertIn("matrix.path != 'packages/provium'", extensions["if"])
+        ci_steps = workflow("test.yml")["jobs"]["pipeline-test"]["steps"]
+        ci = next(step for step in ci_steps if "pytest" in step.get("run", ""))
+        self.assertEqual(extensions["working-directory"], ci["working-directory"])
+        self.assertEqual(extensions["run"], ci["run"])
 
     def test_publication_is_separate_from_build_and_uses_oidc(self):
         jobs = workflow("release.yml")["jobs"]
