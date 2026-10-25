@@ -9,9 +9,9 @@ import sys
 from provium.cli.command import Command
 
 from provium_pipeline.cli.arguments import (
+    assert_pipeline_is_selected,
     assignments,
     configure_graph,
-    require_pipeline,
 )
 
 
@@ -24,7 +24,7 @@ class StatusCommand(Command):
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            require_pipeline(arguments)
+            assert_pipeline_is_selected(arguments)
             from provium_pipeline.preparation import prepare_pipeline
 
             prepared = prepare_pipeline(

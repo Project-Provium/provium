@@ -16,7 +16,7 @@ from provium_pipeline.store import Artifact, ArtifactCache
 
 from provium_dispatch.models import ComputeProfile, definition_snapshot
 from provium_dispatch.persistence.interface import QueueBackend
-from provium_dispatch.persistence.queues import validate_queue_name
+from provium_dispatch.persistence.queues import assert_queue_name_is_valid
 
 
 class ExecutionContext(BasicContext):
@@ -40,7 +40,7 @@ class ExecutionContext(BasicContext):
         targets: list[str] | None = None,
         publisher: Publisher | None = None,
     ) -> None:
-        self.queue_group = validate_queue_name(queue_group)
+        self.queue_group = assert_queue_name_is_valid(queue_group)
         self.backend = backend
         if backend is not None:
             registered = backend.definition(configuration.name)
@@ -125,7 +125,7 @@ class ExecutionContext(BasicContext):
                 if row.get("destinations") is not None
                 else InputSet(row["inputs"])
             )
-            self.publisher.validate([request])
+            self.publisher.assert_requests_are_valid([request])
             self._add(request, identity)
 
     def _run_queued_items(self) -> None:

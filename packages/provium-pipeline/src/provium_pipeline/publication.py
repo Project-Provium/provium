@@ -22,7 +22,7 @@ from provium_pipeline.store import Artifact, ArtifactCache
 
 
 class Publisher(Protocol):
-    def validate(self, requests: Sequence[InputSet]) -> None: ...
+    def assert_requests_are_valid(self, requests: Sequence[InputSet]) -> None: ...
 
     def publish(
         self, artifact: Artifact, destination: str, *, overwrite: bool = False
@@ -35,7 +35,7 @@ class FilePublisher:
     def __init__(self, store: ArtifactCache) -> None:
         self.store = store
 
-    def validate(self, requests: Sequence[InputSet]) -> None:
+    def assert_requests_are_valid(self, requests: Sequence[InputSet]) -> None:
         inputs: set[Path | str] = set()
         destinations: set[Path | str] = set()
         for request in requests:
@@ -51,7 +51,7 @@ class FilePublisher:
         for request in requests:
             for destination in (request.output_destinations or {}).values():
                 identity = location_identity(destination)
-                self._outside_cache(identity)
+                self._assert_destination_is_outside_cache(identity)
                 if identity in inputs:
                     raise ValueError(
                         f"output destination overwrites an input: {destination}"
@@ -60,7 +60,7 @@ class FilePublisher:
                     raise ValueError(f"duplicate output destination: {destination}")
                 destinations.add(identity)
 
-    def _outside_cache(self, identity: Path | str) -> None:
+    def _assert_destination_is_outside_cache(self, identity: Path | str) -> None:
         if isinstance(identity, Path):
             inside = self.store.root is not None and identity.is_relative_to(
                 self.store.root.resolve()
@@ -77,7 +77,7 @@ class FilePublisher:
     ) -> Artifact:
         target = normalize_location(destination)
         identity = location_identity(destination)
-        self._outside_cache(identity)
+        self._assert_destination_is_outside_cache(identity)
         if file_exists(destination) and not overwrite:
             try:
                 existing = self.store.inspect(destination)

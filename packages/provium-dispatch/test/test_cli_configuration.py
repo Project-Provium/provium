@@ -6,7 +6,7 @@ import pytest
 from provium.cli.application import create_parser
 from provium.cli.catalog import CommandCatalog
 
-from provium_dispatch.cli.arguments import require_pipeline
+from provium_dispatch.cli.arguments import assert_pipeline_is_selected
 from provium_dispatch.cli.commands.run import RunCommand
 
 
@@ -30,31 +30,31 @@ def test_project_defaults_and_explicit_precedence(
         'store = "configured-store"\nscratch_directory = "scratch"\n'
     )
     args = parse("registered")
-    require_pipeline(args)
+    assert_pipeline_is_selected(args)
     assert args.database == "postgresql://configured"
     assert args.store == "configured-store"
     assert args.scratch_directory == "scratch"
     (config / "config.toml").write_text("invalid after first load")
-    require_pipeline(args)
+    assert_pipeline_is_selected(args)
     assert args.database == "postgresql://configured"
     (config / "config.toml").write_text('[dispatch]\ndatabase = "configured"\n')
     args = parse("registered", "--database", "explicit", "--store", "explicit-store")
-    require_pipeline(args)
+    assert_pipeline_is_selected(args)
     assert args.database == "explicit"
     assert args.store == "explicit-store"
     monkeypatch.setenv("PROVIUM_DATABASE_URL", "environment")
     monkeypatch.setenv("PROVIUM_PIPELINE_STORE", "environment-store")
     args = parse("registered")
-    require_pipeline(args)
+    assert_pipeline_is_selected(args)
     assert args.database == "environment"
     assert args.store == "environment-store"
     monkeypatch.setenv("PROVIUM_CONFIG__DISPATCH__STORE", "generic-environment")
     args = parse("registered", "--config", "dispatch.database=override")
-    require_pipeline(args)
+    assert_pipeline_is_selected(args)
     assert args.database == "override"
     assert args.store == "generic-environment"
     args = parse("registered", "--config", "dispatch.store=override-store")
-    require_pipeline(args)
+    assert_pipeline_is_selected(args)
     assert args.store == "override-store"
 
 
@@ -80,4 +80,4 @@ def test_invalid_settings_are_rejected(
     config.mkdir()
     (config / "config.toml").write_text(text)
     with pytest.raises((TypeError, ValueError), match="dispatch"):
-        require_pipeline(parse("-f", "graph.yaml"))
+        assert_pipeline_is_selected(parse("-f", "graph.yaml"))

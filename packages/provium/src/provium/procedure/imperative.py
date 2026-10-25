@@ -31,7 +31,7 @@ class ImperativeProcedure:
         """Create a single-use imperative execution context."""
         input_bindings = tuple(inputs)
         output_bindings = {} if outputs is None else dict(outputs)
-        self._validate_bindings(input_bindings, output_bindings)
+        self._assert_bindings_are_valid(input_bindings, output_bindings)
         return ImperativeProcedureExecution(
             self.record,
             input_bindings,
@@ -39,7 +39,7 @@ class ImperativeProcedure:
         )
 
     @staticmethod
-    def _validate_bindings(
+    def _assert_bindings_are_valid(
         inputs: tuple[ArtifactReadBinding[Any], ...],
         outputs: Mapping[str, ArtifactWriteBinding[Any]],
     ) -> None:

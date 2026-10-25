@@ -102,7 +102,7 @@ class ConfigurationSnapshot:
             exclude_defaults=False,
             exclude_unset=False,
         )
-        _require_finite_numbers(python_value)
+        _assert_numbers_are_finite(python_value)
         serialized_value = configuration.model_dump(
             mode="json",
             by_alias=True,
@@ -238,21 +238,21 @@ def _canonicalize(value: object) -> tuple[JsonValue, str]:
     return normalized, sha256(encoded).hexdigest()
 
 
-def _require_finite_numbers(value: object) -> None:
+def _assert_numbers_are_finite(value: object) -> None:
     if isinstance(value, float) and not math.isfinite(value):
         raise ValueError("configuration snapshot must contain finite JSON numbers")
     if isinstance(value, Mapping):
         mapping = cast(Mapping[object, object], value)
         for key, item in mapping.items():
-            _require_finite_numbers(key)
-            _require_finite_numbers(item)
+            _assert_numbers_are_finite(key)
+            _assert_numbers_are_finite(item)
     elif isinstance(value, (list, tuple, set, frozenset)):
         collection = cast(
             list[object] | tuple[object, ...] | set[object] | frozenset[object],
             value,
         )
         for item in collection:
-            _require_finite_numbers(item)
+            _assert_numbers_are_finite(item)
 
 
 def _canonical_json_bytes(value: object) -> bytes:

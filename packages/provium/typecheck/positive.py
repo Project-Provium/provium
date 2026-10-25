@@ -69,7 +69,7 @@ assert_type(
 )
 
 
-def check_staging_types(
+def assert_staging_types(
     binding: ArtifactWriteBinding[ImageWriter],
     metadata: ArtifactHeader,
     owner: Session,
@@ -106,7 +106,7 @@ class Contract(ProcedureContract[Config]):
         preview = optional_output(IMAGE_ARTIFACT)
 
 
-def check_procedure_io_types(
+def assert_procedure_io_types(
     inputs: Contract.Inputs, outputs: Contract.Outputs
 ) -> None:
     assert_type(inputs.image, ArtifactReadBinding[ImageReader])
@@ -148,7 +148,7 @@ assert_type(
 )
 
 
-def check_prepared_procedure_types(
+def assert_prepared_procedure_types(
     procedure: DetectProcedure,
     configuration: Config,
     setup_inputs: Contract.SetupInputs,
@@ -168,7 +168,7 @@ def check_prepared_procedure_types(
     )
 
 
-def check_executor_mapping_types(
+def assert_executor_mapping_types(
     input_binding: ArtifactReadBinding[ImageReader],
     output_binding: ArtifactWriteBinding[ImageWriter],
 ) -> None:

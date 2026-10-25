@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from provium.artifact.definition import Artifact
 
 
-def validate_artifact_class(artifact: object) -> type[Artifact[Any, Any]]:
+def assert_artifact_class_is_valid(artifact: object) -> type[Artifact[Any, Any]]:
     """Validate and return one concrete class-based artifact implementation."""
     from provium.artifact.definition import Artifact, ArtifactDefinition
 
@@ -85,10 +85,10 @@ def validate_artifact_class(artifact: object) -> type[Artifact[Any, Any]]:
 
 
 def _validate_binding(artifact: object, path: object) -> Path | str:
-    from provium.procedure.authorization import require_binding_creation_allowed
+    from provium.procedure.authorization import assert_binding_creation_is_allowed
 
-    require_binding_creation_allowed()
-    validate_artifact_class(artifact)
+    assert_binding_creation_is_allowed()
+    assert_artifact_class_is_valid(artifact)
     if not isinstance(path, (str, PathLike)):
         raise TypeError("artifact binding path must be a string or path-like object")
     return normalize_location(cast(str | PathLike[str], path))
@@ -136,5 +136,5 @@ class ArtifactWriteBinding[WriterT: ArtifactWriter]:
 __all__ = [
     "ArtifactReadBinding",
     "ArtifactWriteBinding",
-    "validate_artifact_class",
+    "assert_artifact_class_is_valid",
 ]

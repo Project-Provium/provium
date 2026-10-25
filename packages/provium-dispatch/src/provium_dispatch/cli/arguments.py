@@ -29,13 +29,13 @@ def configure_graph(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--outputs", action="store_true")
 
 
-def require_database(arguments: argparse.Namespace) -> None:
+def assert_database_is_configured(arguments: argparse.Namespace) -> None:
     apply_configuration(arguments)
     if not arguments.database:
         raise ValueError("database required; use --database or PROVIUM_DATABASE_URL")
 
 
-def validate_graph_options(arguments: argparse.Namespace) -> None:
+def assert_graph_options_are_valid(arguments: argparse.Namespace) -> None:
     assignments(arguments.input)
     for value in arguments.workers:
         selector, separator, count = value.partition("=")
@@ -45,13 +45,13 @@ def validate_graph_options(arguments: argparse.Namespace) -> None:
         raise ValueError("idle wait must be finite and nonnegative")
 
 
-def require_pipeline(arguments: argparse.Namespace) -> None:
-    validate_graph_options(arguments)
+def assert_pipeline_is_selected(arguments: argparse.Namespace) -> None:
+    assert_graph_options_are_valid(arguments)
     if not arguments.pipeline and not arguments.file:
         raise ValueError("select exactly one pipeline with -f or a registered name")
     apply_configuration(arguments)
     if arguments.pipeline:
-        require_database(arguments)
+        assert_database_is_configured(arguments)
         if arguments.file:
             raise ValueError(
                 "registered execution cannot combine files or direct inputs"
@@ -101,11 +101,11 @@ def configure_queue(parser: argparse.ArgumentParser) -> None:
 
 def require_queue(arguments: argparse.Namespace) -> None:
     """Resolve a queue before opening persistence; explicit names bypass defaults."""
-    from provium_dispatch.persistence.queues import validate_queue_name
+    from provium_dispatch.persistence.queues import assert_queue_name_is_valid
 
     apply_configuration(arguments)
     if arguments.queue is not None:
-        arguments.queue = validate_queue_name(arguments.queue)
+        arguments.queue = assert_queue_name_is_valid(arguments.queue)
         return
     settings = arguments._provium_dispatch_settings.get("queue", {})
     if not isinstance(settings, dict):
@@ -116,7 +116,7 @@ def require_queue(arguments: argparse.Namespace) -> None:
         raise TypeError("dispatch.queue.default_enabled must be a boolean")
     if not enabled:
         raise ValueError("No queue selected; use --queue or enable a default queue")
-    arguments.queue = validate_queue_name(
+    arguments.queue = assert_queue_name_is_valid(
         cast(str, values.get("default_group", "default"))
     )
 

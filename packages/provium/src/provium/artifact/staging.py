@@ -55,7 +55,7 @@ class StagedArtifact[WriterT: ArtifactWriter]:
 
     def finalize_body(self) -> tuple[int, str]:
         """Close the body and return its final length and SHA-256 digest."""
-        self._check_available()
+        self._assert_available()
         if self._body_summary is not None:
             return self._body_summary
         self.writer.close()
@@ -111,7 +111,7 @@ class StagedArtifact[WriterT: ArtifactWriter]:
         """Abandon the output when its owning session closes."""
         self.abort()
 
-    def _check_available(self) -> None:
+    def _assert_available(self) -> None:
         if self._aborted:
             raise RuntimeError("staged artifact has been aborted")
         if not self._owner.active or current_context() is not self._owner:
@@ -124,7 +124,7 @@ def stage_artifact[WriterT: ArtifactWriter](
     owner: Session,
 ) -> StagedArtifact[WriterT]:
     """Create an adjacent temporary container for one typed output."""
-    _validate_staging(binding, metadata, owner)
+    _assert_staging_is_valid(binding, metadata, owner)
     destination = binding.path
     if isinstance(destination, Path):
         temporary_path = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
@@ -169,7 +169,7 @@ def stage_artifact[WriterT: ArtifactWriter](
     return staged
 
 
-def _validate_staging(
+def _assert_staging_is_valid(
     binding: ArtifactWriteBinding[Any],
     metadata: ArtifactHeader,
     owner: Session,

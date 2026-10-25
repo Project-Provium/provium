@@ -22,7 +22,7 @@ from provium_dispatch.models import (
     definition_snapshot,
 )
 from provium_dispatch.persistence.interface import Lease
-from provium_dispatch.persistence.queues import validate_queue_name
+from provium_dispatch.persistence.queues import assert_queue_name_is_valid
 
 MIGRATIONS = [
     """
@@ -154,9 +154,12 @@ class PostgresBackend:
                 )
 
     def register_input_set(self, name: str, inputs: dict[str, Any]) -> dict[str, Any]:
-        from provium_pipeline.input_sets import input_set_hash, validate_name
+        from provium_pipeline.input_sets import (
+            assert_input_set_name_is_valid,
+            input_set_hash,
+        )
 
-        validate_name(name)
+        assert_input_set_name_is_valid(name)
         key = input_set_hash(inputs)
         with self.connect() as connection:
             connection.execute(
@@ -184,9 +187,9 @@ class PostgresBackend:
     def resolve_input_set(
         self, *, name: str | None = None, key: str | None = None
     ) -> dict[str, Any]:
-        from provium_pipeline.input_sets import require_selector
+        from provium_pipeline.input_sets import assert_input_set_selector_is_valid
 
-        require_selector(name, key)
+        assert_input_set_selector_is_valid(name, key)
         with self.connect() as connection:
             if name is not None:
                 row = connection.execute(
@@ -218,9 +221,9 @@ class PostgresBackend:
     def unregister_input_sets(
         self, *, name: str | None = None, key: str | None = None
     ) -> list[str]:
-        from provium_pipeline.input_sets import require_selector
+        from provium_pipeline.input_sets import assert_input_set_selector_is_valid
 
-        require_selector(name, key)
+        assert_input_set_selector_is_valid(name, key)
         with self.connect() as connection:
             if name is not None:
                 rows = connection.execute(
@@ -308,7 +311,7 @@ class PostgresBackend:
         self, pipeline: str | None = None, *, queue_group: str = "default"
     ) -> list[dict[str, Any]]:
         """Summarize states in one queue, including empty pipeline queues."""
-        validate_queue_name(queue_group)
+        assert_queue_name_is_valid(queue_group)
         with self.connect() as connection:
             rows = connection.execute(
                 "SELECT r.name,i.state,count(i.id) AS count FROM provium_registry r "
@@ -413,7 +416,7 @@ class PostgresBackend:
         queue_group: str = "default",
         destinations: dict[str, str] | None = None,
     ) -> int:
-        validate_queue_name(queue_group)
+        assert_queue_name_is_valid(queue_group)
         from provium_pipeline.store import ArtifactStore, local_path
 
         snapshot = self.get("PipelineConfiguration", pipeline)
@@ -509,7 +512,7 @@ class PostgresBackend:
         *,
         queue_group: str = "default",
     ) -> list[dict[str, Any]]:
-        validate_queue_name(queue_group)
+        assert_queue_name_is_valid(queue_group)
         with self.connect() as connection:
             return list(
                 connection.execute(
@@ -531,7 +534,7 @@ class PostgresBackend:
             )
 
     def retry(self, pipeline: str, *, queue_group: str = "default") -> int:
-        validate_queue_name(queue_group)
+        assert_queue_name_is_valid(queue_group)
         with self.connect() as connection:
             cursor = connection.execute(
                 "UPDATE provium_inputs SET state='pending' "

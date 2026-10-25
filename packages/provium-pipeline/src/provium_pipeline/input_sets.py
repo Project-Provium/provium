@@ -39,13 +39,13 @@ def input_set_hash(inputs: Mapping[str, Any]) -> str:
     )
 
 
-def validate_name(name: str) -> None:
+def assert_input_set_name_is_valid(name: str) -> None:
     if not name or name != name.strip():
         raise ValueError(
             "input-set name must be nonempty without surrounding whitespace"
         )
 
 
-def require_selector(name: str | None, key: str | None) -> None:
+def assert_input_set_selector_is_valid(name: str | None, key: str | None) -> None:
     if (name is None) == (key is None):
         raise ValueError("select an input set by name or hash")

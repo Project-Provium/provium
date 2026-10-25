@@ -8,7 +8,7 @@ import sys
 
 from provium.cli.command import Command
 
-from provium_dispatch.cli.arguments import configure_graph, require_pipeline
+from provium_dispatch.cli.arguments import assert_pipeline_is_selected, configure_graph
 
 
 class ValidateCommand(Command):
@@ -20,7 +20,7 @@ class ValidateCommand(Command):
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            require_pipeline(arguments)
+            assert_pipeline_is_selected(arguments)
             from provium_dispatch.persistence.factory import open_backend
             from provium_dispatch.preparation import prepare_pipeline
 

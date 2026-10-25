@@ -8,7 +8,10 @@ import sys
 
 from provium.cli.command import Command
 
-from provium_dispatch.cli.arguments import configure_connection, require_database
+from provium_dispatch.cli.arguments import (
+    assert_database_is_configured,
+    configure_connection,
+)
 
 
 class ListCommand(Command):
@@ -23,7 +26,7 @@ class ListCommand(Command):
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            require_database(arguments)
+            assert_database_is_configured(arguments)
             from provium_dispatch.persistence.factory import open_backend
 
             backend = open_backend(arguments.database)

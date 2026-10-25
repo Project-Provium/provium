@@ -19,7 +19,7 @@ class DetectionConfig(ProcedureConfig):
 
     @field_validator("model")
     @classmethod
-    def require_model_name(cls, value: str) -> str:
+    def assert_model_name_is_valid(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("model must be nonempty")
         return value

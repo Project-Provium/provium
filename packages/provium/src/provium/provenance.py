@@ -9,7 +9,7 @@ from types import MappingProxyType
 from typing import Any, ClassVar, Self, cast
 
 
-def _require_text(value: object, field_name: str) -> None:
+def _assert_text_is_valid(value: object, field_name: str) -> None:
     if not isinstance(value, str):
         raise TypeError(f"{field_name} must be a string")
     if not value.strip():
@@ -59,8 +59,8 @@ class ArtifactReference(_SerializableRecord):
     _shape_name: ClassVar[str] = "artifact reference"
 
     def __post_init__(self) -> None:
-        _require_text(self.identity, "identity")
-        _require_text(self.artifact_identifier, "artifact_identifier")
+        _assert_text_is_valid(self.identity, "identity")
+        _assert_text_is_valid(self.artifact_identifier, "artifact_identifier")
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -86,8 +86,8 @@ class ArtifactRecord(_SerializableRecord):
     def __post_init__(self) -> None:
         if not isinstance(self.reference, ArtifactReference):
             raise TypeError("reference must be an artifact reference")
-        _require_text(self.body_digest, "body_digest")
-        _require_text(
+        _assert_text_is_valid(self.body_digest, "body_digest")
+        _assert_text_is_valid(
             self.producer_execution_identity,
             "producer_execution_identity",
         )
@@ -123,10 +123,10 @@ class ProcedureRecord(_SerializableRecord):
     _shape_name: ClassVar[str] = "procedure record"
 
     def __post_init__(self) -> None:
-        _require_text(self.name, "name")
-        _require_text(self.version, "version")
+        _assert_text_is_valid(self.name, "name")
+        _assert_text_is_valid(self.version, "version")
         if self.config_codec is not None:
-            _require_text(self.config_codec, "config_codec")
+            _assert_text_is_valid(self.config_codec, "config_codec")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -179,20 +179,20 @@ class ProcedureExecutionRecord(_SerializableRecord):
         self.__post_init__()
 
     def __post_init__(self) -> None:
-        _require_text(self.identity, "identity")
+        _assert_text_is_valid(self.identity, "identity")
         if not isinstance(self.procedure, ProcedureRecord):
             raise TypeError("procedure must be a procedure record")
         if not self.inputs and not self.outputs:
             raise ValueError(
                 "a procedure execution requires at least one input or output"
             )
-        self._validate_references(self.inputs, "input")
-        self._validate_references(self.outputs, "output")
-        self._validate_edge_directions()
+        self._assert_references_are_valid(self.inputs, "input")
+        self._assert_references_are_valid(self.outputs, "output")
+        self._assert_edge_directions_are_valid()
         object.__setattr__(self, "outputs", self._normalized(self.outputs))
-        self._validate_bindings()
+        self._assert_bindings_are_valid()
 
-    def _validate_bindings(self) -> None:
+    def _assert_bindings_are_valid(self) -> None:
         if self.bindings is None:
             return
         seen_inputs: set[str] = set()
@@ -224,7 +224,7 @@ class ProcedureExecutionRecord(_SerializableRecord):
             raise ValueError("output bindings do not match outputs")
 
     @staticmethod
-    def _validate_references(
+    def _assert_references_are_valid(
         references: tuple[ArtifactReference, ...],
         kind: str,
     ) -> None:
@@ -240,7 +240,7 @@ class ProcedureExecutionRecord(_SerializableRecord):
     ) -> tuple[ArtifactReference, ...]:
         return tuple(sorted(references, key=lambda item: item.identity))
 
-    def _validate_edge_directions(self) -> None:
+    def _assert_edge_directions_are_valid(self) -> None:
         input_identities = {reference.identity for reference in self.inputs}
         output_identities = {reference.identity for reference in self.outputs}
         if input_identities & output_identities:
@@ -302,14 +302,14 @@ class ArtifactLineage(_SerializableRecord):
     def __post_init__(self) -> None:
         artifacts = dict(self.artifacts)
         executions = dict(self.executions)
-        self._validate_artifacts(artifacts, executions)
-        self._validate_executions(artifacts, executions)
-        self._validate_acyclic(artifacts, executions)
+        self._assert_artifacts_are_valid(artifacts, executions)
+        self._assert_executions_are_valid(artifacts, executions)
+        self._assert_lineage_is_acyclic(artifacts, executions)
         object.__setattr__(self, "artifacts", MappingProxyType(artifacts))
         object.__setattr__(self, "executions", MappingProxyType(executions))
 
     @staticmethod
-    def _validate_artifacts(
+    def _assert_artifacts_are_valid(
         artifacts: Mapping[str, ArtifactRecord],
         executions: Mapping[str, ProcedureExecutionRecord],
     ) -> None:
@@ -329,7 +329,7 @@ class ArtifactLineage(_SerializableRecord):
                 )
 
     @staticmethod
-    def _validate_executions(
+    def _assert_executions_are_valid(
         artifacts: Mapping[str, ArtifactRecord],
         executions: Mapping[str, ProcedureExecutionRecord],
     ) -> None:
@@ -353,7 +353,7 @@ class ArtifactLineage(_SerializableRecord):
                     )
 
     @staticmethod
-    def _validate_acyclic(
+    def _assert_lineage_is_acyclic(
         artifacts: Mapping[str, ArtifactRecord],
         executions: Mapping[str, ProcedureExecutionRecord],
     ) -> None:
@@ -386,7 +386,7 @@ class ArtifactLineage(_SerializableRecord):
         """Extend merged input lineages with one completed execution."""
         lineage = cls._merge_many(input_lineages)
         records = cls._validated_output_records(execution, output_records)
-        cls._validate_inputs(execution, lineage)
+        cls._assert_inputs_are_valid(execution, lineage)
 
         artifacts = dict(lineage.artifacts)
         artifacts.update(records)
@@ -426,7 +426,7 @@ class ArtifactLineage(_SerializableRecord):
         return records
 
     @staticmethod
-    def _validate_inputs(
+    def _assert_inputs_are_valid(
         execution: ProcedureExecutionRecord,
         lineage: ArtifactLineage,
     ) -> None:

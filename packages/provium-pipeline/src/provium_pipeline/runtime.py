@@ -888,7 +888,7 @@ class ExecutionContext:
     def _execute(self, items: Iterable[InputSet]) -> None:
         items = list(items)
         if any(item.output_destinations is not None for item in items):
-            self.publisher.validate(items)
+            self.publisher.assert_requests_are_valid(items)
         if self.strategy == "item":
             states: list[State] = []
             for item in items:

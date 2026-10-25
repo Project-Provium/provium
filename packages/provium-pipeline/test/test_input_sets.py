@@ -49,7 +49,10 @@ def test_direct_lookup_cli(tmp_path, monkeypatch, capsys):
 
 
 def test_input_fingerprint_validation(tmp_path):
-    from provium_pipeline.input_sets import require_selector, validate_name
+    from provium_pipeline.input_sets import (
+        assert_input_set_name_is_valid,
+        assert_input_set_selector_is_valid,
+    )
 
     with ArtifactStore(str(tmp_path / "store")) as store:
         with pytest.raises(ValueError, match="at least one named"):
@@ -57,9 +60,9 @@ def test_input_fingerprint_validation(tmp_path):
     with pytest.raises(ValueError, match="at least one input"):
         input_set_hash({})
     with pytest.raises(ValueError, match="nonempty"):
-        validate_name(" bad")
+        assert_input_set_name_is_valid(" bad")
     with pytest.raises(ValueError, match="name or hash"):
-        require_selector(None, None)
+        assert_input_set_selector_is_valid(None, None)
 
 
 def test_lookup_traverses_only_requested_dependencies(tmp_path, monkeypatch):

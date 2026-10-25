@@ -205,7 +205,7 @@ class PreparedProcedure[
         context: ProcedureProcessContext,
     ) -> ProcedureExecutionResult:
         procedure = self._procedure_record()
-        self._validate_output_destinations(output_bindings, procedure.name)
+        self._assert_output_destinations_are_valid(output_bindings, procedure.name)
         with ProcedureExecutionSession(procedure) as execution:
             with authorize_bindings(input_bindings, {}, {}):
                 identities = self._register_inputs(input_bindings)
@@ -326,7 +326,7 @@ class PreparedProcedure[
                 bindings[name] = cast(ArtifactWriteBinding[Any], value)
         return bindings
 
-    def _validate_output_destinations(
+    def _assert_output_destinations_are_valid(
         self,
         bindings: dict[str, ArtifactWriteBinding[Any]],
         procedure_identifier: str,

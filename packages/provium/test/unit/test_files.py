@@ -142,7 +142,9 @@ def test_missing_s3_extra_has_actionable_error(monkeypatch):
 def test_bindings_preserve_s3_locations(monkeypatch):
     from provium.artifact import binding
 
-    monkeypatch.setattr(binding, "validate_artifact_class", lambda artifact: artifact)
+    monkeypatch.setattr(
+        binding, "assert_artifact_class_is_valid", lambda artifact: artifact
+    )
     for cls in (binding.ArtifactReadBinding, binding.ArtifactWriteBinding):
         assert cls(object, "s3://bucket/input.pa").path == "s3://bucket/input.pa"
 

@@ -1,7 +1,7 @@
 """Queue names shared by persistence and its consumers."""
 
 
-def validate_queue_name(name: str) -> str:
+def assert_queue_name_is_valid(name: str) -> str:
     """Require a nonempty name without surrounding whitespace."""
     if not isinstance(name, str):
         raise TypeError("queue name must be a string")

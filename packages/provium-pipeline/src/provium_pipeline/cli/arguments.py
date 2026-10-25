@@ -26,7 +26,7 @@ def configure_graph(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--outputs", action="store_true")
 
 
-def validate_graph_options(arguments: argparse.Namespace) -> None:
+def assert_graph_options_are_valid(arguments: argparse.Namespace) -> None:
     assignments(arguments.input)
     for value in arguments.workers:
         selector, separator, count = value.partition("=")
@@ -36,8 +36,8 @@ def validate_graph_options(arguments: argparse.Namespace) -> None:
         raise ValueError("idle wait must be finite and nonnegative")
 
 
-def require_pipeline(arguments: argparse.Namespace) -> None:
-    validate_graph_options(arguments)
+def assert_pipeline_is_selected(arguments: argparse.Namespace) -> None:
+    assert_graph_options_are_valid(arguments)
     if not arguments.file:
         raise ValueError("select exactly one pipeline with -f")
     apply_configuration(arguments)

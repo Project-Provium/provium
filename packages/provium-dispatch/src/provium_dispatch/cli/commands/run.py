@@ -10,11 +10,11 @@ from typing import TYPE_CHECKING, Any
 from provium.cli.command import Command
 
 from provium_dispatch.cli.arguments import (
+    assert_pipeline_is_selected,
     assignments,
     configure_graph,
     configure_queue,
     require_execution_queue,
-    require_pipeline,
 )
 
 if TYPE_CHECKING:
@@ -72,7 +72,7 @@ class RunCommand(Command):
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            self._validate(arguments)
+            self._assert_arguments_are_valid(arguments)
             from provium_dispatch.persistence.factory import open_backend
             from provium_dispatch.preparation import prepare_pipeline
 
@@ -174,8 +174,8 @@ class RunCommand(Command):
         return 1 if any(event.state == "failed" for event in context.outcomes) else 0
 
     @staticmethod
-    def _validate(arguments: argparse.Namespace) -> None:
-        require_pipeline(arguments)
+    def _assert_arguments_are_valid(arguments: argparse.Namespace) -> None:
+        assert_pipeline_is_selected(arguments)
         require_execution_queue(arguments)
         if arguments.pipeline and (
             arguments.input or arguments.output or arguments.csv

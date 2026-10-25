@@ -30,7 +30,7 @@ class _GraphvizBackendModule(Protocol):
     ExecutableNotFound: type[Exception]
 
 
-def _require_lineage(lineage: ArtifactLineage) -> None:
+def _assert_lineage_is_valid(lineage: ArtifactLineage) -> None:
     if not isinstance(lineage, ArtifactLineage):
         raise TypeError("lineage must be an ArtifactLineage")
 
@@ -55,7 +55,7 @@ def lineage_to_dot(
     show_execution_identities: bool = False,
 ) -> str:
     """Return deterministic DOT source without requiring Graphviz."""
-    _require_lineage(lineage)
+    _assert_lineage_is_valid(lineage)
     artifact_nodes = {
         identity: f"artifact_{index}"
         for index, identity in enumerate(sorted(lineage.artifacts))

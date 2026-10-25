@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Any
 from provium.cli.command import Command
 
 from provium_pipeline.cli.arguments import (
+    assert_pipeline_is_selected,
     assignments,
     configure_graph,
-    require_pipeline,
 )
 
 if TYPE_CHECKING:
@@ -69,7 +69,7 @@ class RunCommand(Command):
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            self._validate(arguments)
+            self._assert_arguments_are_valid(arguments)
             from provium_pipeline.preparation import prepare_pipeline
 
             prepared = prepare_pipeline(
@@ -155,8 +155,8 @@ class RunCommand(Command):
         return 1 if any(event.state == "failed" for event in context.outcomes) else 0
 
     @staticmethod
-    def _validate(arguments: argparse.Namespace) -> None:
-        require_pipeline(arguments)
+    def _assert_arguments_are_valid(arguments: argparse.Namespace) -> None:
+        assert_pipeline_is_selected(arguments)
         if arguments.csv and (arguments.input or arguments.output):
             raise ValueError("--csv cannot be combined with --input or --output")
         if not arguments.csv and not arguments.output:

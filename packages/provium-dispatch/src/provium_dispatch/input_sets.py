@@ -9,7 +9,11 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any, Protocol
 
-from provium_pipeline.input_sets import input_set_hash, require_selector, validate_name
+from provium_pipeline.input_sets import (
+    assert_input_set_name_is_valid,
+    assert_input_set_selector_is_valid,
+    input_set_hash,
+)
 
 
 class InputSetIndex(Protocol):
@@ -50,7 +54,7 @@ class LocalInputSetIndex:
             yield connection
 
     def register_input_set(self, name: str, inputs: dict[str, Any]) -> dict[str, Any]:
-        validate_name(name)
+        assert_input_set_name_is_valid(name)
         key = input_set_hash(inputs)
         with self.connect() as connection:
             connection.execute(
@@ -75,7 +79,7 @@ class LocalInputSetIndex:
     def resolve_input_set(
         self, *, name: str | None = None, key: str | None = None
     ) -> dict[str, Any]:
-        require_selector(name, key)
+        assert_input_set_selector_is_valid(name, key)
         with self.connect() as connection:
             if name is not None:
                 row = connection.execute(
@@ -104,7 +108,7 @@ class LocalInputSetIndex:
     def unregister_input_sets(
         self, *, name: str | None = None, key: str | None = None
     ) -> list[str]:
-        require_selector(name, key)
+        assert_input_set_selector_is_valid(name, key)
         field, value = ("name", name) if name is not None else ("hash", key)
         with self.connect() as connection:
             rows = connection.execute(

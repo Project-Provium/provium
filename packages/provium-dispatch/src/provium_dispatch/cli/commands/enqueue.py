@@ -9,11 +9,11 @@ import sys
 from provium.cli.command import Command
 
 from provium_dispatch.cli.arguments import (
+    assert_database_is_configured,
+    assert_pipeline_is_selected,
     assignments,
     configure_graph,
     configure_queue,
-    require_database,
-    require_pipeline,
     require_queue,
 )
 
@@ -33,8 +33,8 @@ class EnqueueCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             require_queue(arguments)
-            require_database(arguments)
-            require_pipeline(arguments)
+            assert_database_is_configured(arguments)
+            assert_pipeline_is_selected(arguments)
             if arguments.csv and (arguments.input or arguments.output):
                 raise ValueError(  # noqa: TRY301 -- command reports validation errors
                     "--csv cannot be combined with --input or --output"

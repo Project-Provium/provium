@@ -14,13 +14,13 @@ from threading import RLock, local
 from typing import Any, ClassVar, Literal, cast, get_args, get_origin
 
 from provium.artifact import ArtifactDefinition
-from provium.artifact.binding import validate_artifact_class
+from provium.artifact.binding import assert_artifact_class_is_valid
 from provium.procedure.config import ProcedureConfig
 from provium.procedure.context import ProcedureProcessContext, ProcedureSetupContext
 from provium.procedure.io import ProcedureInputs, ProcedureIOField, ProcedureOutputs
 
 
-def _require_text(value: object, field_name: str) -> None:
+def _assert_text_is_valid(value: object, field_name: str) -> None:
     if not isinstance(value, str):
         raise TypeError(f"{field_name} must be a string")
     if not value.strip():
@@ -35,9 +35,9 @@ _CONTRACT_COMPILATION_HOOKS = frozenset(
     {
         "__init_subclass__",
         "_configuration_specialization",
-        "_validate_configuration_specialization",
-        "_validate_io_declarations",
-        "_validated_configuration",
+        "_assert_configuration_specialization_is_valid",
+        "_assert_io_declarations_are_valid",
+        "_assert_configuration_is_valid",
     }
 )
 
@@ -239,9 +239,9 @@ class ProcedureContract[ConfigT: ProcedureConfig | None]:
         super().__init_subclass__(**kwargs)
         if _CONTRACT_COMPILATION_HOOKS & cls.__dict__.keys():
             raise TypeError("procedure contract cannot override contract compilation")
-        configuration = cls._validated_configuration()
-        cls._validate_io_declarations()
-        cls._validate_configuration_specialization(
+        configuration = cls._assert_configuration_is_valid()
+        cls._assert_io_declarations_are_valid()
+        cls._assert_configuration_specialization_is_valid(
             configuration,
             cls._configuration_specialization(),
         )
@@ -253,7 +253,7 @@ class ProcedureContract[ConfigT: ProcedureConfig | None]:
         )
 
     @classmethod
-    def _validated_configuration(cls) -> type[ProcedureConfig] | None:
+    def _assert_configuration_is_valid(cls) -> type[ProcedureConfig] | None:
         configuration = cls.configuration
         if configuration is not None and (
             not isinstance(configuration, type)
@@ -266,7 +266,7 @@ class ProcedureContract[ConfigT: ProcedureConfig | None]:
         return cast(type[ProcedureConfig] | None, configuration)
 
     @classmethod
-    def _validate_io_declarations(cls) -> None:
+    def _assert_io_declarations_are_valid(cls) -> None:
         for name in ("SetupInputs", "Inputs"):
             value = getattr(cls, name)
             if value is not None and (
@@ -308,7 +308,7 @@ class ProcedureContract[ConfigT: ProcedureConfig | None]:
         return next(iter(specializations))
 
     @staticmethod
-    def _validate_configuration_specialization(
+    def _assert_configuration_specialization_is_valid(
         configuration: type[ProcedureConfig] | None,
         expected_configuration: type[object],
     ) -> None:
@@ -382,20 +382,20 @@ class ProcedureDefinition[ProcedureT: Procedure[Any, Any, Any, Any]]:
     )
 
     def __post_init__(self) -> None:
-        _require_text(self.identifier, "procedure definition identifier")
-        _require_text(self.target, "procedure definition target")
-        _require_text(self.label, "procedure definition label")
+        _assert_text_is_valid(self.identifier, "procedure definition identifier")
+        _assert_text_is_valid(self.target, "procedure definition target")
+        _assert_text_is_valid(self.label, "procedure definition label")
         if self.description is not None:
-            _require_text(self.description, "procedure definition description")
+            _assert_text_is_valid(self.description, "procedure definition description")
         if isinstance(self.contract, str):
-            self._validate_reference(self.contract, "contract")
+            self._assert_reference_is_valid(self.contract, "contract")
         else:
-            self._validate_contract_class(self.contract)
+            self._assert_contract_class_is_valid(self.contract)
 
-        self._validate_reference(self.target, "target")
+        self._assert_reference_is_valid(self.target, "target")
 
     @staticmethod
-    def _validate_reference(reference: str, field_name: str) -> None:
+    def _assert_reference_is_valid(reference: str, field_name: str) -> None:
         module_name, separator, attribute_path = reference.partition(":")
         if (
             not separator
@@ -408,7 +408,7 @@ class ProcedureDefinition[ProcedureT: Procedure[Any, Any, Any, Any]]:
             )
 
     @staticmethod
-    def _validate_contract_class(contract: object) -> None:
+    def _assert_contract_class_is_valid(contract: object) -> None:
         if (
             not isinstance(contract, type)
             or not issubclass(contract, ProcedureContract)
@@ -458,7 +458,7 @@ class ProcedureDefinition[ProcedureT: Procedure[Any, Any, Any, Any]]:
             _PROCEDURE_RESOLUTION_STATE.contracts.add(self.contract)
             try:
                 resolved = self._import_reference(self.contract)
-                self._validate_contract_class(resolved)
+                self._assert_contract_class_is_valid(resolved)
                 resolved_contract = cast(type[ProcedureContract[Any]], resolved)
                 object.__setattr__(self, "_resolved_contract", resolved_contract)
                 return resolved_contract
@@ -479,13 +479,13 @@ class ProcedureDefinition[ProcedureT: Procedure[Any, Any, Any, Any]]:
             _PROCEDURE_RESOLUTION_STATE.targets.add(self.target)
             try:
                 resolved = self._import_target()
-                self._validate_resolved_class(resolved)
+                self._assert_resolved_class_is_valid(resolved)
                 resolved_class = cast(type[Procedure[Any, Any, Any, Any]], resolved)
-                self._validate_resolved_definition(resolved_class)
-                self._validate_resolved_specialization(resolved_class)
-                self._validate_contract_artifacts()
-                self._validate_resolved_concrete(resolved_class)
-                self._validate_lifecycle_signatures(resolved_class)
+                self._assert_resolved_definition_is_valid(resolved_class)
+                self._assert_resolved_specialization_is_valid(resolved_class)
+                self._assert_contract_artifacts_are_valid()
+                self._assert_resolved_class_is_concrete(resolved_class)
+                self._assert_lifecycle_signatures_are_valid(resolved_class)
                 object.__setattr__(self, "_resolved_class", resolved_class)
                 return cast(type[ProcedureT], resolved_class)
             finally:
@@ -502,14 +502,14 @@ class ProcedureDefinition[ProcedureT: Procedure[Any, Any, Any, Any]]:
             resolved = getattr(resolved, component)
         return resolved
 
-    def _validate_resolved_class(self, resolved: object) -> None:
+    def _assert_resolved_class_is_valid(self, resolved: object) -> None:
         if not isinstance(resolved, type) or not issubclass(resolved, Procedure):
             raise TypeError(
                 f"procedure definition {self.identifier} must resolve to a "
                 "Procedure class"
             )
 
-    def _validate_resolved_definition(
+    def _assert_resolved_definition_is_valid(
         self,
         resolved: type[Procedure[Any, Any, Any, Any]],
     ) -> None:
@@ -531,7 +531,7 @@ class ProcedureDefinition[ProcedureT: Procedure[Any, Any, Any, Any]]:
                 "must match"
             )
 
-    def _validate_resolved_specialization(
+    def _assert_resolved_specialization_is_valid(
         self,
         resolved: type[Procedure[Any, Any, Any, Any]],
     ) -> None:
@@ -561,7 +561,7 @@ class ProcedureDefinition[ProcedureT: Procedure[Any, Any, Any, Any]]:
                 "its contract"
             )
 
-    def _validate_resolved_concrete(
+    def _assert_resolved_class_is_concrete(
         self,
         resolved: type[Procedure[Any, Any, Any, Any]],
     ) -> None:
@@ -571,14 +571,14 @@ class ProcedureDefinition[ProcedureT: Procedure[Any, Any, Any, Any]]:
                 "concrete Procedure class"
             )
 
-    def _validate_lifecycle_signatures(
+    def _assert_lifecycle_signatures_are_valid(
         self,
         resolved: type[Procedure[Any, Any, Any, Any]],
     ) -> None:
-        self._validate_hook_call_shape(resolved, "setup", 4)
-        self._validate_hook_call_shape(resolved, "process", 5)
+        self._assert_hook_call_shape_is_valid(resolved, "setup", 4)
+        self._assert_hook_call_shape_is_valid(resolved, "process", 5)
 
-    def _validate_hook_call_shape(
+    def _assert_hook_call_shape_is_valid(
         self,
         resolved: type[Procedure[Any, Any, Any, Any]],
         hook: str,
@@ -597,12 +597,12 @@ class ProcedureDefinition[ProcedureT: Procedure[Any, Any, Any, Any]]:
                 "with its lifecycle hook"
             ) from error
 
-    def _validate_contract_artifacts(self) -> None:
+    def _assert_contract_artifacts_are_valid(self) -> None:
         definitions = self._contract_artifact_definitions()
         for definition in definitions.values():
             resolved = definition.resolve()
             try:
-                artifact_class = validate_artifact_class(resolved)
+                artifact_class = assert_artifact_class_is_valid(resolved)
             except TypeError as error:
                 raise TypeError(
                     f"artifact {definition.identifier} resolved for procedure "

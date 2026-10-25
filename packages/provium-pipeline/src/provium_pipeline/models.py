@@ -19,7 +19,7 @@ SELECTOR = re.compile(
 Binding = str | list[str] | None
 
 
-def name_check(value: str) -> str:
+def assert_name_is_valid(value: str) -> str:
     if not NAME.fullmatch(value):
         raise ValueError(f"invalid name: {value!r}")
     return value
@@ -29,9 +29,9 @@ def refs(value: Binding) -> list[str]:
     return [] if value is None else [value] if isinstance(value, str) else value
 
 
-def bindings_check(value: dict[str, Binding]) -> dict[str, Binding]:
+def assert_bindings_are_valid(value: dict[str, Binding]) -> dict[str, Binding]:
     for name, binding in value.items():
-        name_check(name)
+        assert_name_is_valid(name)
         for ref in refs(binding):
             if not REFERENCE.fullmatch(ref):
                 raise ValueError(f"invalid artifact reference: {ref}")
@@ -42,7 +42,7 @@ class Document(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     name: str
 
-    _name = field_validator("name")(name_check)
+    _assert_name_is_valid = field_validator("name")(assert_name_is_valid)
 
 
 class Node(BaseModel):
@@ -53,12 +53,14 @@ class Node(BaseModel):
     setup_inputs: dict[str, Binding] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
 
-    _bindings = field_validator("inputs", "setup_inputs")(bindings_check)
+    _assert_bindings_are_valid = field_validator("inputs", "setup_inputs")(
+        assert_bindings_are_valid
+    )
 
     @field_validator("tags")
     @classmethod
-    def validate_tags(cls, values: list[str]) -> list[str]:
-        return [name_check(value) for value in values]
+    def assert_tags_are_valid(cls, values: list[str]) -> list[str]:
+        return [assert_name_is_valid(value) for value in values]
 
 
 class PipelineConfiguration(Document):
@@ -74,24 +76,24 @@ class PipelineConfiguration(Document):
 
     @field_validator("inputs")
     @classmethod
-    def validate_inputs(cls, value: dict[str, str]) -> dict[str, str]:
+    def assert_inputs_are_valid(cls, value: dict[str, str]) -> dict[str, str]:
         for name, artifact in value.items():
-            name_check(name)
+            assert_name_is_valid(name)
             if not artifact.strip():
                 raise ValueError(f"input {name} requires an artifact identifier")
         return value
 
     @field_validator("nodes")
     @classmethod
-    def validate_nodes(cls, value: dict[str, Node]) -> dict[str, Node]:
+    def assert_nodes_are_valid(cls, value: dict[str, Node]) -> dict[str, Node]:
         for name in value:
-            name_check(name)
+            assert_name_is_valid(name)
         return value
 
     @field_validator("outputs")
     @classmethod
-    def validate_outputs(cls, value: dict[str, str]) -> dict[str, str]:
-        bindings_check(dict(value))
+    def assert_outputs_are_valid(cls, value: dict[str, str]) -> dict[str, str]:
+        assert_bindings_are_valid(dict(value))
         return value
 
     def order(self) -> list[str]:
@@ -210,7 +212,7 @@ class ExecutionSettings(BaseModel):
 
     @field_validator("workers", "soft_time_limits", "hard_time_limits")
     @classmethod
-    def validate_rules(
+    def assert_rules_are_valid(
         cls, rules: list[dict[str, Any]], info: Any
     ) -> list[dict[str, Any]]:
         for rule in rules:

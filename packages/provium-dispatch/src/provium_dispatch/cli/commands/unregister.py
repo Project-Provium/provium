@@ -9,9 +9,9 @@ import sys
 from provium.cli.command import Command
 
 from provium_dispatch.cli.arguments import (
+    assert_database_is_configured,
+    assert_graph_options_are_valid,
     configure_graph,
-    require_database,
-    validate_graph_options,
 )
 
 
@@ -24,7 +24,7 @@ class UnregisterCommand(Command):
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            self._validate(arguments)
+            self._assert_arguments_are_valid(arguments)
             identities = self._identities(arguments)
             from provium_dispatch.persistence.factory import open_backend
 
@@ -35,9 +35,9 @@ class UnregisterCommand(Command):
         return 0
 
     @staticmethod
-    def _validate(arguments: argparse.Namespace) -> None:
-        require_database(arguments)
-        validate_graph_options(arguments)
+    def _assert_arguments_are_valid(arguments: argparse.Namespace) -> None:
+        assert_database_is_configured(arguments)
+        assert_graph_options_are_valid(arguments)
         if arguments.file and (arguments.pipeline or arguments.profile):
             raise ValueError("unregister accepts files or explicit names, not both")
         if not (arguments.file or arguments.pipeline or arguments.profile):

@@ -341,10 +341,10 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
             "_from_bindings",
             "_normalize_field_value",
             "_normalize_repeated_value",
-            "_validate_binding",
-            "_validate_binding_artifact",
-            "_validate_binding_names",
-            "_validate_cardinality",
+            "_assert_binding_is_valid",
+            "_assert_binding_artifact_is_valid",
+            "_assert_binding_names_are_valid",
+            "_assert_cardinality_is_valid",
         }
     )
 
@@ -354,7 +354,7 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
     @classmethod
     def _from_bindings(cls, bindings: Mapping[str, object]) -> Self:
         """Construct a record from executor-supplied bindings."""
-        cls._validate_binding_names(bindings)
+        cls._assert_binding_names_are_valid(bindings)
         values = {
             name: cls._normalize_field_value(field, bindings.get(name))
             for name, field in cls.fields.items()
@@ -364,7 +364,7 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
         return instance
 
     @classmethod
-    def _validate_binding_names(cls, bindings: Mapping[str, object]) -> None:
+    def _assert_binding_names_are_valid(cls, bindings: Mapping[str, object]) -> None:
         if not isinstance(bindings, Mapping):
             raise TypeError("procedure I/O bindings must be a mapping")
         unknown = [name for name in bindings if name not in cls.fields]
@@ -383,7 +383,7 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
             if field.required:
                 raise TypeError(f"missing required field: {field.name}")
             return None
-        cls._validate_binding(field, supplied)
+        cls._assert_binding_is_valid(field, supplied)
         return supplied
 
     @classmethod
@@ -402,13 +402,13 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
             raise TypeError(
                 f"{field.name} must be a sequence of artifact read bindings"
             )
-        cls._validate_cardinality(field, len(values))
+        cls._assert_cardinality_is_valid(field, len(values))
         for value in values:
-            cls._validate_binding(field, value)
+            cls._assert_binding_is_valid(field, value)
         return values
 
     @staticmethod
-    def _validate_cardinality(field: ProcedureIOField, count: int) -> None:
+    def _assert_cardinality_is_valid(field: ProcedureIOField, count: int) -> None:
         if count < field.minimum:
             raise ValueError(
                 f"{field.name} requires at least {field.minimum} binding"
@@ -421,7 +421,7 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
             )
 
     @classmethod
-    def _validate_binding(cls, field: ProcedureIOField, binding: object) -> None:
+    def _assert_binding_is_valid(cls, field: ProcedureIOField, binding: object) -> None:
         expected_type: type[object]
         if cls._direction == "input":
             expected_type = ArtifactReadBinding
@@ -431,13 +431,13 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
             direction = "write"
         if not isinstance(binding, expected_type):
             raise TypeError(f"{field.name} must be an artifact {direction} binding")
-        cls._validate_binding_artifact(
+        cls._assert_binding_artifact_is_valid(
             field,
             cast(ArtifactReadBinding[Any] | ArtifactWriteBinding[Any], binding),
         )
 
     @staticmethod
-    def _validate_binding_artifact(
+    def _assert_binding_artifact_is_valid(
         field: ProcedureIOField,
         binding: ArtifactReadBinding[Any] | ArtifactWriteBinding[Any],
     ) -> None:
@@ -461,27 +461,27 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        cls._validate_construction_declaration()
-        cls._validate_immutability_declaration()
-        cls._validate_direction_declaration()
+        cls._assert_construction_declaration_is_valid()
+        cls._assert_immutability_declaration_is_valid()
+        cls._assert_direction_declaration_is_valid()
         fields, inherited_candidates, conflicts = cls._collect_inherited_fields()
         cls._merge_declared_fields(fields, inherited_candidates, conflicts)
-        cls._validate_undeclared_annotations()
-        cls._validate_collected_fields(fields, conflicts)
+        cls._assert_undeclared_annotations_are_valid()
+        cls._assert_collected_fields_are_valid(fields, conflicts)
         cls.fields = MappingProxyType(fields)
 
     @classmethod
-    def _validate_construction_declaration(cls) -> None:
+    def _assert_construction_declaration_is_valid(cls) -> None:
         if _ProcedureIORecord._construction_methods & cls.__dict__.keys():
             raise TypeError("procedure I/O record cannot override binding construction")
 
     @classmethod
-    def _validate_immutability_declaration(cls) -> None:
+    def _assert_immutability_declaration_is_valid(cls) -> None:
         if "__setattr__" in cls.__dict__ or "__delattr__" in cls.__dict__:
             raise TypeError("procedure I/O record cannot override record immutability")
 
     @classmethod
-    def _validate_direction_declaration(cls) -> None:
+    def _assert_direction_declaration_is_valid(cls) -> None:
         if "_direction" in cls.__dict__ and _ProcedureIORecord not in cls.__bases__:
             raise TypeError("procedure I/O record direction cannot be overridden")
         inherited_directions = {
@@ -527,8 +527,8 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
         for name, value in cls.__dict__.items():
             if name.startswith("_"):
                 continue
-            value = cls._validate_declared_field(name, value, local_field_ids)
-            cls._validate_field_override(
+            value = cls._assert_declared_field_is_valid(name, value, local_field_ids)
+            cls._assert_field_override_is_valid(
                 name,
                 value,
                 inherited_candidates.get(name, ()),
@@ -537,7 +537,7 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
             conflicts.discard(name)
 
     @classmethod
-    def _validate_declared_field(
+    def _assert_declared_field_is_valid(
         cls,
         name: str,
         value: object,
@@ -555,7 +555,7 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
         return value
 
     @classmethod
-    def _validate_field_override(
+    def _assert_field_override_is_valid(
         cls,
         name: str,
         value: ProcedureIOField,
@@ -593,14 +593,14 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
             raise TypeError(f"{cls.__name__}.{name} cannot change binding shape")
 
     @classmethod
-    def _validate_undeclared_annotations(cls) -> None:
+    def _assert_undeclared_annotations_are_valid(cls) -> None:
         annotations = cls.__dict__.get("__annotations__", {})
         for name in annotations:
             if not name.startswith("_") and name not in cls.__dict__:
                 raise TypeError(f"{cls.__name__}.{name} must be a procedure I/O field")
 
     @classmethod
-    def _validate_collected_fields(
+    def _assert_collected_fields_are_valid(
         cls,
         fields: Mapping[str, ProcedureIOField],
         conflicts: set[str],

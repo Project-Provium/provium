@@ -87,7 +87,7 @@ class ProcedureExecutionSession:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        child = self._require_active()
+        child = self._assert_session_is_active()
         if exc_type is not None:
             child.__exit__(exc_type, exc_value, traceback)
             return
@@ -103,12 +103,12 @@ class ProcedureExecutionSession:
         bindings: Mapping[str, ArtifactWriteBinding[Any]],
     ) -> dict[str, ArtifactWriter]:
         """Stage every output together using one provisional execution graph."""
-        child = self._require_active()
+        child = self._assert_session_is_active()
         if self._staged is not None:
             raise RuntimeError("procedure outputs have already been staged")
         if not bindings:
             raise ValueError("procedure execution requires at least one output")
-        self._validate_destinations(bindings)
+        self._assert_destinations_are_valid(bindings)
         references = {
             name: ArtifactReference(
                 str(uuid4()),
@@ -141,14 +141,14 @@ class ProcedureExecutionSession:
         self._staged = staged
         return {name: output.writer for name, output in staged.items()}
 
-    def _require_active(self) -> Session:
+    def _assert_session_is_active(self) -> Session:
         child = self._session
         if child is None or current_session() is not child or not child.active:
             raise RuntimeError("procedure execution session is not active")
         return child
 
     @staticmethod
-    def _validate_destinations(
+    def _assert_destinations_are_valid(
         bindings: Mapping[str, ArtifactWriteBinding[Any]],
     ) -> None:
         destinations = [
@@ -233,7 +233,7 @@ class ProcedureExecutionSession:
         assert self._staged is not None
         backups: dict[str, Path | None] = {}
         cleanup = ExitStack()
-        self._require_active().manage(cleanup)
+        self._assert_session_is_active().manage(cleanup)
         try:
             for name, output in self._staged.items():
                 destination = output.destination

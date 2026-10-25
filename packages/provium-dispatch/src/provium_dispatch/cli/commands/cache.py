@@ -9,7 +9,10 @@ from provium.cli.catalog import CommandCatalog
 from provium_pipeline.cli.commands.cache import CacheCommand as BasicCacheCommand
 from provium_pipeline.cli.commands.cache import ClearCommand as BasicClearCommand
 
-from provium_dispatch.cli.arguments import configure_storage, require_database
+from provium_dispatch.cli.arguments import (
+    assert_database_is_configured,
+    configure_storage,
+)
 
 if TYPE_CHECKING:
     from provium_pipeline.cache import MaintenanceGuard
@@ -20,7 +23,7 @@ class ClearCommand(BasicClearCommand):
         configure_storage(parser)
 
     def prepare(self, arguments: argparse.Namespace) -> MaintenanceGuard:
-        require_database(arguments)
+        assert_database_is_configured(arguments)
         from provium_dispatch.persistence.factory import open_backend
 
         return open_backend(arguments.database)

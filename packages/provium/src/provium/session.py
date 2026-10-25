@@ -129,8 +129,10 @@ class Session:
         try:
             header, file_length = self._read_header(stream)
             expected_identifier = binding.artifact.definition.identifier
-            self._validate_opened_header(header, file_length, expected_identifier)
-            self._validate_expected_identity(header, expected_identity)
+            self._assert_opened_header_is_valid(
+                header, file_length, expected_identifier
+            )
+            self._assert_expected_identity_matches(header, expected_identity)
             self._verify_digest(
                 stream, header.body_offset, header.body_length, header.body_digest
             )
@@ -162,7 +164,7 @@ class Session:
         return reader
 
     @staticmethod
-    def _validate_expected_identity(
+    def _assert_expected_identity_matches(
         header: ArtifactHeader,
         expected_identity: str | None,
     ) -> None:
@@ -191,7 +193,7 @@ class Session:
         return header, stream.tell()
 
     @staticmethod
-    def _validate_opened_header(
+    def _assert_opened_header_is_valid(
         header: ArtifactHeader,
         file_length: int,
         expected_identifier: str,

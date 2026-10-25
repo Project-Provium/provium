@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Protocol, TextIO
 
-from provium_pipeline.models import REFERENCE, name_check
+from provium_pipeline.models import REFERENCE, assert_name_is_valid
 from provium_pipeline.store import Artifact
 
 
@@ -69,12 +69,12 @@ class CSVSource:
         output_columns: dict[int, str] = {}
         for index, header in enumerate(headers):
             if header.startswith("inputs."):
-                input_columns[index] = name_check(header[7:])
+                input_columns[index] = assert_name_is_valid(header[7:])
             else:
                 if not (
                     header.startswith("nodes.") and REFERENCE.fullmatch("$" + header)
                 ):
-                    name_check(header)
+                    assert_name_is_valid(header)
                 output_columns[index] = header
         if not output_columns:
             raise ValueError("CSV requires at least one output destination column")

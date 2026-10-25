@@ -178,7 +178,7 @@ def test_custom_publisher_is_used(tmp_path):
     from dataclasses import replace
 
     class MemoryPublisher:
-        def validate(self, requests):
+        def assert_requests_are_valid(self, requests):
             assert len(requests) == 1
 
         def publish(self, artifact, destination, *, overwrite=False):

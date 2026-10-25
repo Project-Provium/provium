@@ -43,7 +43,7 @@ class BodyRegion:
         """Return whether this region has been closed."""
         return self._closed
 
-    def check_context(self) -> None:
+    def assert_context_is_active(self) -> None:
         """Require this region's live owner to be active."""
         owns_active_context = getattr(self._owner, "_owns_active_context", None)
         owns_context = (
@@ -56,9 +56,9 @@ class BodyRegion:
         if not getattr(self._owner, "active", False):
             raise RuntimeError("body region owner is no longer active")
 
-    def check_access(self) -> None:
+    def assert_access_is_allowed(self) -> None:
         """Require active ownership and an open region."""
-        self.check_context()
+        self.assert_context_is_active()
         if self._closed:
             raise ValueError("body region is closed")
 
@@ -66,19 +66,19 @@ class BodyRegion:
         """Close this region and its stream when owned by the region."""
         if self._closed:
             return
-        self.check_context()
+        self.assert_context_is_active()
         self._closed = True
         if self._close_stream:
             self._stream.close()
 
     def tell(self) -> int:
         """Return the body-relative stream position."""
-        self.check_access()
+        self.assert_access_is_allowed()
         return self._position
 
     def seek(self, offset: int, whence: int = os.SEEK_SET) -> int:
         """Move to a body-relative position."""
-        self.check_access()
+        self.assert_access_is_allowed()
         if whence == os.SEEK_SET:
             position = offset
         elif whence == os.SEEK_CUR:
@@ -97,7 +97,7 @@ class BodyRegion:
 
     def read(self, size: int | None = -1) -> bytes:
         """Read without crossing the finalized body boundary."""
-        self.check_access()
+        self.assert_access_is_allowed()
         if self._writable:
             raise io.UnsupportedOperation("read")
         remaining = self._length - self._position
@@ -109,7 +109,7 @@ class BodyRegion:
 
     def readinto(self, buffer: bytearray | memoryview) -> int:
         """Read body bytes into a writable buffer."""
-        self.check_access()
+        self.assert_access_is_allowed()
         if self._writable:
             raise io.UnsupportedOperation("read")
         target = memoryview(buffer).cast("B")
@@ -119,7 +119,7 @@ class BodyRegion:
 
     def write(self, data: bytes | bytearray | memoryview) -> int:
         """Write body bytes and extend the logical body when necessary."""
-        self.check_access()
+        self.assert_access_is_allowed()
         if not self._writable:
             raise io.UnsupportedOperation("write")
         self._position_stream()
@@ -130,7 +130,7 @@ class BodyRegion:
 
     def flush(self) -> None:
         """Flush the underlying stream."""
-        self.check_access()
+        self.assert_access_is_allowed()
         self._stream.flush()
 
     def _position_stream(self) -> None:

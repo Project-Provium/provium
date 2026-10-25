@@ -68,7 +68,7 @@ class FileCache:
 
     def entries(self) -> list[CacheEntry]:
         for directory in ("artifacts", "results"):
-            self._contained(self.root / directory)
+            self._assert_path_is_contained(self.root / directory)
         keys = {
             path.stem
             for directory in ("artifacts", "results")
@@ -79,8 +79,8 @@ class FileCache:
         for key in keys:
             directory = self.root / "artifacts" / key
             manifest = self.root / "results" / f"{key}.json"
-            self._contained(directory)
-            self._contained(manifest)
+            self._assert_path_is_contained(directory)
+            self._assert_path_is_contained(manifest)
             paths = list(directory.rglob("*")) + [manifest]
             files = [path for path in paths if path.is_file()]
             size = sum(path.stat().st_size for path in files)
@@ -92,7 +92,7 @@ class FileCache:
             entries.append(CacheEntry(key, size, modified))
         return entries
 
-    def _contained(self, path: Path) -> None:
+    def _assert_path_is_contained(self, path: Path) -> None:
         if not path.resolve().is_relative_to(self.root.resolve()):
             raise ValueError("cache path points outside the cache")
 
@@ -101,8 +101,8 @@ class FileCache:
             raise ValueError("invalid cache key")
         manifest = self.root / "results" / f"{key}.json"
         directory = self.root / "artifacts" / key
-        self._contained(manifest)
-        self._contained(directory)
+        self._assert_path_is_contained(manifest)
+        self._assert_path_is_contained(directory)
         manifest.unlink(missing_ok=True)
         if directory.exists():
             shutil.rmtree(directory)

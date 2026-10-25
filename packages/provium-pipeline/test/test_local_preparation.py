@@ -4,7 +4,7 @@ import pytest
 from provium.cli.application import create_parser
 from provium.cli.catalog import CommandCatalog
 
-from provium_pipeline.cli.arguments import require_pipeline
+from provium_pipeline.cli.arguments import assert_pipeline_is_selected
 from provium_pipeline.cli.commands.run import RunCommand
 from provium_pipeline.preparation import load_pipeline
 
@@ -23,15 +23,15 @@ def test_local_settings_precedence_and_single_load(tmp_path, monkeypatch):
     path = directory / "config.toml"
     path.write_text('[pipeline]\nstore = "configured"\nscratch_directory = "scratch"\n')
     args = parse("-f", "graph.yaml")
-    require_pipeline(args)
+    assert_pipeline_is_selected(args)
     assert (args.store, args.scratch_directory) == ("configured", "scratch")
     path.write_text("invalid after first load")
-    require_pipeline(args)
+    assert_pipeline_is_selected(args)
     assert args.store == "configured"
     path.write_text("[pipeline]\n")
     monkeypatch.delenv("PROVIUM_PIPELINE_STORE", raising=False)
     args = parse("-f", "graph.yaml")
-    require_pipeline(args)
+    assert_pipeline_is_selected(args)
     assert args.store == "./.provium/artifacts"
 
 
@@ -43,7 +43,7 @@ def test_local_settings_reject_wrong_types(tmp_path, monkeypatch, text):
     directory.mkdir()
     (directory / "config.toml").write_text(text)
     with pytest.raises((TypeError, ValueError), match="pipeline"):
-        require_pipeline(parse("-f", "graph.yaml"))
+        assert_pipeline_is_selected(parse("-f", "graph.yaml"))
 
 
 def test_local_preparation_requires_one_graph():

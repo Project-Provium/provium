@@ -10,11 +10,11 @@ from typing import Any
 from provium.cli.command import Command
 
 from provium_dispatch.cli.arguments import (
+    assert_pipeline_is_selected,
     assignments,
     configure_graph,
     configure_queue,
     require_execution_queue,
-    require_pipeline,
 )
 
 
@@ -28,7 +28,7 @@ class StatusCommand(Command):
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            require_pipeline(arguments)
+            assert_pipeline_is_selected(arguments)
             require_execution_queue(arguments)
             from provium_dispatch.persistence.factory import open_backend
             from provium_dispatch.preparation import prepare_pipeline

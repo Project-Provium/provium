@@ -49,7 +49,7 @@ class ArtifactWriter:
 
     @property
     def body(self) -> BodyRegion:
-        self._body.check_access()
+        self._body.assert_access_is_allowed()
         return self._body
 
     @property
@@ -73,16 +73,16 @@ class ArtifactWriter:
         if not self.closed:
             self.close()
         else:
-            self._body.check_context()
+            self._body.assert_context_is_active()
         if self._finalizer is not None:
             self._finalizer(self)
         if metadata is not None:
             self._replace_metadata(metadata)
-        self._validate_final_metadata(self._metadata)
+        self._assert_final_metadata_is_valid(self._metadata)
         self._container_finalized = True
 
     def __enter__(self) -> Self:
-        self._body.check_access()
+        self._body.assert_access_is_allowed()
         return self
 
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
@@ -90,13 +90,13 @@ class ArtifactWriter:
 
     def _replace_metadata(self, metadata: ArtifactHeader) -> None:
         """Replace provisional metadata during owning-context finalization."""
-        self._validate_final_metadata(metadata)
+        self._assert_final_metadata_is_valid(metadata)
         self._metadata = metadata
 
-    def _validate_final_metadata(self, metadata: ArtifactHeader) -> None:
+    def _assert_final_metadata_is_valid(self, metadata: ArtifactHeader) -> None:
         if not isinstance(metadata, ArtifactHeader):
             raise TypeError("metadata must be an ArtifactHeader")
-        self._body.check_context()
+        self._body.assert_context_is_active()
         if not self.body_complete:
             raise RuntimeError("artifact body must be complete before finalization")
         if metadata.body_length != self._body.length:

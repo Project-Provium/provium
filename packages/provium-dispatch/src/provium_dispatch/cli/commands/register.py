@@ -15,9 +15,9 @@ if TYPE_CHECKING:
     from provium_dispatch.models import ComputeProfile
 
 from provium_dispatch.cli.arguments import (
+    assert_database_is_configured,
+    assert_graph_options_are_valid,
     configure_graph,
-    require_database,
-    validate_graph_options,
 )
 
 
@@ -30,7 +30,7 @@ class RegisterCommand(Command):
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            self._validate(arguments)
+            self._assert_arguments_are_valid(arguments)
             from provium_pipeline.definitions import load_definition
             from provium_pipeline.models import (
                 PipelineConfiguration,
@@ -60,9 +60,9 @@ class RegisterCommand(Command):
         return 0
 
     @staticmethod
-    def _validate(arguments: argparse.Namespace) -> None:
-        require_database(arguments)
-        validate_graph_options(arguments)
+    def _assert_arguments_are_valid(arguments: argparse.Namespace) -> None:
+        assert_database_is_configured(arguments)
+        assert_graph_options_are_valid(arguments)
         if not arguments.file:
             raise ValueError("register requires YAML documents")
 
