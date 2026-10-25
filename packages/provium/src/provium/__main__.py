@@ -1,6 +1,6 @@
 def main() -> int:
     """Run Provium's bundled command-line interface."""
-    from .cli import main as cli_main
+    from provium.cli import main as cli_main
 
     return cli_main()
 

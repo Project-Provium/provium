@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "provium-dispatch"
+version = "0.1.0"
+description = "Durable pipeline execution, queues, and input sets"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "provium-pipeline>=2.1.0", # x-release-please-version
+]
+
+[project.urls]
+Homepage = "https://github.com/Project-Provium/provium"
+Documentation = "https://provium.dlii.tech"
+Issues = "https://github.com/Project-Provium/provium/issues"
+Repository = "https://github.com/Project-Provium/provium"
+
+[project.entry-points."provium.cli.command_catalogs"]
+dispatch = "provium_dispatch.cli:plugin"
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.2"]
+s3 = ["boto3>=1.35"]
+test = ["testcontainers[postgres,localstack]>=4.15,<5", "psycopg[binary]>=3.2", "boto3>=1.35", "pytest>=8.3", "pytest-cov>=6", "ruff>=0.16", "pyright>=1.1.411", "build>=1.2", "types-PyYAML>=6", "boto3-stubs[s3]>=1.35"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+provium_dispatch = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+pythonpath = ["src", "../provium/test", "../provium-pipeline/test"]
+addopts = ["--strict-config", "--strict-markers"]
+
+[tool.pyright]
+include = ["src"]
+extraPaths = ["src", "../provium/src", "../provium-pipeline/src"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+reportUnnecessaryIsInstance = "none"
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "TRY", "UP"]
+ignore = ["TRY003"]

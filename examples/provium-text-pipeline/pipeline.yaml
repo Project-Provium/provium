@@ -11,6 +11,6 @@ nodes:
     procedure: provium_text_pipeline_example.CountWordsV1
     inputs:
       tokens: $nodes.tokenize.destination
-outputs:
+targets:
   tokens: $nodes.tokenize.destination
   word_count: $nodes.count_words.word_count

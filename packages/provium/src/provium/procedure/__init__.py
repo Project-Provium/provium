@@ -1,7 +1,7 @@
 """Procedure definitions, contracts, catalogs, and discovery."""
 
-from .catalog import ProcedureCatalog
-from .config import (
+from provium.procedure.catalog import ProcedureCatalog
+from provium.procedure.config import (
     ConfigurationSnapshot,
     JsonValue,
     ProcedureConfig,
@@ -9,24 +9,30 @@ from .config import (
     load_json_configuration,
     load_yaml_configuration,
 )
-from .context import (
+from provium.procedure.context import (
     CancellationToken,
     ProcedureCancelledError,
     ProcedureProcessContext,
     ProcedureSetupContext,
 )
-from .definition import (
+from provium.procedure.definition import (
     Procedure,
     ProcedureContract,
     ProcedureContractMetadata,
     ProcedureDefinition,
     ProcedureIOFieldMetadata,
 )
-from .discovery import discover_procedure_catalogs, reset_procedure_discovery
-from .execution import ProcedureExecutionSession
-from .executor import ProcedureExecutor
-from .imperative import ImperativeProcedure, ImperativeProcedureExecution
-from .io import (
+from provium.procedure.discovery import (
+    discover_procedure_catalogs,
+    reset_procedure_discovery,
+)
+from provium.procedure.execution import ProcedureExecutionSession
+from provium.procedure.executor import ProcedureExecutor
+from provium.procedure.imperative import (
+    ImperativeProcedure,
+    ImperativeProcedureExecution,
+)
+from provium.procedure.io import (
     ProcedureInputField,
     ProcedureInputs,
     ProcedureIOField,
@@ -41,9 +47,9 @@ from .io import (
     output,
     repeated_input,
 )
-from .prepared import PreparedProcedure
-from .result import ProcedureExecutionResult, ProcedureOutputResult
-from .validation import (
+from provium.procedure.prepared import PreparedProcedure
+from provium.procedure.result import ProcedureExecutionResult, ProcedureOutputResult
+from provium.procedure.validation import (
     ProcedureConfigurationError,
     validate_procedure_configuration,
 )

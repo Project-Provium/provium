@@ -5,19 +5,17 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from provium_text_pipeline_example.artifact import DOCUMENT, TOKENS
 from test_runtime import configuration
 from test_store import make_artifact
 
 from provium_pipeline import (
     ArtifactStore,
-    ComputeProfile,
     ExecutionContext,
+    ExecutionSettings,
     InputSet,
     Outcome,
-    PipelineDefinition,
 )
-from provium_pipeline.persistence.interface import Lease
+from provium_pipeline.coordination import Lease
 
 
 def context(tmp_path, **options):
@@ -33,17 +31,11 @@ def context(tmp_path, **options):
         {"only": ["nodes.missing"]},
         {"workers": [{"default": 1, "nodes.tokenize": 2}]},
         {"workers": [{"nodes.missing": 1}]},
-        {"profile": ComputeProfile(name="test", workers=[{"tags.missing": 2}])},
+        {"settings": ExecutionSettings(workers=[{"tags.missing": 2}])},
         {
-            "profile": ComputeProfile(
-                name="test", workers=[{"pipelines.tokenize.nodes.missing": 2}]
+            "settings": ExecutionSettings(
+                workers=[{"pipelines.tokenize.nodes.missing": 2}]
             )
-        },
-        {
-            "definition": PipelineDefinition(
-                {"document": DOCUMENT}, {"tokens": TOKENS}
-            ),
-            "profile": ComputeProfile(name="not-allowed"),
         },
     ],
 )
@@ -63,16 +55,6 @@ def test_specific_workers_and_context_lifecycle(tmp_path):
     with pytest.raises(ValueError, match="application"):
         with context(tmp_path):
             raise ValueError("application error")
-
-
-def test_registered_definition_cannot_be_changed(tmp_path):
-    backend = Mock()
-    definition = PipelineDefinition({"document": DOCUMENT}, {"tokens": TOKENS})
-    backend.definition.return_value = definition
-    with context(tmp_path, backend=backend, definition=definition):
-        pass
-    with pytest.raises(ValueError, match="snapshot"):
-        context(tmp_path, backend=backend, definition=PipelineDefinition({}, {}))
 
 
 def test_input_artifact_objects_and_mutation_are_checked(tmp_path):
@@ -121,24 +103,6 @@ def test_status_reports_blocked_and_corrupt_artifacts(tmp_path):
         assert report["nodes"]["tokenize"]["state"] == "blocked"
 
 
-def test_queue_snapshot_tampering_is_rejected(tmp_path):
-    with context(tmp_path) as execution:
-        with pytest.raises(ValueError, match="pipeline snapshot"):
-            execution._load_page([{"id": 1, "snapshot": {}}])
-        with pytest.raises(ValueError, match="definition"):
-            execution._load_page(
-                [
-                    {
-                        "id": 1,
-                        "snapshot": execution.plan.configuration.model_dump(
-                            mode="json"
-                        ),
-                        "definition": {},
-                    }
-                ]
-            )
-
-
 def test_notification_overflow_and_duplicate_delivery(tmp_path):
     item = InputSet({})
     with context(tmp_path) as execution:
@@ -158,7 +122,7 @@ def test_lease_renewal_and_loss(tmp_path, renew):
         backend.renew.side_effect = renew
     else:
         backend.renew.return_value = renew
-    with context(tmp_path, backend=backend) as execution:
+    with context(tmp_path, coordinator=backend) as execution:
         lease = Lease("store", "key", "owner", 1, "run")
         execution._leases["key"] = lease
         job = SimpleNamespace(key="key", interrupted=False)
@@ -174,9 +138,7 @@ def test_lease_renewal_and_loss(tmp_path, renew):
 
 
 def test_heartbeat_without_database_and_expired_monitor(tmp_path):
-    with context(
-        tmp_path, profile=ComputeProfile(name="test", hard_time_limit=1)
-    ) as execution:
+    with context(tmp_path, settings=ExecutionSettings(hard_time_limit=1)) as execution:
         execution._stop_monitor = Mock()
         execution._stop_monitor.wait.side_effect = [False, True]
         execution._heartbeat()
@@ -198,7 +160,7 @@ def test_heartbeat_without_database_and_expired_monitor(tmp_path):
 
 def test_node_timer_accumulates_across_switches_and_idle(tmp_path, monkeypatch):
     with context(
-        tmp_path, profile=ComputeProfile(name="test", soft_time_limits=[{"default": 5}])
+        tmp_path, settings=ExecutionSettings(soft_time_limits=[{"default": 5}])
     ) as execution:
         clock = [10.0]
         monkeypatch.setattr("provium_pipeline.runtime.time.monotonic", lambda: clock[0])
@@ -298,7 +260,7 @@ def test_duplicate_step_messages_notify_once(tmp_path):
         assert execution._notifications.qsize() == 1
     backend = Mock()
     backend.definition.return_value = None
-    with context(tmp_path, backend=backend) as execution:
+    with context(tmp_path, coordinator=backend) as execution:
         execution._add(item)
         job = execution._job(execution._states[0], "tokenize")
         job.lease = Lease("store", job.key, "owner", 1, "run")
@@ -312,7 +274,7 @@ def test_publication_rejects_lost_lease_or_unacknowledged_write(tmp_path):
     backend = Mock()
     backend.definition.return_value = None
     backend.complete.return_value = False
-    with context(tmp_path, backend=backend) as execution:
+    with context(tmp_path, coordinator=backend) as execution:
         job = SimpleNamespace(
             key="a" * 64, lease=Lease("store", "a" * 64, "owner", 1, "run")
         )
@@ -438,7 +400,7 @@ def test_heartbeat_does_not_terminate_an_already_dead_worker(tmp_path):
     backend = Mock()
     backend.definition.return_value = None
     backend.renew.return_value = False
-    with context(tmp_path, backend=backend) as execution:
+    with context(tmp_path, coordinator=backend) as execution:
         execution._leases["key"] = Lease("store", "key", "owner", 1, "run")
         worker = Mock()
         worker.job.key = "key"

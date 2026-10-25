@@ -1,4 +1,5 @@
 {
   "packages/provium": "0.12.0",
-  "packages/provium-pipeline": "2.1.0"
+  "packages/provium-pipeline": "2.1.0",
+  "packages/provium-dispatch": "0.1.0"
 }

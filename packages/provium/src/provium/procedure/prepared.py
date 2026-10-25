@@ -9,21 +9,24 @@ from uuid import uuid4
 
 from provium.artifact import ArtifactReadBinding, ArtifactWriteBinding
 from provium.files import location_identity
-from provium.provenance import ProcedureRecord
-from provium.session import PersistentSession, Session, session
-
-from .authorization import authorize_bindings
-from .config import ConfigurationSnapshot, ProcedureConfig
-from .context import CancellationToken, ProcedureProcessContext, ProcedureSetupContext
-from .definition import Procedure, ProcedureDefinition
-from .execution import ProcedureExecutionSession
-from .io import (
+from provium.procedure.authorization import authorize_bindings
+from provium.procedure.config import ConfigurationSnapshot, ProcedureConfig
+from provium.procedure.context import (
+    CancellationToken,
+    ProcedureProcessContext,
+    ProcedureSetupContext,
+)
+from provium.procedure.definition import Procedure, ProcedureDefinition
+from provium.procedure.execution import ProcedureExecutionSession
+from provium.procedure.io import (
     ProcedureInputs,
     ProcedureOutputs,
     build_procedure_inputs,
     build_procedure_outputs,
 )
-from .result import ProcedureExecutionResult
+from provium.procedure.result import ProcedureExecutionResult
+from provium.provenance import ProcedureRecord
+from provium.session import PersistentSession, Session, session
 
 
 class _SetupTemporaryDirectory:
@@ -202,7 +205,7 @@ class PreparedProcedure[
         context: ProcedureProcessContext,
     ) -> ProcedureExecutionResult:
         procedure = self._procedure_record()
-        self._validate_output_destinations(output_bindings, procedure.name)
+        self._assert_output_destinations_are_valid(output_bindings, procedure.name)
         with ProcedureExecutionSession(procedure) as execution:
             with authorize_bindings(input_bindings, {}, {}):
                 identities = self._register_inputs(input_bindings)
@@ -323,7 +326,7 @@ class PreparedProcedure[
                 bindings[name] = cast(ArtifactWriteBinding[Any], value)
         return bindings
 
-    def _validate_output_destinations(
+    def _assert_output_destinations_are_valid(
         self,
         bindings: dict[str, ArtifactWriteBinding[Any]],
         procedure_identifier: str,

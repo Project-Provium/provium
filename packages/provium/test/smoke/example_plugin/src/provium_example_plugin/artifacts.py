@@ -1,9 +1,8 @@
 """Concrete installed-plugin artifact implementation."""
 
 from provium import Artifact, ArtifactReader, ArtifactWriter
-
-from .contracts import TEXT_ARTIFACT
-from .import_probe import record_import
+from provium_example_plugin.contracts import TEXT_ARTIFACT
+from provium_example_plugin.import_probe import record_import
 
 record_import("artifacts")
 

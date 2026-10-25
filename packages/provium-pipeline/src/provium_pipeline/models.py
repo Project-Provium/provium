@@ -5,11 +5,11 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 NAME = re.compile(r"^[^.$\s/]+$")
 REFERENCE = re.compile(r"^\$(inputs\.[^.$\s/]+|nodes\.[^.$\s/]+\.[^.$\s/]+)$")
@@ -19,7 +19,7 @@ SELECTOR = re.compile(
 Binding = str | list[str] | None
 
 
-def name_check(value: str) -> str:
+def assert_name_is_valid(value: str) -> str:
     if not NAME.fullmatch(value):
         raise ValueError(f"invalid name: {value!r}")
     return value
@@ -29,9 +29,9 @@ def refs(value: Binding) -> list[str]:
     return [] if value is None else [value] if isinstance(value, str) else value
 
 
-def bindings_check(value: dict[str, Binding]) -> dict[str, Binding]:
+def assert_bindings_are_valid(value: dict[str, Binding]) -> dict[str, Binding]:
     for name, binding in value.items():
-        name_check(name)
+        assert_name_is_valid(name)
         for ref in refs(binding):
             if not REFERENCE.fullmatch(ref):
                 raise ValueError(f"invalid artifact reference: {ref}")
@@ -42,7 +42,7 @@ class Document(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     name: str
 
-    _name = field_validator("name")(name_check)
+    _assert_name_is_valid = field_validator("name")(assert_name_is_valid)
 
 
 class Node(BaseModel):
@@ -53,40 +53,47 @@ class Node(BaseModel):
     setup_inputs: dict[str, Binding] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
 
-    _bindings = field_validator("inputs", "setup_inputs")(bindings_check)
+    _assert_bindings_are_valid = field_validator("inputs", "setup_inputs")(
+        assert_bindings_are_valid
+    )
 
     @field_validator("tags")
     @classmethod
-    def validate_tags(cls, values: list[str]) -> list[str]:
-        return [name_check(value) for value in values]
+    def assert_tags_are_valid(cls, values: list[str]) -> list[str]:
+        return [assert_name_is_valid(value) for value in values]
 
 
 class PipelineConfiguration(Document):
     kind: Literal["PipelineConfiguration"] = "PipelineConfiguration"
     inputs: dict[str, str]
     nodes: dict[str, Node]
-    outputs: dict[str, str]
+    outputs: dict[str, str] = Field(validation_alias=AliasChoices("targets", "outputs"))
+
+    @property
+    def targets(self) -> dict[str, str]:
+        """Named output references; legacy snapshots retain the outputs key."""
+        return self.outputs
 
     @field_validator("inputs")
     @classmethod
-    def validate_inputs(cls, value: dict[str, str]) -> dict[str, str]:
+    def assert_inputs_are_valid(cls, value: dict[str, str]) -> dict[str, str]:
         for name, artifact in value.items():
-            name_check(name)
+            assert_name_is_valid(name)
             if not artifact.strip():
                 raise ValueError(f"input {name} requires an artifact identifier")
         return value
 
     @field_validator("nodes")
     @classmethod
-    def validate_nodes(cls, value: dict[str, Node]) -> dict[str, Node]:
+    def assert_nodes_are_valid(cls, value: dict[str, Node]) -> dict[str, Node]:
         for name in value:
-            name_check(name)
+            assert_name_is_valid(name)
         return value
 
     @field_validator("outputs")
     @classmethod
-    def validate_outputs(cls, value: dict[str, str]) -> dict[str, str]:
-        bindings_check(dict(value))
+    def assert_outputs_are_valid(cls, value: dict[str, str]) -> dict[str, str]:
+        assert_bindings_are_valid(dict(value))
         return value
 
     def order(self) -> list[str]:
@@ -136,7 +143,6 @@ class PipelineConfiguration(Document):
 class PipelineDefinition:
     inputs: Mapping[str, Any]
     outputs: Mapping[str, Any]
-    profiles: frozenset[str] = field(default_factory=frozenset[str])
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -148,14 +154,11 @@ class PipelineDefinition:
                 name: value if isinstance(value, str) else value.identifier
                 for name, value in self.outputs.items()
             },
-            "profiles": sorted(self.profiles),
         }
 
     @classmethod
     def from_snapshot(cls, value: dict[str, Any]) -> PipelineDefinition:
-        return cls(
-            dict(value["inputs"]), dict(value["outputs"]), frozenset(value["profiles"])
-        )
+        return cls(dict(value["inputs"]), dict(value["outputs"]))
 
 
 @dataclass(frozen=True)
@@ -193,8 +196,10 @@ def specificity(selector: str, pipeline: str, node: str, tags: Iterable[str]) ->
     return -1
 
 
-class ComputeProfile(Document):
-    kind: Literal["ComputeProfile"] = "ComputeProfile"
+class ExecutionSettings(BaseModel):
+    """Worker and time budgets for one execution, without registry identity."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
     workers: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
     soft_time_limits: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
     hard_time_limits: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
@@ -207,7 +212,7 @@ class ComputeProfile(Document):
 
     @field_validator("workers", "soft_time_limits", "hard_time_limits")
     @classmethod
-    def validate_rules(
+    def assert_rules_are_valid(
         cls, rules: list[dict[str, Any]], info: Any
     ) -> list[dict[str, Any]]:
         for rule in rules:
@@ -251,8 +256,8 @@ def load_documents(
     paths: Iterable[str | Path],
     *,
     scratch_directory: str | Path | None = None,
-) -> list[PipelineConfiguration | ComputeProfile]:
+) -> list[PipelineConfiguration]:
     """Load documents on demand without coupling model imports to file I/O."""
-    from .documents import load_documents as load
+    from provium_pipeline.documents import load_documents as load
 
     return load(paths, scratch_directory=scratch_directory)

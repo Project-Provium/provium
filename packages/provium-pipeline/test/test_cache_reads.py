@@ -138,7 +138,7 @@ def test_database_cached_manifests_need_no_output_reads(tmp_path, monkeypatch):
         with ExecutionContext(
             graph(),
             store,
-            backend=backend,
+            coordinator=backend,
             procedures={COPY.identifier: COPY},
         ) as context:
             context._add(InputSet({"document": str(source)}))
@@ -192,6 +192,8 @@ def test_cli_verification_flag(tmp_path, capsys):
         "run",
         "-f",
         str(pipeline),
+        "--output",
+        f"tokens={tmp_path / 'tokens.pa'}",
         "--input",
         f"document={source}",
         "--store",
@@ -199,11 +201,14 @@ def test_cli_verification_flag(tmp_path, capsys):
         "--json",
     ]
     assert run(args) == 0
-    outcome = json.loads(capsys.readouterr().out)[0]
-    local_path(outcome["outputs"]["tokens"]["location"]).write_bytes(b"corrupt")
+    capsys.readouterr()
+    manifest = json.loads(
+        next((tmp_path / "store" / "results").glob("*.json")).read_text()
+    )
+    local_path(manifest[output_name]["location"]).write_bytes(b"corrupt")
     assert run(args) == 0
     assert json.loads(capsys.readouterr().out)[0]["state"] == "completed"
-    assert run([*args, "--verify-artifacts"]) == 0
+    assert run([*args, "--verify-artifacts"]) == 1
     assert json.loads(capsys.readouterr().out)[0]["state"] == "failed"
 
 

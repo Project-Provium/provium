@@ -3,7 +3,7 @@ from provium_text_pipeline_example.procedure.tokenize.definition import TOKENIZE
 from test_store import make_artifact
 
 from provium_pipeline.models import (
-    ComputeProfile,
+    ExecutionSettings,
     PipelineConfiguration,
     PipelineDefinition,
 )
@@ -33,7 +33,6 @@ def execute(tmp_path, inputs, **options):
         definition=PipelineDefinition(
             inputs={"document": DOCUMENT},
             outputs={"tokens": TOKENS},
-            profiles=frozenset({"local"}),
         ),
         **options,
     ) as context:
@@ -93,15 +92,15 @@ def test_callback_failure_does_not_reexecute(tmp_path):
 
 
 def test_global_soft_limit_empty_and_partial_are_normal(tmp_path):
-    profile = ComputeProfile(name="local", soft_time_limit=0.001)
-    context, _ = execute(tmp_path, [], profile=profile)
+    profile = ExecutionSettings(soft_time_limit=0.001)
+    context, _ = execute(tmp_path, [], settings=profile)
     assert context.error is None
 
 
 def test_equivalent_inputs_do_not_dispatch_twice(tmp_path):
     item = InputSet({"document": str(make_artifact(tmp_path / "source.pa"))})
-    profile = ComputeProfile(name="local", workers=[{"default": 2}])
-    context, events = execute(tmp_path, [item, item], profile=profile)
+    profile = ExecutionSettings(workers=[{"default": 2}])
+    context, events = execute(tmp_path, [item, item], settings=profile)
     assert context.error is None
     steps = [event for event in events if event.node is not None]
     assert sum(not event.reused for event in steps) == 1
@@ -110,8 +109,8 @@ def test_equivalent_inputs_do_not_dispatch_twice(tmp_path):
 
 def test_hard_limit_interrupts_process_and_context_survives(tmp_path):
     item = InputSet({"document": str(make_artifact(tmp_path / "source.pa"))})
-    profile = ComputeProfile(name="local", hard_time_limit=0.02)
-    context, events = execute(tmp_path, [item], profile=profile)
+    profile = ExecutionSettings(hard_time_limit=0.02)
+    context, events = execute(tmp_path, [item], settings=profile)
     assert context.error is None
     assert events[-1].state in ("failed", "partial")
     assert not events[-1].outputs
@@ -235,7 +234,7 @@ def test_soft_expiry_drains_inflight_but_not_next_input(tmp_path):
         graph,
         ArtifactStore(str(tmp_path / "store")),
         procedures={COPY.identifier: COPY},
-        profile=ComputeProfile(name="test", soft_time_limit=0.3),
+        settings=ExecutionSettings(soft_time_limit=0.3),
     ) as context:
         context.start(inputs)
     assert [outcome.state for outcome in context.outcomes] == ["completed", "partial"]

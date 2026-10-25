@@ -5,73 +5,79 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from typing import TYPE_CHECKING, Any
 
 from provium.cli.command import Command
 
-from ..arguments import apply_configuration, assignments
-from .input_set import configure_storage, open_index
+from provium_pipeline.cli.arguments import (
+    apply_configuration,
+    assignments,
+    configure_storage,
+)
+
+if TYPE_CHECKING:
+    from provium_pipeline.lookup import ResultReader
+    from provium_pipeline.planning import Plan
+    from provium_pipeline.store import ArtifactStore
 
 
 class LookupCommand(Command):
     name = "lookup"
+    group = "pipeline"
     help = "Locate a cached artifact by pipeline output reference and input set"
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
-        configure_storage(parser)
+        self.configure_storage(parser)
         parser.add_argument(
             "reference", help="pipeline.nodes.node.output or pipeline.outputs.output"
         )
         parser.add_argument("-f", "--file", action="append", default=[])
         parser.add_argument("--definition")
-        selection = parser.add_mutually_exclusive_group(required=True)
-        selection.add_argument(
-            "--input", action="append", default=[], metavar="NAME=FILE"
+        self.configure_inputs(parser)
+
+    def configure_storage(self, parser: argparse.ArgumentParser) -> None:
+        configure_storage(parser)
+
+    def prepare(
+        self, arguments: argparse.Namespace
+    ) -> tuple[Plan, ResultReader | None]:
+        from provium_pipeline.preparation import prepare_pipeline
+
+        apply_configuration(arguments)
+        if not arguments.file:
+            raise ValueError("provide -f for a local pipeline")
+        prepared = prepare_pipeline(
+            files=arguments.file,
+            scratch_directory=arguments.scratch_directory,
+            definition_reference=arguments.definition,
         )
-        selection.add_argument("--input-set", help="Registered input-set name")
-        selection.add_argument(
-            "--input-set-hash", help="Previously indexed input-set hash"
+        return prepared.plan, None
+
+    def configure_inputs(self, parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "--input", action="append", required=True, metavar="NAME=FILE"
         )
+
+    def resolve_inputs(
+        self, arguments: argparse.Namespace, store: ArtifactStore
+    ) -> dict[str, Any]:
+        from provium_pipeline.input_sets import inspect_inputs
+
+        return inspect_inputs(store, assignments(arguments.input))
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            from ...input_sets import input_set_hash, inspect_inputs
-            from ...lookup import lookup_artifact, split_selector
-            from ...persistence.factory import open_backend
-            from ...preparation import prepare_pipeline
-            from ...store import ArtifactStore
+            from provium_pipeline.input_sets import input_set_hash
+            from provium_pipeline.lookup import lookup_artifact
+            from provium_pipeline.store import ArtifactStore
 
-            apply_configuration(arguments)
-            pipeline, _ = split_selector(arguments.reference)
-            backend = None
-            if not arguments.file:
-                if not arguments.database:
-                    raise ValueError(  # noqa: TRY301
-                        "provide -f for a local pipeline or --database "
-                        "for a registered pipeline"
-                    )
-                backend = open_backend(arguments.database)
-            prepared = prepare_pipeline(
-                files=arguments.file,
-                name=None if arguments.file else pipeline,
-                backend=backend,
-                scratch_directory=arguments.scratch_directory,
-                definition_reference=arguments.definition,
-            )
+            plan, backend = self.prepare(arguments)
             with ArtifactStore(
                 arguments.store, scratch=arguments.scratch_directory
             ) as store:
-                if arguments.input:
-                    inputs = inspect_inputs(store, assignments(arguments.input))
-                else:
-                    index = backend or open_index(arguments, store)
-                    record = index.resolve_input_set(
-                        name=arguments.input_set, key=arguments.input_set_hash
-                    )
-                    inputs = record["inputs"]
-                    if input_set_hash(inputs) != record["hash"]:
-                        raise ValueError("input-set index fingerprint mismatch")  # noqa: TRY301
+                inputs = self.resolve_inputs(arguments, store)
                 artifact = lookup_artifact(
-                    prepared.plan, store, inputs, arguments.reference, backend=backend
+                    plan, store, inputs, arguments.reference, backend=backend
                 )
             if arguments.json:
                 print(
@@ -89,6 +95,6 @@ class LookupCommand(Command):
             else:
                 print(artifact.location)
         except Exception as error:
-            print(f"provium pipeline lookup: {error}", file=sys.stderr)
+            print(f"provium {self.group} lookup: {error}", file=sys.stderr)
             return 2
         return 0

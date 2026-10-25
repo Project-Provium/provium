@@ -8,7 +8,7 @@ import sys
 
 from provium.cli.command import Command
 
-from ..arguments import configure_graph, require_pipeline
+from provium_pipeline.cli.arguments import assert_pipeline_is_selected, configure_graph
 
 
 class InspectCommand(Command):
@@ -20,21 +20,15 @@ class InspectCommand(Command):
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            require_pipeline(arguments)
-            from ...persistence.factory import open_backend
-            from ...preparation import prepare_pipeline
+            assert_pipeline_is_selected(arguments)
+            from provium_pipeline.preparation import prepare_pipeline
 
             print(
                 json.dumps(
                     prepare_pipeline(
                         files=arguments.file,
-                        name=arguments.pipeline,
-                        backend=open_backend(arguments.database)
-                        if arguments.pipeline
-                        else None,
                         scratch_directory=arguments.scratch_directory,
                         definition_reference=arguments.definition,
-                        profile_name=arguments.profile,
                         workers=[
                             {key: int(count)}
                             for value in arguments.workers

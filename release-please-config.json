@@ -5,11 +5,25 @@
       "package-name": "provium",
       "release-type": "python",
       "extra-files": [
-        {"type": "generic", "path": "/packages/provium-pipeline/pyproject.toml"}
+        {
+          "type": "generic",
+          "path": "/packages/provium-pipeline/pyproject.toml"
+        }
       ]
     },
     "packages/provium-pipeline": {
       "package-name": "provium-pipeline",
+      "release-type": "python",
+      "initial-version": "0.1.0",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "/packages/provium-dispatch/pyproject.toml"
+        }
+      ]
+    },
+    "packages/provium-dispatch": {
+      "package-name": "provium-dispatch",
       "release-type": "python",
       "initial-version": "0.1.0"
     }

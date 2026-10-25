@@ -38,10 +38,12 @@ nav:
       - Configuration: guides/configuration.md
       - Command-line tools: guides/cli.md
       - Pipelines: guides/pipelines.md
+      - Dispatch: guides/dispatch.md
   - API reference:
       - Provium core: reference/provium.md
       - Provium CLI: reference/provium-cli.md
       - Provium Pipeline: reference/provium-pipeline.md
+      - Provium Dispatch: reference/provium-dispatch.md
 
 markdown_extensions:
   - admonition

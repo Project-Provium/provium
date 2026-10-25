@@ -14,7 +14,7 @@ def configure_configuration(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config",
         action="append",
-        type=_validate_override,
+        type=_assert_override_is_valid,
         default=[],
         dest=f"{_PREFIX}{parser.prog}",
         metavar="KEY.PATH=VALUE",
@@ -22,7 +22,7 @@ def configure_configuration(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _validate_override(value: str) -> str:
+def _assert_override_is_valid(value: str) -> str:
     from provium.configuration import parse_override
 
     parse_override(value)

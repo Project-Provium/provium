@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from provium.procedure.config import ConfigurationSnapshot
 from provium.procedure.discovery import discover_procedure_catalogs
 from provium.provenance import ProcedureRecord
 
-from .models import (
-    ComputeProfile,
+from provium_pipeline.models import (
+    ExecutionSettings,
     PipelineConfiguration,
     PipelineDefinition,
     Settings,
@@ -39,7 +39,7 @@ def build_plan(
         configuration.model_dump_json()
     )
     if definition is not None:
-        definition = PipelineDefinition.from_snapshot(definition.snapshot())
+        definition = type(definition).from_snapshot(definition.snapshot())
     catalog: Any = discover_procedure_catalogs() if procedures is None else None
     resolved: dict[str, Any] = {}
     records: dict[str, ProcedureRecord] = {}
@@ -139,6 +139,71 @@ def build_plan(
     )
 
 
+def select_targets(plan: Plan, targets: list[str]) -> Plan:
+    """Project a validated plan onto requested aliases or node-output references."""
+    if not targets:
+        raise ValueError("at least one target must be requested")
+    outputs: dict[str, str] = {}
+    available = {
+        f"$nodes.{node}.{output}"
+        for node, fields in plan.output_types.items()
+        for output in fields
+    } | {f"$inputs.{name}" for name in plan.input_types}
+    for target in targets:
+        reference = plan.configuration.targets.get(target)
+        if reference is None and target.startswith("nodes."):
+            reference = "$" + target
+        if reference not in available:
+            raise ValueError(f"unknown target or node output: {target}")
+        outputs[target] = reference
+
+    needed: set[str] = set()
+    inputs: set[str] = set()
+    pending = list(outputs.values())
+    while pending:
+        reference = pending.pop()
+        if reference.startswith("$inputs."):
+            inputs.add(reference[8:])
+            continue
+        name = reference.split(".")[1]
+        if name in needed:
+            continue
+        needed.add(name)
+        node = plan.configuration.nodes[name]
+        for binding in (*node.inputs.values(), *node.setup_inputs.values()):
+            pending.extend(refs(binding))
+    configuration = plan.configuration.model_copy(
+        update={
+            "inputs": {
+                name: kind for name, kind in plan.input_types.items() if name in inputs
+            },
+            "nodes": {
+                name: node
+                for name, node in plan.configuration.nodes.items()
+                if name in needed
+            },
+            "outputs": outputs,
+        },
+        deep=True,
+    )
+    return replace(
+        plan,
+        configuration=configuration,
+        input_types=dict(configuration.inputs),
+        order=[name for name in plan.order if name in needed],
+        procedures={
+            name: value for name, value in plan.procedures.items() if name in needed
+        },
+        records={name: value for name, value in plan.records.items() if name in needed},
+        configurations={
+            name: value for name, value in plan.configurations.items() if name in needed
+        },
+        output_types={
+            name: value for name, value in plan.output_types.items() if name in needed
+        },
+    )
+
+
 def matches(graph: PipelineConfiguration, node: str, selectors: list[str]) -> bool:
     tags = graph.nodes[node].tags
     return any(
@@ -152,7 +217,7 @@ def matches(graph: PipelineConfiguration, node: str, selectors: list[str]) -> bo
 
 def resolve_settings(
     graph: PipelineConfiguration,
-    profile: ComputeProfile,
+    profile: ExecutionSettings,
     *,
     only: list[str],
     force: list[str],
@@ -175,7 +240,7 @@ def resolve_settings(
                 raise ValueError(f"unknown node: {selector}")
             selector = f"pipelines.{graph.name}.{selector}"
         rules.append({selector: value})
-    ComputeProfile(name="overrides", workers=rules)
+    ExecutionSettings(workers=rules)
     for rule in (
         profile.workers + profile.soft_time_limits + profile.hard_time_limits + rules
     ):

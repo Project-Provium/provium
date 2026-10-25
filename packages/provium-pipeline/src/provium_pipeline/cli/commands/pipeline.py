@@ -3,18 +3,12 @@
 from provium.cli.catalog import CommandCatalog
 from provium.cli.group import CommandGroup
 
-from .enqueue import EnqueueCommand
-from .input_set import InputSetCommand
-from .inspect import InspectCommand
-from .list import ListCommand
-from .lookup import LookupCommand
-from .queue import QueueCommand
-from .register import RegisterCommand
-from .retry import RetryCommand
-from .run import RunCommand
-from .status import StatusCommand
-from .unregister import UnregisterCommand
-from .validate import ValidateCommand
+from provium_pipeline.cli.commands.cache import CacheCommand
+from provium_pipeline.cli.commands.inspect import InspectCommand
+from provium_pipeline.cli.commands.lookup import LookupCommand
+from provium_pipeline.cli.commands.run import RunCommand
+from provium_pipeline.cli.commands.status import StatusCommand
+from provium_pipeline.cli.commands.validate import ValidateCommand
 
 
 class PipelineCommand(CommandGroup):
@@ -24,17 +18,11 @@ class PipelineCommand(CommandGroup):
 
 
 for command in (
-    InputSetCommand,
+    CacheCommand,
     LookupCommand,
-    ListCommand,
-    QueueCommand,
-    UnregisterCommand,
     RunCommand,
-    RegisterCommand,
-    EnqueueCommand,
     StatusCommand,
     ValidateCommand,
     InspectCommand,
-    RetryCommand,
 ):
     PipelineCommand.catalog.register(command)

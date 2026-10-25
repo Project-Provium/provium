@@ -10,13 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, cast
 from uuid import uuid4
 
+from provium.artifact.binding import ArtifactWriteBinding
+from provium.artifact.header import ArtifactHeader, encode_header
+from provium.artifact.region import BodyRegion
+from provium.artifact.writer import ArtifactWriter
 from provium.context import current_context
 from provium.files import publish_file
-
-from .binding import ArtifactWriteBinding
-from .header import ArtifactHeader, encode_header
-from .region import BodyRegion
-from .writer import ArtifactWriter
 
 if TYPE_CHECKING:
     from provium.session import Session
@@ -56,7 +55,7 @@ class StagedArtifact[WriterT: ArtifactWriter]:
 
     def finalize_body(self) -> tuple[int, str]:
         """Close the body and return its final length and SHA-256 digest."""
-        self._check_available()
+        self._assert_available()
         if self._body_summary is not None:
             return self._body_summary
         self.writer.close()
@@ -112,7 +111,7 @@ class StagedArtifact[WriterT: ArtifactWriter]:
         """Abandon the output when its owning session closes."""
         self.abort()
 
-    def _check_available(self) -> None:
+    def _assert_available(self) -> None:
         if self._aborted:
             raise RuntimeError("staged artifact has been aborted")
         if not self._owner.active or current_context() is not self._owner:
@@ -125,7 +124,7 @@ def stage_artifact[WriterT: ArtifactWriter](
     owner: Session,
 ) -> StagedArtifact[WriterT]:
     """Create an adjacent temporary container for one typed output."""
-    _validate_staging(binding, metadata, owner)
+    _assert_staging_is_valid(binding, metadata, owner)
     destination = binding.path
     if isinstance(destination, Path):
         temporary_path = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
@@ -170,7 +169,7 @@ def stage_artifact[WriterT: ArtifactWriter](
     return staged
 
 
-def _validate_staging(
+def _assert_staging_is_valid(
     binding: ArtifactWriteBinding[Any],
     metadata: ArtifactHeader,
     owner: Session,

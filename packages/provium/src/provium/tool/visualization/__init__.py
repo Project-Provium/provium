@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ...provenance import ArtifactLineage
-from . import graphviz, mermaid
-from .errors import BackendUnavailableError, UnsupportedFormatError
+from provium.provenance import ArtifactLineage
+from provium.tool.visualization import graphviz, mermaid
+from provium.tool.visualization.errors import (
+    BackendUnavailableError,
+    UnsupportedFormatError,
+)
 
 lineage_to_dot = graphviz.lineage_to_dot
 lineage_to_mermaid = mermaid.lineage_to_mermaid
@@ -16,7 +19,7 @@ _render_mermaid = mermaid.render
 _Renderer = Callable[..., bytes]
 
 
-def _require_lineage(lineage: ArtifactLineage) -> None:
+def _assert_lineage_is_valid(lineage: ArtifactLineage) -> None:
     if not isinstance(lineage, ArtifactLineage):
         raise TypeError("lineage must be an ArtifactLineage")
 
@@ -31,7 +34,7 @@ def render_lineage(
     show_execution_identities: bool = False,
 ) -> bytes:
     """Render an artifact lineage with the selected optional backend."""
-    _require_lineage(lineage)
+    _assert_lineage_is_valid(lineage)
     renderers: dict[str, _Renderer] = {
         "graphviz": _render_graphviz,
         "mermaid": _render_mermaid,

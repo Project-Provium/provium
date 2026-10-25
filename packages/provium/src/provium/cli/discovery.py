@@ -5,8 +5,12 @@ from __future__ import annotations
 from importlib import metadata
 from typing import Any
 
-from .catalog import CommandCatalog
-from .plugin import CLI_PLUGIN_API_VERSION, CLI_PLUGIN_ENTRY_POINT_GROUP, CLIPlugin
+from provium.cli.catalog import CommandCatalog
+from provium.cli.plugin import (
+    CLI_PLUGIN_API_VERSION,
+    CLI_PLUGIN_ENTRY_POINT_GROUP,
+    CLIPlugin,
+)
 
 ENTRY_POINT_GROUP = CLI_PLUGIN_ENTRY_POINT_GROUP
 
@@ -44,7 +48,7 @@ def discover_command_catalogs() -> CommandCatalog:
     if _discovered_catalog is not None:
         return _discovered_catalog
 
-    from .commands import catalog as core_catalog
+    from provium.cli.commands import catalog as core_catalog
 
     discovered = CommandCatalog()
     for command in core_catalog.commands.values():

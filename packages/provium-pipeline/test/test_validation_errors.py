@@ -4,7 +4,7 @@ import pytest
 from test_runtime import configuration
 
 from provium_pipeline import (
-    ComputeProfile,
+    ExecutionSettings,
     PipelineConfiguration,
     PipelineDefinition,
     load_documents,
@@ -15,7 +15,7 @@ from provium_pipeline.planning import build_plan
 @pytest.mark.parametrize("name", ["", "with.dot", "with space", "a/b"])
 def test_invalid_names(name):
     with pytest.raises(ValueError):
-        ComputeProfile(name=name)
+        PipelineConfiguration(name=name, inputs={}, nodes={}, outputs={})
 
 
 @pytest.mark.parametrize(
@@ -23,18 +23,17 @@ def test_invalid_names(name):
 )
 def test_invalid_rule_structure(rules):
     with pytest.raises(ValueError):
-        ComputeProfile(name="test", workers=rules)
+        ExecutionSettings(workers=rules)
 
 
 @pytest.mark.parametrize("limit", [0, -1, True, float("inf"), float("nan")])
 def test_invalid_time_limits(limit):
     with pytest.raises(ValueError):
-        ComputeProfile(name="test", soft_time_limit=limit)
+        ExecutionSettings(soft_time_limit=limit)
 
 
 def test_null_limit_clears_and_other_pipeline_rules_are_ignored():
-    profile = ComputeProfile(
-        name="test",
+    profile = ExecutionSettings(
         soft_time_limits=[
             {"default": 4},
             {"tags.x": None},
@@ -50,7 +49,9 @@ def test_null_limit_clears_and_other_pipeline_rules_are_ignored():
         ("- not-a-document", TypeError),
         ("kind: Unknown\nname: x", ValueError),
         (
-            "kind: ComputeProfile\nname: x\n---\nkind: ComputeProfile\nname: x",
+            "kind: PipelineConfiguration\nname: x\ninputs: {}\nnodes: {}\noutputs: {}\n"
+            "---\nkind: PipelineConfiguration\nname: x\n"
+            "inputs: {}\nnodes: {}\noutputs: {}\n",
             ValueError,
         ),
     ],

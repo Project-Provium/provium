@@ -7,8 +7,7 @@ from provium import (
     ProcedureCatalog,
 )
 from provium.cli import CommandCatalog
-
-from .contracts import (
+from provium_example_plugin.contracts import (
     FAILING_PROCEDURE,
     SOURCE_PROCEDURE,
     TEXT_ARTIFACT,

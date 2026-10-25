@@ -9,14 +9,13 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
+from provium.artifact.binding import ArtifactReadBinding, ArtifactWriteBinding
+from provium.artifact.reader import ArtifactReader
+from provium.artifact.writer import ArtifactWriter
 from provium.files import normalize_location
 
-from .binding import ArtifactReadBinding, ArtifactWriteBinding
-from .reader import ArtifactReader
-from .writer import ArtifactWriter
 
-
-def _require_text(value: object, field_name: str) -> None:
+def _assert_text_is_valid(value: object, field_name: str) -> None:
     if not isinstance(value, str):
         raise TypeError(f"{field_name} must be a string")
     if not value.strip():
@@ -66,9 +65,9 @@ class ArtifactDefinition[ArtifactT: Artifact[Any, Any]]:
     description: str
 
     def __post_init__(self) -> None:
-        _require_text(self.identifier, "artifact definition identifier")
-        _require_text(self.target, "artifact definition target")
-        _require_text(self.description, "artifact definition description")
+        _assert_text_is_valid(self.identifier, "artifact definition identifier")
+        _assert_text_is_valid(self.target, "artifact definition target")
+        _assert_text_is_valid(self.description, "artifact definition description")
 
         module_name, separator, attribute_path = self.target.partition(":")
         if (

@@ -10,21 +10,21 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, BinaryIO, Protocol, Self, cast
 
-from .artifact.header import (
+from provium.artifact.header import (
     CONTAINER_VERSION,
     MAGIC,
     PREFIX_SIZE,
     ArtifactHeader,
     decode_header,
 )
-from .artifact.reader import ArtifactReader
-from .artifact.region import BodyRegion
-from .context import activate_context, current_context
-from .files import local_file
-from .provenance import ArtifactLineage, ArtifactRecord, ArtifactReference
+from provium.artifact.reader import ArtifactReader
+from provium.artifact.region import BodyRegion
+from provium.context import activate_context, current_context
+from provium.files import local_file
+from provium.provenance import ArtifactLineage, ArtifactRecord, ArtifactReference
 
 if TYPE_CHECKING:
-    from .artifact.binding import ArtifactReadBinding
+    from provium.artifact.binding import ArtifactReadBinding
 
 
 class _Closeable(Protocol):
@@ -129,8 +129,10 @@ class Session:
         try:
             header, file_length = self._read_header(stream)
             expected_identifier = binding.artifact.definition.identifier
-            self._validate_opened_header(header, file_length, expected_identifier)
-            self._validate_expected_identity(header, expected_identity)
+            self._assert_opened_header_is_valid(
+                header, file_length, expected_identifier
+            )
+            self._assert_expected_identity_matches(header, expected_identity)
             self._verify_digest(
                 stream, header.body_offset, header.body_length, header.body_digest
             )
@@ -162,7 +164,7 @@ class Session:
         return reader
 
     @staticmethod
-    def _validate_expected_identity(
+    def _assert_expected_identity_matches(
         header: ArtifactHeader,
         expected_identity: str | None,
     ) -> None:
@@ -191,7 +193,7 @@ class Session:
         return header, stream.tell()
 
     @staticmethod
-    def _validate_opened_header(
+    def _assert_opened_header_is_valid(
         header: ArtifactHeader,
         file_length: int,
         expected_identifier: str,

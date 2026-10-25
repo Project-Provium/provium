@@ -10,11 +10,7 @@ import pytest
     ("module", "excluded"),
     [
         (
-            "provium_pipeline.persistence.interface",
-            ["provium_pipeline.models", "provium"],
-        ),
-        (
-            "provium_pipeline.persistence.factory",
+            "provium_pipeline.coordination",
             ["provium_pipeline.models", "provium"],
         ),
         ("provium_pipeline.models", ["provium", "yaml"]),
@@ -24,10 +20,6 @@ import pytest
             ["provium_pipeline.persistence", "provium", "yaml"],
         ),
         ("provium_pipeline.runtime", ["provium_pipeline.workers", "multiprocessing"]),
-        (
-            "provium_pipeline.persistence.backends.postgres",
-            ["provium_pipeline.planning"],
-        ),
     ],
 )
 def test_module_imports_only_its_dependencies(module, excluded):

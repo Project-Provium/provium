@@ -6,8 +6,7 @@ from threading import Event
 from typing import ClassVar
 
 from provium import Procedure, ProcedureProcessContext, ProcedureSetupContext
-
-from .contracts import (
+from support.provium_test_pipeline.contracts import (
     FAILING_PROCEDURE,
     SOURCE_PROCEDURE,
     TRANSFORM_PROCEDURE,
@@ -17,7 +16,7 @@ from .contracts import (
     TransformConfig,
     TransformContract,
 )
-from .import_probe import record_implementation_import
+from support.provium_test_pipeline.import_probe import record_implementation_import
 
 record_implementation_import("procedures")
 

@@ -15,14 +15,19 @@ def test_backend_dependencies_are_optional():
         for requirement in project["dependencies"]
     )
     extras = project["optional-dependencies"]
-    assert "psycopg[binary]>=3.2" in extras["postgres"]
+    assert "postgres" not in extras
     assert "boto3>=1.35" in extras["s3"]
 
 
 def test_local_execution_without_optional_drivers(tmp_path):
+    from test_store import make_artifact
+
+    source = make_artifact(tmp_path / "source.pa")
     path = tmp_path / "pipeline.yaml"
     path.write_text(
-        "kind: PipelineConfiguration\nname: local\ninputs: {}\nnodes: {}\noutputs: {}\n"
+        "kind: PipelineConfiguration\nname: local\n"
+        "inputs: {document: provium_text_pipeline_example.DocumentV1}\n"
+        "nodes: {}\ntargets: {copy: '$inputs.document'}\n"
     )
     code = f"""
 import sys
@@ -37,6 +42,8 @@ class BlockDrivers(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, BlockDrivers())
 from provium.cli import run
 assert run(["pipeline", "run", "-f", {str(path)!r},
+            "--input", {"document=" + str(source)!r},
+            "--output", {"copy=" + str(tmp_path / "copy.pa")!r},
             "--store", {str(tmp_path / "store")!r}]) == 0
 """
     subprocess.run([sys.executable, "-c", code], check=True)

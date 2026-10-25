@@ -401,7 +401,7 @@ def test_procedure_contract_cannot_override_compilation_hooks() -> None:
             Outputs = Inputs  # type: ignore[assignment]
 
             @classmethod
-            def _validate_io_declarations(cls) -> None:
+            def _assert_io_declarations_are_valid(cls) -> None:
                 pass
 
 

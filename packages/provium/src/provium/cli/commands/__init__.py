@@ -1,9 +1,9 @@
 """Commands provided by the Provium CLI distribution."""
 
-from ..catalog import CommandCatalog
-from .artifact import ArtifactCommand
-from .execute import ExecuteCommand
-from .graph import GraphCommand
+from provium.cli.catalog import CommandCatalog
+from provium.cli.commands.artifact import ArtifactCommand
+from provium.cli.commands.execute import ExecuteCommand
+from provium.cli.commands.graph import GraphCommand
 
 catalog = CommandCatalog()
 catalog.register(ExecuteCommand)

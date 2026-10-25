@@ -7,9 +7,9 @@ from provium import ArtifactCatalog, ArtifactDefinition
 _path = "provium_text_pipeline_example"
 
 if TYPE_CHECKING:
-    from .document import DocumentV1Artifact
-    from .tokens import TokensV1Artifact
-    from .word_count import WordCountV1Artifact
+    from provium_text_pipeline_example.artifact.document import DocumentV1Artifact
+    from provium_text_pipeline_example.artifact.tokens import TokensV1Artifact
+    from provium_text_pipeline_example.artifact.word_count import WordCountV1Artifact
 
 DOCUMENT: ArtifactDefinition[DocumentV1Artifact] = ArtifactDefinition(
     identifier=f"{_path}.DocumentV1",

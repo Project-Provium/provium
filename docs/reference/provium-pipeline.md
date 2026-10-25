@@ -1,195 +1,148 @@
 # Pipeline API reference
 
-Import domain APIs from their owning modules. PostgreSQL and S3 drivers are
-optional and load only when selected. See the [pipeline guide](../guides/pipelines.md)
-for installation and end-to-end examples.
+The basic package owns graph execution and extension contracts. Durable registry and queue APIs live in [Dispatch](provium-dispatch.md). See the [pipeline guide](../guides/pipelines.md) for runnable workflows.
 
-## Models and documents
+## Models and planning
 
 | Import | Purpose |
 | --- | --- |
-| `provium_pipeline.models.PipelineConfiguration` | Validated graph, declared inputs, nodes, and outputs. |
-| `provium_pipeline.models.ComputeProfile` | Worker counts and time limits. |
-| `provium_pipeline.models.PipelineDefinition` | Application input/output contract and allowed profiles. |
-| `provium_pipeline.documents.load_documents` | Load local or S3 YAML into configuration/profile objects. |
-
-`load_documents(paths, *, scratch_directory=None)` accepts multiple paths and
-multi-document YAML. Model imports do not load YAML or file-handling modules;
-the high-level `provium_pipeline.load_documents` export loads them on demand.
-
-A definition can use artifact identifiers or artifact definitions:
+| `provium_pipeline.models.PipelineConfiguration` | Typed graph, inputs, nodes, and public outputs; YAML accepts `targets` or legacy `outputs`. |
+| `provium_pipeline.models.Node` | Procedure identifier, configuration, input/setup bindings, and tags. |
+| `provium_pipeline.models.ExecutionSettings` | Worker and time-budget rules without a named compute profile. |
+| `provium_pipeline.models.PipelineDefinition` | Frozen application input/output contract. |
+| `provium_pipeline.documents.load_documents` | Local/S3 YAML loading. |
+| `provium_pipeline.planning.build_plan` | Graph/contract validation and execution order. |
 
 ```python
 from provium_pipeline.models import PipelineDefinition
 
 definition = PipelineDefinition(
     inputs={"document": "provium_text_pipeline_example.DocumentV1"},
-    outputs={"tokens": "provium_text_pipeline_example.TokensV1"},
-    profiles=frozenset({"local"}),
+    outputs={
+        "tokens": "provium_text_pipeline_example.TokensV1",
+        "word_count": "provium_text_pipeline_example.WordCountV1",
+    },
 )
 ```
 
-Select it using `--definition application:definition`, or publish an entry
-point whose name matches the graph:
+Contracts accept artifact identifiers or definitions. Select one with `--definition application:definition`, or publish a graph-named entry point:
 
 ```toml
 [project.entry-points."provium.pipeline.definitions"]
-tokenize-documents = "application:definition"
+text-processing = "application:definition"
 ```
 
-`provium_pipeline.definitions.load_definition(name, reference)` resolves an
-explicit module/attribute reference, or discovers the named entry point when
-`reference` is `None`. Without a match it returns `None`; duplicate matches are
-errors. A supplied definition must agree with the graph's declared input types
-and restricts which named profiles can be selected.
+`provium_pipeline.definitions.load_definition(name, reference)` resolves an explicit reference or discovers the named entry point. No match returns `None`; duplicate matches fail. Basic definitions have no profile allowlist.
 
 ## Preparation
 
-`provium_pipeline.preparation.prepare_pipeline` accepts keyword arguments:
+`provium_pipeline.preparation.prepare_pipeline` accepts keyword-only `files`, `scratch_directory`, `definition_reference`, `workers`, `only`, and `force`. It selects exactly one graph and returns a `PreparedPipeline` with `plan`, `definition`, `overrides`, and resolved `settings`; `summary()` produces JSON-compatible planning information. It does not start workers or open a database.
 
-| Argument | Meaning |
+`load_pipeline(*, files=(), scratch_directory=None)` selects the graph without constructing its execution plan. Registered names and profiles require dispatch preparation.
+
+::: provium_pipeline.preparation.prepare_pipeline
+
+## Requests and publication
+
+`provium_pipeline.requests.InputSet(inputs)` is the input-only request form, retained for programmatic cache-only execution. `ExecutionRequest(inputs, destinations)` adds a nonempty destination mapping. Input and destination mappings are snapshotted. Destinations use public target names or `nodes.NODE.PORT`.
+
+`RequestSource` is an iterable yielding `ExecutionRequest` objects. `CSVSource(stream)` implements it for caller-owned text streams, with `inputs.NAME` headers and destination headers. Empty destination cells omit publication for that row. Source adapters should produce the same validated request objects rather than introduce format-specific scheduling.
+
+`provium_pipeline.publication.Publisher` defines:
+
+| Method | Contract |
 | --- | --- |
-| `files` | YAML paths for a local graph and profiles; defaults to an empty sequence. |
-| `name` | Registered graph name, used with `backend` instead of files. |
-| `backend` | Injected `PersistenceBackend`; preparation never opens a database itself. |
-| `scratch_directory` | Temporary download directory. |
-| `definition_reference` | Optional `module:attribute` reference. |
-| `profile_name` | Profile to select from documents or persistence. |
-| `workers` | List of selector/count mappings, such as `[{"nodes.tokenize": 2}]`. |
-| `only`, `force` | Lists of node/tag selectors. |
+| `assert_requests_are_valid(requests)` | Validate the complete request collection before execution. |
+| `publish(artifact, destination, *, overwrite=False)` | Materialize/publish an artifact and return its destination reference. |
 
-The result is a `PreparedPipeline` containing `plan`, `definition`, `profile`,
-`backend`, `overrides`, and resolved `settings`. Its `summary()` returns a
-JSON-compatible mapping. Preparation validates contracts and settings without
-starting workers or creating an artifact store.
+`FilePublisher(store)` supplies local/S3 artifact copying and destination compatibility checks. Custom publishers own destination validation and overwrite semantics. Publication can partially succeed; a failure must not be reported as a successful request.
 
-`load_pipeline(*, files=(), name=None, backend=None, scratch_directory=None)`
-selects a configuration without preparing its execution plan.
-`provium_pipeline.planning.build_plan(configuration, definition=None,
-procedures=None)` validates an already-loaded graph.
+::: provium_pipeline.requests.ExecutionRequest
 
-## Execution and artifacts
+## Execution lifecycle
 
-`provium_pipeline.runtime.ExecutionContext` takes a configuration and an
-`ArtifactStore`. Optional parameters include `definition`, `procedures`,
-`profile`, `workers`, `only`, `force`, `backend`, `idle_wait`, `log_path`, and
-`verify_artifacts` (default `False`). Set `verify_artifacts=True` to read and
-verify cached outputs on reuse; otherwise execution trusts committed metadata.
-Logs stream to stderr by default (`context.log_path` is `None`). Pass `log_path`
-to write logs to a file instead.
-Pass prepared values explicitly; preparing a graph does not start execution.
+`provium_pipeline.runtime.ExecutionContext(configuration, store, ...)` accepts:
 
-`InputSet(inputs)` maps declared graph inputs to artifact locations or supported
-artifact values. `start(input_sets=(), *, on_step_finished=None,
-on_pipeline_finished=None)` starts once and returns immediately.
-Context exit joins work; executor failures can raise at shutdown. Individual
-input failures are represented by outcomes.
+| Option | Meaning |
+| --- | --- |
+| `definition`, `procedures` | Application contract and optional procedure definitions. |
+| `settings`, `workers` | Execution settings and worker overrides. |
+| `only`, `force` | Execution eligibility and forced recomputation selectors. |
+| `coordinator` | Optional computation ownership/result implementation. |
+| `idle_wait` | Idle polling delay. |
+| `log_path` | Explicit log file; omitted logs go to stderr. |
+| `verify_artifacts=False` | Eagerly verify cached output bodies on reuse. |
+| `strategy="stage"` | `stage` or `item` scheduling. |
+| `targets`, `publisher` | Target selection and publication implementation. |
 
-`Outcome` exposes `input_set`, `state`, `outputs`, `node`, `reused`, and
-`error`. Read completed outcomes from `execution.outcomes`. Callback delivery
-is best effort; callbacks should not be the sole record of persistent work.
+Call `start(input_sets=(), *, on_step_finished=None, on_pipeline_finished=None)` inside the context. It starts once and returns immediately. Context exit joins workers and can raise executor failures. Individual request failures are represented in `execution.outcomes`.
 
-`provium_pipeline.store.ArtifactStore(location, *, scratch=None)` manages
-verified local/S3 artifacts. Use it as a context manager. An `Artifact` has
-a durable `location`, an optional local `path`, an `identity`, and a `fingerprint`.
-Cached references have `path=None` until materialized. Call
-`store.materialize(artifact)` to obtain a fetched, verified artifact with a local
-path before reading its bytes. `store.restore(outputs, expected)` loads committed
-references without file I/O; `store.verify(outputs, expected)` always verifies
-contents. Downloaded S3 paths belong to the store and must be used before it closes.
+`Outcome` contains `input_set`, `state`, `outputs`, `node`, `reused`, and `error`. Callbacks are serialized through dispatching and are best effort; do not use callbacks as the sole durable record.
 
-## Persistence
+::: provium_pipeline.runtime.ExecutionContext
 
-Contracts live in `provium_pipeline.persistence.interface`:
+::: provium_pipeline.runtime.Outcome
 
-- `QueueBackend` provides execution coordination, leases, and results.
-- `PersistenceBackend` extends it with registry and queued-input management.
-- `Lease` identifies a computation's current ownership generation.
+## Artifact cache
 
-`ExecutionContext` accepts any implementation of `QueueBackend`.
-For the supplied backend, either select it through the factory:
+`provium_pipeline.store.ArtifactStore(location, *, scratch=None)` implements `ArtifactCache` for local/S3 artifacts. Use it as a context manager. An `Artifact` carries `location`, optional local `path`, `identity`, and `fingerprint`. Cached references can have `path=None`.
 
-```python
-from provium_pipeline.persistence.factory import Backend, open_backend
+| ArtifactCache member | Responsibility |
+| --- | --- |
+| `namespace`, `scratch`, `root` | Stable coordination namespace, local staging directory, optional local root. |
+| `writer_lock(*, shared=False)` | Scoped store exclusion. |
+| `inspect(location)` | Inspect and verify an input artifact. |
+| `stage(computation, paths, expected)` | Store output artifacts and return durable metadata. |
+| `commit(computation, outputs)` | Accept a direct result manifest. |
+| `manifest(computation)` | Read a direct accepted result, if any. |
+| `restore(outputs, expected)` | Reconstruct references from metadata without body reads. |
+| `materialize(artifact)` | Obtain a local, verified artifact for consumption. |
+| `verify(outputs, expected)` | Eagerly materialize and verify outputs. |
 
-backend = open_backend(
-    "postgresql://localhost/provium", backend=Backend.Postgres
-)
-```
+Downloaded paths belong to the store and expire when it closes. A custom cache can store bytes elsewhere, including a database, but must preserve identity verification, accepted-result consistency, and local materialization for procedure readers. No database-blob cache is supplied.
 
-or import the implementation explicitly:
+::: provium_pipeline.store.ArtifactCache
 
-```python
-from provium_pipeline.persistence.backends.postgres import PostgresBackend
+## Coordination and maintenance
 
-backend = PostgresBackend("postgresql://localhost/provium")
-```
+`provium_pipeline.coordination.Coordinator` separates computation ownership from byte storage:
 
-Install `provium-pipeline[postgres]` first. PostgreSQL is currently the only
-supplied persistence implementation. Backend selectors are enum members, not
-strings. There is no `provium_pipeline.database` facade or root-level
-`PostgresBackend` export.
+- `result(namespace, key)` reads accepted outputs.
+- `acquire(namespace, key, run, *, force=False, ttl=60, input_id=None)` returns a lease or `None`.
+- `renew(lease, *, ttl=60)` extends ownership.
+- `complete(lease, outputs)` conditionally accepts results.
+- `fail(lease, error)` records failure.
 
-## Application settings
+A `Lease` identifies namespace, key, owner, generation, and run. Implementations must fence stale owners when completing work. Supplying a coordinator replaces direct store-level execution locking; the integration must supply appropriate exclusion and maintenance coordination.
 
-The CLI consumes `pipeline.database`, `pipeline.store`, and
-`pipeline.scratch_directory` from the shared core configuration system.
-These defaults apply to CLI execution; Python APIs continue to accept explicit
-arguments and do not automatically read user or project configuration.
-See [Configuration](../guides/configuration.md) for files, environment overrides,
-and the global `--config KEY.PATH=VALUE` option.
+`WorkQueue.pending(...)` and `progress(identity, state, detail)` define queue consumption separately. Durable registration/admission extends these contracts in dispatch.
 
-## CLI extensions
+`provium_pipeline.cache.CacheInventory` provides `guard()`, `entries()`, and `remove(key)`. `FileCache(store)` implements local inventory. Entries expose computation `key`, byte `size`, and modification timestamp. `MaintenanceGuard.hold(namespace)` excludes conflicting activity; `forget(namespace, keys)` invalidates accepted results before removal. A custom backend must keep admission and cleanup mutually safe, not merely check for readers before taking an unrelated lock.
 
-Pipeline commands are ordinary core `Command` classes with their own
-`configure(parser)` and `execute(arguments)` methods. They are registered under
-a `CommandGroup` named `pipeline`.
+::: provium_pipeline.cache.CacheInventory
 
-Other packages can contribute to this group, or arbitrarily nested groups,
-through `provium.cli.command_catalogs` entry points. Matching group paths merge
-across packages; duplicate leaf command names are errors. Keep constructors and
-argument configuration lightweight and import execution dependencies after
-argument validation. See the [CLI API reference](provium-cli.md).
+::: provium_pipeline.cache.MaintenanceGuard
 
-## Queue selection API
+## Input fingerprints and lookup
 
-Queue operations accept a keyword-only `queue_group: str = "default"`:
+`provium_pipeline.input_sets.inspect_inputs(store, bindings)` returns verified named location/identity/fingerprint records. `input_set_hash(records)` hashes logical names and fingerprints only.
 
-- `backend.enqueue(pipeline, inputs, queue_group="priority")`
-- `backend.pending(pipeline, after=0, limit=100, include_finished=False, queue_group="priority")`
-- `backend.retry(pipeline, queue_group="priority")`
-- `backend.queue_info(pipeline=None, queue_group="priority")`
+`provium_pipeline.lookup.lookup_artifact(plan, store, inputs, selector, *, backend=None)` resolves `pipeline.nodes.node.port` or `pipeline.outputs.alias`. The optional `ResultReader` backend supplies `result(namespace, key)`; otherwise lookup reads store manifests. It returns an artifact reference without materializing its body and raises when a required result is unavailable. Persistent input-set indexes belong to dispatch.
 
-`queue_info` summaries include `pipeline`, `queue`, `total`, and `states`.
-Pending rows include their `queue_group`. Input IDs remain globally unique, so
-`progress` and lease admission continue to use the input ID.
+::: provium_pipeline.lookup.lookup_artifact
 
-Pass `queue_group="priority"` to `ExecutionContext` to consume that group when
-using a backend. Python calls do not read CLI configuration; the omitted argument
-always selects `default`. Custom persistence implementations must accept the new
-keyword and restrict reads and retries to the selected group.
-See [Named queues](../guides/pipelines.md#named-queues) for CLI and migration details.
+## CLI surface
 
-## Input-set index and lookup
+| Command | Purpose |
+| --- | --- |
+| `pipeline validate -f FILE` | Validate graph and contracts. |
+| `pipeline inspect -f FILE` | Inspect prepared execution. |
+| `pipeline status -f FILE --input NAME=PATH` | Inspect reusable computation state; `--outputs` includes output information. |
+| `pipeline run -f FILE --input NAME=PATH --output TARGET=PATH` | Execute and publish one request. |
+| `pipeline run -f FILE --csv FILE` | Execute per-row inputs/destinations. |
+| `pipeline lookup REF -f FILE --input NAME=PATH` | Locate cached intermediate or public output. |
+| `pipeline cache clear` | Clear eligible local computation entries. |
 
-`provium_pipeline.input_sets.inspect_inputs(store, bindings)` returns verified
-named location/identity/fingerprint records. `input_set_hash(records)` hashes
-only logical input names and fingerprints.
+Storage flags are `--store` and `--scratch-directory`; application defaults use `pipeline.*`. `--json` is available for structured output. See command `--help` for the full installed option set. `--outputs` is an inspection flag; `--output TARGET=PATH` requests publication.
 
-`LocalInputSetIndex(store.root)` and `PostgresBackend` implement `InputSetIndex`:
-
-- `register_input_set(name, inputs)` returns `{"hash": ..., "inputs": ...}`.
-- `resolve_input_set(*, name=None, key=None)` resolves exactly one name or hash.
-- `find_input_sets(key)` returns sorted matching names.
-- `unregister_input_sets(*, name=None, key=None)` returns removed names,
-  preserving the input-set record.
-
-PostgreSQL adds the index through its normal automatic migration.
-`PersistenceBackend` implementations must provide these methods.
-
-`provium_pipeline.lookup.lookup_artifact(plan, store, inputs, selector,
-*, backend=None)` resolves `pipeline.nodes.node.output` or
-`pipeline.outputs.output` to an `Artifact` with `path=None`. The backend only
-needs `result(namespace, key)`; otherwise lookup reads store manifests. It
-does not execute procedures or read artifact bodies. Missing results raise
-`ValueError`. Call `store.materialize(artifact)` to fetch and verify the result.
+Commands are core `Command` classes contributed through `provium.cli.command_catalogs`. See the [CLI API](provium-cli.md) for extending groups.

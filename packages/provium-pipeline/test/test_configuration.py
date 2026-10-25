@@ -1,7 +1,7 @@
 import pytest
 
 from provium_pipeline.models import (
-    ComputeProfile,
+    ExecutionSettings,
     PipelineConfiguration,
     load_documents,
 )
@@ -11,18 +11,18 @@ def test_multidoc_and_duplicate_rejection(tmp_path):
     path = tmp_path / "bundle.yaml"
     path.write_text(
         "kind: PipelineConfiguration\nname: p\ninputs: {}\nnodes: {}\noutputs: {}\n"
-        "---\nkind: ComputeProfile\nname: local\n"
+        "---\nkind: PipelineConfiguration\nname: other\n"
+        "inputs: {}\nnodes: {}\noutputs: {}\n"
     )
     docs = load_documents([path])
     assert len(docs) == 2
-    path.write_text("kind: ComputeProfile\nname: local\nname: other\n")
+    path.write_text("kind: PipelineConfiguration\nname: local\nname: other\n")
     with pytest.raises(ValueError, match="duplicate"):
         load_documents([path])
 
 
 def test_workers_and_limits_resolve_independently():
-    profile = ComputeProfile(
-        name="cluster",
+    profile = ExecutionSettings(
         workers=[
             {"default": 1},
             {"tags.model": 2},
@@ -36,13 +36,13 @@ def test_workers_and_limits_resolve_independently():
     assert profile.settings("p", "other", ["model", "large"]).workers == 3
     assert profile.settings("p", "encode", ["model"]).soft == 20
     assert profile.settings("p", "encode", ["model"]).hard == 30
-    assert ComputeProfile(name="local").settings("p", "n", []).workers == 1
+    assert ExecutionSettings().settings("p", "n", []).workers == 1
 
 
 @pytest.mark.parametrize("value", [0, -1, True, 1.5])
 def test_invalid_workers(value):
     with pytest.raises(ValueError):
-        ComputeProfile(name="x", workers=[{"default": value}])
+        ExecutionSettings(workers=[{"default": value}])
 
 
 def test_graph_cycles_and_bad_references():

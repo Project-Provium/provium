@@ -56,7 +56,7 @@ def authorize_bindings(
         _ACTIVE_BINDINGS.reset(token)
 
 
-def require_binding_creation_allowed() -> None:
+def assert_binding_creation_is_allowed() -> None:
     """Reject binding construction in a restricted declarative callback."""
     active = _ACTIVE_BINDINGS.get()
     if active is not None and not active.allow_binding_creation:

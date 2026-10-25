@@ -26,14 +26,14 @@ _LEGACY_METADATA_KEYS = {
 _METADATA_KEYS = _LEGACY_METADATA_KEYS | {"created_at"}
 
 
-def _require_text(value: object, field_name: str) -> None:
+def _assert_text_is_valid(value: object, field_name: str) -> None:
     if not isinstance(value, str):
         raise TypeError(f"{field_name} must be a string")
     if not value.strip():
         raise ValueError(f"{field_name} must be a non-empty string")
 
 
-def _require_uint64(value: object, field_name: str) -> None:
+def _assert_uint64_is_valid(value: object, field_name: str) -> None:
     if type(value) is not int or value < 0:
         raise ValueError(f"{field_name} must be a non-negative integer")
     if value > _UINT64_MAX:
@@ -107,11 +107,11 @@ class ArtifactHeader:
         )
 
     def __post_init__(self) -> None:
-        _require_text(self.artifact_identifier, "artifact_identifier")
-        _require_text(self.artifact_identity, "artifact_identity")
-        _require_uint64(self.body_offset, "body_offset")
-        _require_uint64(self.body_length, "body_length")
-        _require_text(self.body_digest, "body_digest")
+        _assert_text_is_valid(self.artifact_identifier, "artifact_identifier")
+        _assert_text_is_valid(self.artifact_identity, "artifact_identity")
+        _assert_uint64_is_valid(self.body_offset, "body_offset")
+        _assert_uint64_is_valid(self.body_length, "body_length")
+        _assert_text_is_valid(self.body_digest, "body_digest")
         if not isinstance(self.lineage, ArtifactLineage):
             raise TypeError("lineage must be an ArtifactLineage")
         if self.created_at is not None:
@@ -120,8 +120,8 @@ class ArtifactHeader:
             if self.created_at.tzinfo is None or self.created_at.utcoffset() is None:
                 raise ValueError("created_at must be timezone-aware")
             object.__setattr__(self, "created_at", self.created_at.astimezone(UTC))
-        self._validate_lineage_record()
-        _require_uint64(self.metadata_offset, "metadata_offset")
+        self._assert_lineage_record_is_valid()
+        _assert_uint64_is_valid(self.metadata_offset, "metadata_offset")
         if self.metadata_offset < PREFIX_SIZE:
             raise ValueError("metadata_offset must not overlap the fixed header")
         metadata_length = len(_metadata_bytes(self))
@@ -129,7 +129,7 @@ class ArtifactHeader:
             raise ValueError("body_offset must not overlap artifact metadata")
         object.__setattr__(self, "metadata_length", metadata_length)
 
-    def _validate_lineage_record(self) -> None:
+    def _assert_lineage_record_is_valid(self) -> None:
         reference = ArtifactReference(
             self.artifact_identity,
             self.artifact_identifier,

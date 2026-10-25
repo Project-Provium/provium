@@ -30,12 +30,16 @@ started and explore the complete guides and API reference.
 
 - [`packages/provium/`](packages/provium/) — the Provium library, command-line
   interface, and tests.
+- [`packages/provium-pipeline/`](packages/provium-pipeline/) — graph execution,
+  caching, CSV requests, and artifact publication.
+- [`packages/provium-dispatch/`](packages/provium-dispatch/) — durable queues,
+  profiles, registry, and input-set indexing.
 - [`examples/`](examples/) — installable projects demonstrating Provium in use.
 - [`docs/`](docs/) — guides, concepts, and reference documentation.
 
 ## Development
 
-Create or activate the repository-level virtual environment, then install both
+Create or activate the repository-level virtual environment, then install the core and example
 packages in editable mode:
 
 ```bash
@@ -44,11 +48,16 @@ source .venv/bin/activate
 make install
 ```
 
-Run all checks from the repository root:
+Run the core and example checks from the repository root:
 
 ```bash
 make check
 ```
+
+For pipeline and dispatch installation, Ruff/Pyright checks, and the combined
+Testcontainers integration suite, see the
+[pipeline development instructions](packages/provium-pipeline/README.md#development).
+Docker must be running for PostgreSQL and LocalStack tests.
 
 Build the shared documentation site into `site/`:
 

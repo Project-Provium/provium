@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from typing import Self
 
+from provium.artifact.header import ArtifactHeader
+from provium.artifact.region import BodyRegion
 from provium.provenance import ArtifactLineage
-
-from .header import ArtifactHeader
-from .region import BodyRegion
 
 INSPECTION_UNAVAILABLE = object()
 
@@ -43,7 +42,7 @@ class ArtifactReader:
 
     @property
     def body(self) -> BodyRegion:
-        self._body.check_access()
+        self._body.assert_access_is_allowed()
         return self._body
 
     @property
@@ -58,7 +57,7 @@ class ArtifactReader:
         return INSPECTION_UNAVAILABLE
 
     def __enter__(self) -> Self:
-        self._body.check_access()
+        self._body.assert_access_is_allowed()
         return self
 
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:

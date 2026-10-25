@@ -3,7 +3,7 @@ from pathlib import Path
 
 from provium import Artifact, ArtifactReader, ArtifactWriter
 
-from . import WORD_COUNT
+from provium_text_pipeline_example.artifact import WORD_COUNT
 
 
 class WordCountV1ArtifactReader(ArtifactReader):

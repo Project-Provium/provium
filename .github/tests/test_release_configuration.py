@@ -84,8 +84,10 @@ class ReleaseConfigurationTests(unittest.TestCase):
         self.assertIn("packages/provium[test]", commands)
         self.assertIn("packages/provium-pipeline[test]", commands)
         self.assertIn("examples/provium-text-pipeline", commands)
-        self.assertIn("postgres", job["services"])
-        self.assertIn("localstack", job["services"])
+        self.assertNotIn("services", job)
+        self.assertNotIn("PROVIUM_TEST_DATABASE", job.get("env", {}))
+        self.assertNotIn("AWS_ENDPOINT_URL_S3", job.get("env", {}))
+        self.assertIn("packages/provium-dispatch[test]", commands)
         self.assertIn("--cov=provium_pipeline", commands)
         self.assertIn("--cov-fail-under=100", commands)
         lint = ci["jobs"]["lint-format"]["steps"]
@@ -156,6 +158,48 @@ class ReleaseConfigurationTests(unittest.TestCase):
             "needs.publish-provium.result == 'skipped'",
         ):
             self.assertIn(condition, job["if"])
+
+    def test_dispatch_release_and_dependency_tracking(self):
+        config = json.loads((ROOT / "release-please-config.json").read_text())
+        package = config["packages"]["packages/provium-dispatch"]
+        self.assertEqual(package["package-name"], "provium-dispatch")
+        self.assertEqual(package["release-type"], "python")
+        self.assertIn(
+            {"type": "generic", "path": "/packages/provium-dispatch/pyproject.toml"},
+            config["packages"]["packages/provium-pipeline"]["extra-files"],
+        )
+        jobs = workflow("release.yml")["jobs"]
+        job = jobs["publish-dispatch"]
+        self.assertIn("publish-pipeline", job["needs"])
+        self.assertIn("publish-provium", job["needs"])
+        self.assertIn("needs.publish-provium.result == 'success'", job["if"])
+        self.assertIn("needs.publish-provium.result == 'skipped'", job["if"])
+        self.assertIn("needs.build.result == 'success'", job["if"])
+        self.assertIn("needs.publish-pipeline.result == 'skipped'", job["if"])
+        self.assertEqual(
+            job["environment"]["url"], "https://pypi.org/p/provium-dispatch"
+        )
+        self.assertEqual(job["permissions"]["id-token"], "write")
+        self.assertIn("dispatch_tag", jobs["build"]["steps"][0]["with"]["ref"])
+        self.assertIn("provium_dispatch", jobs["build"]["env"]["PACKAGE_IMPORT"])
+        self.assertIn("provium-dispatch", jobs["build"]["env"]["PACKAGE_NAME"])
+
+    def test_dispatch_has_ci_checks_and_full_coverage(self):
+        jobs = workflow("test.yml")["jobs"]
+        lint = [
+            step["run"]
+            for step in jobs["lint-format"]["steps"]
+            if step.get("working-directory") == "packages/provium-dispatch"
+        ]
+        for command in ("ruff check", "ruff format --check", "pyright"):
+            self.assertTrue(any(command in run for run in lint))
+        tests = [
+            step["run"]
+            for step in jobs["pipeline-test"]["steps"]
+            if step.get("working-directory") == "packages/provium-dispatch"
+        ]
+        self.assertTrue(any("--cov=provium_dispatch" in run for run in tests))
+        self.assertTrue(any("--cov-fail-under=100" in run for run in tests))
 
 
 if __name__ == "__main__":

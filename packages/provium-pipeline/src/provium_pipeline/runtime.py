@@ -13,33 +13,31 @@ from collections.abc import Callable, Iterable, Mapping
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from provium.semantic import canonical_hash, computation_key, output_key
 
-from .models import (
-    ComputeProfile,
+from provium_pipeline.coordination import Coordinator, Lease
+from provium_pipeline.models import (
+    ExecutionSettings,
     PipelineConfiguration,
     PipelineDefinition,
     Settings,
 )
-from .persistence.interface import Lease, QueueBackend
-from .persistence.queues import validate_queue_name
-from .planning import build_plan, matches, resolve_settings
-from .store import Artifact, ArtifactStore
+from provium_pipeline.planning import (
+    Plan,
+    build_plan,
+    matches,
+    resolve_settings,
+    select_targets,
+)
+from provium_pipeline.publication import FilePublisher, Publisher
+from provium_pipeline.requests import InputSet
+from provium_pipeline.store import Artifact, ArtifactCache
 
 if TYPE_CHECKING:
-    from .workers import Worker
-
-
-@dataclass(frozen=True)
-class InputSet:
-    inputs: Mapping[str, str | Artifact | dict[str, Any]]
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "inputs", MappingProxyType(dict(self.inputs)))
+    from provium_pipeline.workers import Worker
 
 
 @dataclass(frozen=True)
@@ -56,6 +54,8 @@ class Outcome:
 class State:
     item: InputSet
     identity: int | None = None
+    plan: Plan | None = None
+    published: dict[str, Artifact] = field(default_factory=dict[str, Artifact])
     values: dict[str, Artifact] = field(default_factory=dict[str, Artifact])
     steps: set[str] = field(default_factory=set[str])
     failed: bool = False
@@ -81,44 +81,36 @@ class ExecutionContext:
     def __init__(
         self,
         configuration: PipelineConfiguration,
-        store: ArtifactStore,
+        store: ArtifactCache,
         *,
         definition: PipelineDefinition | None = None,
         procedures: dict[str, Any] | None = None,
-        profile: ComputeProfile | None = None,
+        settings: ExecutionSettings | None = None,
         only: list[str] | None = None,
         workers: list[dict[str, Any]] | None = None,
         force: list[str] | None = None,
-        backend: QueueBackend | None = None,
-        queue_group: str = "default",
+        coordinator: Coordinator | None = None,
         idle_wait: float = 0,
         log_path: str | Path | None = None,
         verify_artifacts: bool = False,
+        strategy: str = "stage",
+        targets: list[str] | None = None,
+        publisher: Publisher | None = None,
     ) -> None:
-        self.queue_group = validate_queue_name(queue_group)
-        if backend:
-            registered_definition = backend.definition(configuration.name)
-            if registered_definition:
-                if (
-                    definition
-                    and definition.snapshot() != registered_definition.snapshot()
-                ):
-                    raise ValueError("definition differs from registered snapshot")
-                definition = registered_definition
+        if strategy not in {"item", "stage"}:
+            raise ValueError("strategy must be item or stage")
+        self.strategy = strategy
         self.plan = build_plan(configuration, definition, procedures)
+        if targets is not None:
+            self.plan = select_targets(self.plan, targets)
         self.store = store
+        self.publisher = publisher if publisher is not None else FilePublisher(store)
         self.verify_artifacts = verify_artifacts
-        self.profile = profile or ComputeProfile(name="default")
-        if (
-            profile is not None
-            and definition is not None
-            and profile.name not in definition.profiles
-        ):
-            raise ValueError(f"profile not allowed: {profile.name}")
+        self.execution_settings = settings or ExecutionSettings()
         self.only = only or []
         self.force = force or []
         self.overrides = workers or []
-        self.backend = backend
+        self.coordinator = coordinator
         self.idle_wait = idle_wait
         if not math.isfinite(idle_wait) or idle_wait < 0:
             raise ValueError("idle wait must be finite and nonnegative")
@@ -126,7 +118,7 @@ class ExecutionContext:
         self.error: BaseException | None = None
         self.outcomes: list[Outcome] = []
         self.worker_starts = 0
-        self.queue_page_size = 100
+        self.computation_keys: set[str] = set()
         self.max_resident_inputs = 0
         self._step_seen: set[tuple[int, str]] = set()
         self._pipeline_seen: set[int] = set()
@@ -141,7 +133,6 @@ class ExecutionContext:
         self._leases: dict[str, Lease] = {}
         self._failed: dict[str, str] = {}
         self._forced: set[str] = set()
-        self._seen: set[int] = set()
         self._states: list[State] = []
         self._active: str | None = None
         self._active_start = 0.0
@@ -165,7 +156,7 @@ class ExecutionContext:
     def _validate_settings(self) -> dict[str, Settings]:
         return resolve_settings(
             self.plan.configuration,
-            self.profile,
+            self.execution_settings,
             only=self.only,
             force=self.force,
             overrides=self.overrides,
@@ -224,16 +215,17 @@ class ExecutionContext:
         for item in items:
             self._add(item)
             state = self._states[-1]
+            plan = state.plan or self.plan
             steps: dict[str, Any] = {}
-            for node in self.plan.order:
+            for node in plan.order:
                 job = self._job(state, node)
                 if job is None:
                     steps[node] = {"state": "blocked"}
                     continue
                 try:
                     manifest = (
-                        self.backend.result(self.store.namespace, job.key)
-                        if self.backend
+                        self.coordinator.result(self.store.namespace, job.key)
+                        if self.coordinator
                         else self.store.manifest(job.key)
                     )
                     if manifest is None:
@@ -260,7 +252,7 @@ class ExecutionContext:
                     steps[node] = {"state": "invalid", "error": str(error)}
             outputs = {
                 name: state.values[ref]
-                for name, ref in self.plan.configuration.outputs.items()
+                for name, ref in plan.configuration.outputs.items()
                 if ref in state.values
             }
             report = _outcome_json(
@@ -269,7 +261,7 @@ class ExecutionContext:
                     "failed"
                     if state.failed
                     else "completed"
-                    if len(outputs) == len(self.plan.configuration.outputs)
+                    if len(outputs) == len(plan.configuration.outputs)
                     else "partial",
                     outputs,
                     error=state.error,
@@ -308,7 +300,7 @@ class ExecutionContext:
     def _monitor(self) -> None:
         while not self._stop_monitor.wait(0.02):
             now = time.monotonic()
-            global_hard = self.profile.hard_time_limit
+            global_hard = self.execution_settings.hard_time_limit
             node = self._active
             node_hard = self._settings[node].hard if node else None
             expired = (
@@ -329,13 +321,13 @@ class ExecutionContext:
 
     def _heartbeat(self) -> None:
         while not self._stop_monitor.wait(5):
-            if self.backend is None:
+            if self.coordinator is None:
                 continue
             with self._lock:
                 leases = list(self._leases.values())
             for lease in leases:
                 try:
-                    valid = self.backend.renew(lease)
+                    valid = self.coordinator.renew(lease)
                 except Exception:
                     self.logger.exception("lease renewal failed: %s", lease.key)
                     valid = False
@@ -358,7 +350,10 @@ class ExecutionContext:
         if self._stop.is_set() or self.only and not self._matches(node, self.only):
             return False
         elapsed = time.monotonic() - self._started
-        for limit in (self.profile.soft_time_limit, self.profile.hard_time_limit):
+        for limit in (
+            self.execution_settings.soft_time_limit,
+            self.execution_settings.hard_time_limit,
+        ):
             if limit is not None and elapsed >= limit:
                 return False
         for limit in (self._settings[node].soft, self._settings[node].hard):
@@ -372,15 +367,30 @@ class ExecutionContext:
         self.max_resident_inputs = max(self.max_resident_inputs, len(self._states))
         label = "Input set"
         try:
-            expected_names = set(self.plan.configuration.inputs)
-            if set(item.inputs) != expected_names:
+            destinations = item.output_destinations
+            if destinations is not None:
+                state.plan = select_targets(self.plan, list(destinations))
+            else:
+                state.plan = self.plan
+            expected_names = set(state.plan.configuration.inputs)
+            allowed_names = (
+                set(self.plan.input_types)
+                if destinations is not None
+                else expected_names
+            )
+            if (
+                expected_names - item.inputs.keys()
+                or item.inputs.keys() - allowed_names
+            ):
                 missing = ", ".join(sorted(expected_names - set(item.inputs))) or "none"
-                extra = ", ".join(sorted(set(item.inputs) - expected_names)) or "none"
+                extra = ", ".join(sorted(set(item.inputs) - allowed_names)) or "none"
                 raise ValueError(  # noqa: TRY301 -- converted to an item outcome
                     f"input names do not match pipeline definition "
                     f"(missing: {missing}; unexpected: {extra})"
                 )
             for name, value in item.inputs.items():
+                if name not in expected_names:
+                    continue
                 location = (
                     value.location
                     if isinstance(value, Artifact)
@@ -429,127 +439,58 @@ class ExecutionContext:
             state.error = traceback.format_exc()
             self.logger.exception("invalid input set %s", identity)
 
-    def _load_page(self, rows: list[dict[str, Any]]) -> None:
-        self._states.clear()
-        for row in rows:
-            identity = row["id"]
-            self._seen.add(identity)
-            if row["snapshot"] != self.plan.configuration.model_dump(mode="json"):
-                raise ValueError("queued pipeline snapshot differs from execution")
-            expected_definition = (
-                self.plan.definition.snapshot() if self.plan.definition else None
-            )
-            if row.get("definition") != expected_definition:
-                raise ValueError("queued definition differs from execution")
-            self._add(InputSet(row["inputs"]), identity)
-
     def _record(self, state: State, *, final: bool = False) -> None:
+        identity = state.identity if state.identity is not None else id(state)
+        if identity in self._pipeline_seen:
+            return
+        plan = state.plan or self.plan
         outputs = {
             name: state.values[ref]
-            for name, ref in self.plan.configuration.outputs.items()
+            for name, ref in plan.configuration.outputs.items()
             if ref in state.values
         }
+        destinations = state.item.output_destinations
+        if destinations is not None and (
+            final or state.failed or len(outputs) == len(plan.configuration.outputs)
+        ):
+            try:
+                for name, artifact in outputs.items():
+                    state.published[name] = self.publisher.publish(
+                        artifact, destinations[name], overwrite=bool(self.force)
+                    )
+                if len(outputs) != len(plan.configuration.outputs) and not state.failed:
+                    raise ValueError(  # noqa: TRY301 -- reported as an item failure
+                        "requested outputs unavailable; "
+                        "required procedures may be filtered out"
+                    )
+            except Exception as error:
+                state.failed = True
+                state.error = f"output publication: {error}"
+                self.logger.error("%s", state.error)  # noqa: TRY400
+            outputs = dict(state.published)
         status = (
             "failed"
             if state.failed
             else "completed"
-            if len(outputs) == len(self.plan.configuration.outputs)
+            if len(outputs) == len(plan.configuration.outputs)
             else "cancelled"
             if self._stop.is_set()
             else "partial"
         )
-        if self.backend and state.identity is not None:
-            self.backend.progress(
-                state.identity,
-                status,
-                {
-                    "outputs": {
-                        name: artifact.location for name, artifact in outputs.items()
-                    },
-                    "store": self.store.namespace,
-                    "run": self.run_id,
-                    "log": str(self.log_path) if self.log_path is not None else None,
-                    "error": state.error,
-                },
-            )
-        identity = state.identity if state.identity is not None else id(state)
-        if identity not in self._pipeline_seen and (
-            final or status in ("completed", "failed")
-        ):
+        self._progress(state, status, outputs)
+        if final or status in ("completed", "failed"):
             self._pipeline_seen.add(identity)
             event = Outcome(state.item, status, outputs, error=state.error)
             self.outcomes.append(event)
             self._notify(event)
 
-    def _run_queued(self) -> None:
-        assert self.backend is not None
-        idle_start = time.monotonic()
-        while not self._stop.is_set():
-            before = len(self._step_seen)
-            for node in self.plan.order or [None]:
-                after = 0
-                try:
-                    while not self._stop.is_set():
-                        rows = self.backend.pending(
-                            self.plan.configuration.name,
-                            after,
-                            limit=self.queue_page_size,
-                            include_finished=bool(self.force),
-                            queue_group=self.queue_group,
-                        )
-                        if not rows:
-                            break
-                        after = rows[-1]["id"]
-                        self._load_page(rows)
-                        self._ready()
-                        if node is not None:
-                            jobs = self._ready(node)
-                            while jobs and self._allowed(node):
-                                completed = sum(
-                                    len(state.steps) for state in self._states
-                                )
-                                self._run_node(jobs[0], keep_workers=True)
-                                if completed == sum(
-                                    len(state.steps) for state in self._states
-                                ):
-                                    break
-                                jobs = self._ready(node)
-                        self._ready()
-                        for state in self._states:
-                            self._record(state)
-                finally:
-                    self._unload_node()
-                if len(self._step_seen) > before:
-                    break
-            if len(self._step_seen) > before:
-                idle_start = time.monotonic()
-                continue
-            if not any(self._allowed(node) for node in self.plan.order):
-                break
-            if time.monotonic() - idle_start >= self.idle_wait:
-                break
-            time.sleep(min(0.1, self.idle_wait))
-        after = 0
-        while rows := self.backend.pending(
-            self.plan.configuration.name,
-            after,
-            limit=self.queue_page_size,
-            include_finished=True,
-            queue_group=self.queue_group,
-        ):
-            after = rows[-1]["id"]
-            remaining = [
-                row
-                for row in rows
-                if row["id"] in self._seen and row["id"] not in self._pipeline_seen
-            ]
-            self._load_page(remaining)
-            self._ready()
-            for state in self._states:
-                self._record(state, final=True)
-
     def _job(self, state: State, name: str) -> Job | None:
-        if state.failed or name in state.steps:
+        if (
+            state.failed
+            or name in state.steps
+            or state.plan is not None
+            and name not in state.plan.configuration.nodes
+        ):
             return None
         node = self.plan.configuration.nodes[name]
 
@@ -589,6 +530,7 @@ class ExecutionContext:
         key = computation_key(
             self.plan.records[name], input_fingerprints, setup_fingerprints
         )
+        self.computation_keys.add(key)
         expected = {
             output: output_key(key, output, artifact_type)
             for output, artifact_type in self.plan.output_types[name].items()
@@ -621,6 +563,11 @@ class ExecutionContext:
                 Outcome(job.state.item, "completed", outputs, job.node, reused)
             )
 
+    def _progress(
+        self, state: State, status: str, outputs: Mapping[str, Artifact]
+    ) -> None:
+        """Hook for durable execution adapters."""
+
     def _failure(self, job: Job, error: str) -> None:
         self._failed[job.key] = error
         job.state.failed = True
@@ -633,8 +580,8 @@ class ExecutionContext:
             job.state.identity,
             error,
         )
-        if self.backend and job.lease:
-            self.backend.fail(job.lease, error)
+        if self.coordinator and job.lease:
+            self.coordinator.fail(job.lease, error)
         notification = (
             job.state.identity if job.state.identity is not None else id(job.state),
             job.node,
@@ -660,8 +607,8 @@ class ExecutionContext:
                 )
                 try:
                     manifest = (
-                        self.backend.result(self.store.namespace, job.key)
-                        if self.backend
+                        self.coordinator.result(self.store.namespace, job.key)
+                        if self.coordinator
                         else self.store.manifest(job.key)
                     )
                     if manifest is not None and not forced:
@@ -701,7 +648,7 @@ class ExecutionContext:
                 )
 
     def _run_node(self, first: Job, *, keep_workers: bool = False) -> None:
-        from .workers import Worker
+        from provium_pipeline.workers import Worker
 
         name = first.node
         settings = self._settings[name]
@@ -739,8 +686,8 @@ class ExecutionContext:
                     except Exception:
                         self._failure(job, traceback.format_exc())
                         continue
-                    if self.backend:
-                        job.lease = self.backend.acquire(
+                    if self.coordinator:
+                        job.lease = self.coordinator.acquire(
                             self.store.namespace,
                             job.key,
                             self.run_id,
@@ -840,7 +787,7 @@ class ExecutionContext:
                     ]
                     if not remaining or not self._allowed(name):
                         break
-                    if not progress and self.backend:
+                    if not progress and self.coordinator:
                         break
                 time.sleep(0.01)
         finally:
@@ -849,16 +796,16 @@ class ExecutionContext:
 
     def _publish(self, job: Job, outputs: dict[str, Any]) -> None:
         try:
-            if self.backend and job.lease:
-                committed = self.backend.complete(job.lease, outputs)
+            if self.coordinator and job.lease:
+                committed = self.coordinator.complete(job.lease, outputs)
             else:
                 self.store.commit(job.key, outputs)
                 committed = True
         except Exception:
             # Publication is idempotently reconciled; the procedure is never retried.
             observed = (
-                self.backend.result(self.store.namespace, job.key)
-                if self.backend
+                self.coordinator.result(self.store.namespace, job.key)
+                if self.coordinator
                 else self.store.manifest(job.key)
             )
             if observed != outputs:
@@ -903,7 +850,7 @@ class ExecutionContext:
         heartbeat.start()
         try:
             with ExitStack() as stack:
-                if self.backend is None:
+                if self.coordinator is None:
                     stack.enter_context(self.store.writer_lock())
                 self._run_body(items)
         except BaseException as error:
@@ -936,28 +883,52 @@ class ExecutionContext:
             prefix="provium-run-", dir=self.store.scratch
         ) as scratch:
             self._scratch = scratch
-            if self.backend:
-                self._run_queued()
-                return
+            self._execute(items)
+
+    def _execute(self, items: Iterable[InputSet]) -> None:
+        items = list(items)
+        if any(item.output_destinations is not None for item in items):
+            self.publisher.assert_requests_are_valid(items)
+        if self.strategy == "item":
+            states: list[State] = []
+            for item in items:
+                self._states = []
+                self._add(item)
+                states.extend(self._states)
+                self._run_local()
+            self._states = states
+        else:
             for item in items:
                 self._add(item)
-            idle_start = time.monotonic()
-            while not self._stop.is_set():
-                ready = self._ready()
-                if ready:
-                    before = sum(len(state.steps) for state in self._states)
-                    self._run_node(ready[0])
-                    after = sum(len(state.steps) for state in self._states)
-                    if after > before:
-                        idle_start = time.monotonic()
-                        continue
-                if not any(self._allowed(node) for node in self.plan.order):
-                    break
-                if time.monotonic() - idle_start >= self.idle_wait:
-                    break
-                time.sleep(min(0.1, self.idle_wait))
-            for state in self._states:
-                self._record(state, final=True)
+            self._run_local()
+
+    def _run_local(self) -> None:
+        idle_start = time.monotonic()
+        while not self._stop.is_set():
+            ready = self._ready()
+            if ready:
+                before = sum(len(state.steps) for state in self._states)
+                self._run_node(ready[0])
+                after = sum(len(state.steps) for state in self._states)
+                if after > before:
+                    idle_start = time.monotonic()
+                    continue
+            if self._states and all(
+                state.failed
+                or all(
+                    ref in state.values
+                    for ref in (state.plan or self.plan).configuration.outputs.values()
+                )
+                for state in self._states
+            ):
+                break
+            if not any(self._allowed(node) for node in self.plan.order):
+                break
+            if time.monotonic() - idle_start >= self.idle_wait:
+                break
+            time.sleep(min(0.1, self.idle_wait))
+        for state in self._states:
+            self._record(state, final=True)
 
 
 def _outcome_json(event: Outcome) -> dict[str, Any]:

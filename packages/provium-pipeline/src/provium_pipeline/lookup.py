@@ -6,9 +6,9 @@ from typing import Any, Protocol, cast
 
 from provium.semantic import computation_key, output_key
 
-from .models import refs
-from .planning import Plan
-from .store import Artifact, ArtifactStore
+from provium_pipeline.models import refs
+from provium_pipeline.planning import Plan
+from provium_pipeline.store import Artifact, ArtifactStore
 
 
 class ResultReader(Protocol):

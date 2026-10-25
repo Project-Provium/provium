@@ -1,171 +1,92 @@
-# provium-pipeline
+# Provium Pipeline
 
-Provenance-addressed procedure graphs with local execution, PostgreSQL queues,
-filesystem/S3 artifact storage, reusable process workers, and completion callbacks.
+[![Tests](https://github.com/Project-Provium/provium/actions/workflows/test.yml/badge.svg)](https://github.com/Project-Provium/provium/actions/workflows/test.yml)
 
-```sh
-python -m pip install -e packages/provium -e packages/provium-pipeline
-provium pipeline run -f pipeline.yaml --input document=/data/document.pa --store ./artifacts
+[![PyPI](https://img.shields.io/pypi/v/provium-pipeline.svg)](https://pypi.org/project/provium-pipeline/)
+[![Python](https://img.shields.io/pypi/pyversions/provium-pipeline.svg)](https://pypi.org/project/provium-pipeline/)
+[![License](https://img.shields.io/pypi/l/provium-pipeline.svg)](https://pypi.org/project/provium-pipeline/)
+
+[Documentation](https://provium.dlii.tech/guides/pipelines/) ·
+[PyPI](https://pypi.org/project/provium-pipeline/) ·
+[Issues](https://github.com/Project-Provium/provium/issues)
+
+Execute typed procedure graphs, reuse cached computations, and publish requested
+artifacts. Supports per-item or per-stage scheduling, CSV batches, local/S3
+storage, and custom cache, publisher, and coordinator implementations.
+
+## Installation
+
+Requires Python 3.12 or newer. Install into your active Python environment:
+
+```bash
+python -m pip install provium-pipeline
 ```
 
-The base installation supports local execution and filesystem storage. Install
-optional backends as needed:
+This also installs Provium and its CLI. For S3 artifact storage:
 
-```sh
-python -m pip install 'provium-pipeline[postgres]'
+```bash
 python -m pip install 'provium-pipeline[s3]'
-python -m pip install 'provium-pipeline[postgres,s3]'
 ```
 
-For an editable checkout, use `-e 'packages/provium-pipeline[postgres,s3]'`.
-The `test` extra includes both drivers for the full development test suite.
-Core Provium already provides its own optional `s3` extra.
+Install the artifact and procedure packages referenced by your graph as well.
+Basic execution needs neither PostgreSQL nor a compute profile.
 
-Inputs must already be Provium artifacts. Install the procedure catalogs referenced
-by the graph. All pipeline commands run through the core `provium` CLI.
+## Quick start
 
-```yaml
-kind: PipelineConfiguration
-name: tokenize-documents
-inputs:
-  document: provium_text_pipeline_example.DocumentV1
-nodes:
-  tokenize:
-    procedure: provium_text_pipeline_example.TokenizeV1
-    tags: [text]
-    inputs:
-      source: $inputs.document
-outputs:
-  tokens: $nodes.tokenize.destination
+```bash
+provium pipeline run -f pipeline.yaml \
+  --input document=document.pa --output word_count=word-count.pa -v
 ```
 
-The example procedure is provided by `examples/provium-text-pipeline`.
-Compute profiles are separate YAML documents. Default execution uses one child
-process; only one configured node is resident per context.
+Direct CLI execution requires an output destination or a CSV with per-row
+destinations. Outputs are cached under `./.provium/artifacts` by default and
+copied to their destinations. Cached intermediate bodies are read when needed;
+`--verify-artifacts` requests eager verification.
 
-```sh
-export PROVIUM_DATABASE_URL=postgresql://localhost/provium
-provium pipeline register -f pipeline.yaml -f profiles.yaml
-provium pipeline enqueue tokenize-documents --input document=/data/document.pa
-provium pipeline run tokenize-documents --profile cluster --store s3://bucket/artifacts
-provium pipeline status tokenize-documents --outputs
+```bash
+provium pipeline run -f pipeline.yaml --csv requests.csv --strategy stage
+provium pipeline lookup text-processing.outputs.word_count \
+  -f pipeline.yaml --input document=document.pa
+provium pipeline cache clear --older-than 86400
 ```
 
-Repeated equivalent computations reuse verified results. PostgreSQL leases coordinate
-shared computation across pipelines. Force replaces results through an atomic accepted
-result reference while retaining immutable artifact versions for existing readers.
+CSV input headers use `inputs.NAME`; output headers use a target name or
+`nodes.NODE.PORT`. Output cells contain paths; blank cells omit publication.
 
-See the repository's [usage examples](../../docs/guides/pipelines.md) for
-definitions, profiles, selectors, Python callbacks, time limits, and deployment.
+Basic pipelines do not require profiles or a database. Use
+[Provium Dispatch](../provium-dispatch/README.md) for registered pipelines,
+durable queues, profiles, and named input sets.
 
-## Application settings
-
-Pipeline CLI defaults can be set in `~/.config/provium/*.toml` and overridden
-by the nearest project `.provium/*.toml` directory:
-
-```toml
-[pipeline]
-database = "postgresql://localhost/provium"
-store = "./.provium/artifacts"
-scratch_directory = "/tmp/provium"
-```
-
-Use `PROVIUM_CONFIG__PIPELINE__STORE=/data/artifacts` for an environment override,
-or `provium pipeline run -f pipeline.yaml --config pipeline.store=./artifacts`
-for an invocation override. Dedicated flags such as `--store` take highest priority.
-Existing `PROVIUM_DATABASE_URL` and `PROVIUM_PIPELINE_STORE` variables remain supported.
-See [Configuration](../../docs/guides/configuration.md) for discovery rules,
-precedence, and typed overrides.
-
-## Package organization
-
-The CLI registers a native core `CommandGroup` under `pipeline`:
-
-- `cli/commands/`: one class per command, each owning `configure` and `execute`.
-- `cli/arguments.py`: shared option declarations and local argument validation.
-- `documents.py`: YAML and local/remote document loading, imported only on use.
-- `definitions.py`: CLI-independent definition discovery.
-- `preparation.py`: graph and settings preparation with explicit inputs and injected persistence.
-
-Commands dispatch through the core registry directly, without an action enum or
-central execution switch. Each command imports its dependencies when needed.
-
-Persistence is organized separately:
-- `persistence/interface.py`: driver-independent queue and registry protocols.
-- `persistence/backends/postgres.py`: PostgreSQL implementation and migrations.
-- `persistence/factory.py`: explicit, lazy backend selection.
-
-`ExecutionContext` accepts any implementation of `QueueBackend`.
-`PersistenceBackend` extends that contract with registry and input management.
-Use explicit implementation imports inside backend-specific code; public package
-exports load on demand. Importing models, runtime, persistence contracts, or CLI
-does not import PostgreSQL or S3 drivers. Help and invalid CLI arguments also
-avoid loading pipeline runtime and worker code. Graph and settings validation precede
-runtime loading; persisted-data validation requires the selected backend.
-`validate` and `inspect` use planning directly without creating a store or loading
-runtime and worker code.
-
-Other packages can contribute actions to `pipeline` or any nested group by
-registering groups with the same names in their own command catalogs. Core merges
-those paths recursively while rejecting duplicate leaf commands. The standalone
-`provium-pipeline` script and `python -m provium_pipeline` runner are removed;
-use `provium pipeline ...` (or `python -m provium pipeline ...`).
-
-```python
-from provium_pipeline.persistence import Backend, open_backend
-
-persistence = open_backend(connection_url, backend=Backend.Postgres)
-```
-
-PostgreSQL is the default and currently the only persistence implementation.
-The existing `--database` option and `PROVIUM_DATABASE_URL` environment variable
-remain supported. Persistence APIs live under `persistence`; the legacy
-`database.py` facade and root persistence re-exports have been removed. Import
-concrete backends explicitly from `provium_pipeline.persistence.backends.postgres`.
+- [Pipeline guide](../../docs/guides/pipelines.md)
+- [Pipeline API reference](../../docs/reference/provium-pipeline.md)
+- [Extended text example](../../examples/provium-text-pipeline/README.md)
+- [Configuration](../../docs/guides/configuration.md)
 
 ## Development
 
-```sh
-python -m pip install -e 'packages/provium[test]' -e 'packages/provium-pipeline[test]' \
-  -e examples/provium-text-pipeline
-python -m pytest packages/provium-pipeline/test
-ruff check packages/provium-pipeline
-ruff format --check packages/provium-pipeline
-pyright --project packages/provium-pipeline/pyproject.toml
+From the repository root, install the workspace test dependencies:
+
+```bash
+python -m pip install -e 'packages/provium[test,docs]' \
+  -e 'packages/provium-pipeline[test]' -e 'packages/provium-dispatch[test]' \
+  -e 'examples/provium-text-pipeline[test]'
 ```
 
-For PostgreSQL and S3 integration tests:
+Run the combined pipeline/dispatch suite with Docker running:
 
-```sh
-docker run -d --name provium-pipeline-postgres \
-  -e POSTGRES_PASSWORD=provium -e POSTGRES_DB=provium \
-  -p 127.0.0.1:55432:5432 postgres:17
-docker run -d --name provium-pipeline-localstack \
-  -e SERVICES=s3 -p 127.0.0.1:54566:4566 localstack/localstack:4
-
-export PROVIUM_TEST_DATABASE=postgresql://postgres:provium@localhost:55432/provium
-export PROVIUM_TEST_S3=1 AWS_ENDPOINT_URL_S3=http://localhost:54566
-export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1
-python -m pytest packages/provium-pipeline/test
+```bash
+cd packages/provium-dispatch
+../../.venv/bin/python -m pytest test ../provium-pipeline/test \
+  --cov=provium_pipeline --cov=provium_dispatch --cov-branch --cov-fail-under=100
 ```
 
-Integration tests create unique records and buckets. Use a disposable test database.
-Slurm/AWS Batch deployment uses the same CLI with externally allocated resources;
-those scheduler services are not required for local integration tests.
+Testcontainers starts real PostgreSQL (`postgres:17-alpine`) and LocalStack S3
+(`localstack/localstack:4`) on dynamic ports and tears them down automatically.
+No manually started services or fixed test ports are required.
 
-## Named queues
+Run Ruff, Ruff formatting checks, and Pyright in each package directory.
+Build the shared documentation from the repository root with `make docs`.
 
-Use `--queue NAME` (short form `-q`) with `enqueue`, `run`, `status`,
-`queue`, and `retry` to isolate queued work within a registered pipeline.
-Equivalent computations can still share cached results across queues.
+## License
 
-```sh
-provium pipeline enqueue tokenize-documents -q priority --input document=/data/document.pa
-provium pipeline run tokenize-documents -q priority
-provium pipeline queue tokenize-documents -q priority
-```
-
-The default queue is `default`. Configure `pipeline.queue.default_group` to choose
-another default, or set `pipeline.queue.default_enabled = false` to require explicit
-selection. Existing PostgreSQL rows migrate to `default`; stop older workers before
-upgrading. See [Named queues](../../docs/guides/pipelines.md#named-queues) for details.
+Provium Pipeline is available under the [MIT License](https://github.com/Project-Provium/provium/blob/main/LICENSE).

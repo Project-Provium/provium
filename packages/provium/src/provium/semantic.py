@@ -3,8 +3,8 @@
 from collections.abc import Mapping
 from typing import Any
 
-from .canonical import canonical_digest
-from .provenance import ArtifactLineage, ArtifactReference, ProcedureRecord
+from provium.canonical import canonical_digest
+from provium.provenance import ArtifactLineage, ArtifactReference, ProcedureRecord
 
 
 def canonical_hash(value: Any) -> str:

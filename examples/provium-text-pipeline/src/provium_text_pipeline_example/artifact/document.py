@@ -2,7 +2,7 @@ from pathlib import Path
 
 from provium import Artifact, ArtifactReader, ArtifactWriter
 
-from . import DOCUMENT
+from provium_text_pipeline_example.artifact import DOCUMENT
 
 
 class DocumentV1ArtifactReader(ArtifactReader):
