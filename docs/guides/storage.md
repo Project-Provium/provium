@@ -86,20 +86,26 @@ uploads its output; an exception abandons the temporary file.
 Every pipeline command accepting `-f` can read local and S3 files in one invocation:
 
 ```sh
-provium pipeline register \
+provium dispatch register \
   -f s3://my-bucket/pipeline.yaml -f profiles.yaml \
-  --scratch-directory /tmp/provium
+  --database postgresql://localhost/provium --scratch-directory /tmp/provium
 
-provium pipeline run \
-  -f s3://my-bucket/pipeline.yaml -f s3://my-bucket/profiles.yaml \
-  --profile cluster --input document=s3://my-bucket/source.pa \
+provium pipeline run -f s3://my-bucket/pipeline.yaml \
+  --input document=s3://my-bucket/source.pa \
+  --output word_count=s3://my-bucket/published/count.pa \
   --store s3://my-bucket/artifacts --scratch-directory /tmp/provium
 ```
 
 Multi-document YAML, document ordering, duplicate detection, and validation work
 the same way for both locations. Downloaded configuration files are removed after
-parsing, including when validation fails. `unregister -f s3://...` selects the
+parsing, including when validation fails. `dispatch unregister -f s3://...` selects the
 registered objects named in the document; it does not delete the YAML object.
+
+Pipeline publication copies committed artifacts to requested destinations. Partial
+publication is retained when a later destination fails. Dispatch result metadata
+lives in PostgreSQL; direct execution uses store manifests. Cache cleanup currently
+supports local file stores only. See [Pipelines](pipelines.md) and
+[Dispatch](dispatch.md) for ownership and maintenance details.
 
 ## Publication and ownership
 

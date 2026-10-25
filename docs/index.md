@@ -32,7 +32,8 @@ flowchart LR
 - Streaming, body-relative I/O
 - Runtime artifact discovery through Python entry points
 - Optional configuration snapshots, including Pydantic v2 models
-- Optional pipeline execution with verified reuse and PostgreSQL queues
+- [Pipeline execution](guides/pipelines.md) with cached reuse, CSV batches, and target publication
+- [Durable dispatch](guides/dispatch.md) with PostgreSQL queues, profiles, and named input sets
 - Optional S3 storage
 
 [Get started](getting-started.md){ .md-button .md-button--primary }

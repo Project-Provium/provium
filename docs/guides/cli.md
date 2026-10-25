@@ -14,7 +14,7 @@ Every command supports repeatable `--config KEY.PATH=VALUE` overrides, including
 commands registered by plugins and commands inside nested groups:
 
 ```bash
-provium pipeline run -f pipeline.yaml --config pipeline.store=./artifacts
+provium pipeline inspect -f pipeline.yaml --config pipeline.store=./artifacts
 ```
 
 User defaults in `~/.config/provium/*.toml` are overridden by project
@@ -73,9 +73,15 @@ options, output behavior, and Python examples.
 ## Run pipelines
 
 Install `provium-pipeline` to add the `provium pipeline` command group.
-Use `provium pipeline --help` for commands to validate, inspect, run, register,
-and manage pipeline queues. PostgreSQL and S3 support are optional extras.
-See [Pipelines](pipelines.md) for installation, graph configuration, and examples.
+Use it to validate, inspect, run, and look up file-defined graphs. Direct runs
+require output destinations. See [Pipelines](pipelines.md) for graph configuration,
+CSV requests, scheduling, caching, and publication.
+
+Install `provium-dispatch[postgres]` for registered graphs, durable queues,
+compute profiles, and coordinated maintenance through `provium dispatch`.
+The base dispatch package also provides local input-set names and lookup.
+See [Dispatch](dispatch.md) for the durable workflow and migration from older
+pipeline commands. Both groups provide `--json`; run diagnostics go to stderr.
 
 ## Enable tab completion
 

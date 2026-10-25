@@ -13,12 +13,16 @@ enclosing projects do not leak into nested projects.
 Only immediate TOML files are read. Subdirectories such as `.provium/artifacts` are
 not scanned. No directories or files are created automatically.
 
-## Pipeline CLI defaults
+## Pipeline and dispatch CLI defaults
 
 For example, create `~/.config/provium/config.toml`:
 
 ```toml
 [pipeline]
+store = "/data/provium/artifacts"
+scratch_directory = "/tmp/provium"
+
+[dispatch]
 database = "postgresql://localhost/provium"
 store = "/data/provium/artifacts"
 scratch_directory = "/tmp/provium"
@@ -31,17 +35,23 @@ Override the store for a project in `.provium/config.toml`:
 store = "./.provium/artifacts"
 ```
 
-Pipeline commands resolve settings in this order, highest priority first:
+Each command group reads its own section: `pipeline.*` for basic execution and
+`dispatch.*` for durable execution and input-set indexing. Dispatch does not fall
+back to pipeline settings. Python execution APIs take explicit arguments and do
+not load these defaults automatically.
+
+Commands resolve settings in this order, highest priority first:
 
 1. Explicit CLI options: `--database`, `--store`, `--scratch-directory`.
 2. Explicit `--config KEY.PATH=VALUE` overrides.
 3. Generic `PROVIUM_CONFIG__...` environment variables.
-4. Legacy environment variables: `PROVIUM_DATABASE_URL` and `PROVIUM_PIPELINE_STORE`.
+4. Legacy environment aliases: `PROVIUM_PIPELINE_STORE` supplies either group's store; `PROVIUM_DATABASE_URL` supplies dispatch's database.
 5. Project configuration.
 6. User configuration.
 7. Built-in defaults: the store is `./.provium/artifacts`; database and scratch directory are unset.
 
-All three settings must be strings. Relative paths are interpreted relative to the
+Store, database, and scratch-directory settings must be strings. The basic
+pipeline group has no database setting. Relative paths are interpreted relative to the
 working directory, just like CLI options, not relative to the TOML file.
 Other settings are reserved for package consumers and do not become CLI options
 automatically.
@@ -63,14 +73,14 @@ names are normalized to lowercase:
 ```bash
 export PROVIUM_CONFIG__PIPELINE__STORE=/data/artifacts
 export PROVIUM_CONFIG__PIPELINE__SCRATCH_DIRECTORY=/tmp/provium
-provium pipeline run -f pipeline.yaml
+provium pipeline inspect -f pipeline.yaml
 ```
 
 Every command and command group accepts repeatable `--config KEY.PATH=VALUE` options:
 
 ```bash
-provium pipeline run -f pipeline.yaml --config pipeline.store=./artifacts
-provium --config pipeline.abc=default pipeline run -f pipeline.yaml --config pipeline.abc=xyz
+provium pipeline inspect -f pipeline.yaml --config pipeline.store=./artifacts
+provium --config pipeline.abc=default pipeline inspect -f pipeline.yaml --config pipeline.abc=xyz
 ```
 
 Overrides accumulate across command groups in command-line order; the last value
@@ -121,13 +131,13 @@ Application settings are separate from procedure configuration and pipeline grap
 documents. Loading these files does not configure procedure inputs or execute Python
 references.
 
-## Pipeline queue defaults
+## Dispatch queue defaults
 
 Queued pipeline operations use `--queue NAME` / `-q NAME` when supplied.
 Otherwise they resolve:
 
 ```toml
-[pipeline.queue]
+[dispatch.queue]
 default_enabled = true
 default_group = "default"
 ```
@@ -135,6 +145,6 @@ default_group = "default"
 Set `default_enabled = false` to require explicit selection before persistence is
 opened. Explicit names bypass default selection. Local execution remains available
 without a queue. Both settings support the usual environment and `--config`
-overrides, for example `PROVIUM_CONFIG__PIPELINE__QUEUE__DEFAULT_ENABLED=false`
-or `--config pipeline.queue.default_group=priority`.
-See [Named queues](pipelines.md#named-queues) for operation and migration semantics.
+overrides, for example `PROVIUM_CONFIG__DISPATCH__QUEUE__DEFAULT_ENABLED=false`
+or `--config dispatch.queue.default_group=priority`.
+See [Named queues](dispatch.md#named-queues-and-retries) for operation and migration semantics.
