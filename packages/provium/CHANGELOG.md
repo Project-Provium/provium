@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/Project-Provium/provium/compare/provium-v0.12.0...provium-v0.12.1) (2026-10-25)
+
+
+### Documentation
+
+* refresh package installation and example READMEs ([f3b84ea](https://github.com/Project-Provium/provium/commit/f3b84eaaafe04e933acc013b56e207493784aba4))
+
 ## [0.12.0](https://github.com/Project-Provium/provium/compare/provium-v0.11.0...provium-v0.12.0) (2026-10-21)
 
 
