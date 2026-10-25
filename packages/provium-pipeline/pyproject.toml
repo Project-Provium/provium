@@ -7,6 +7,8 @@ name = "provium-pipeline"
 version = "2.1.0"
 description = "Reusable provenance-addressed procedure pipeline execution"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     # Core releases keep this minimum aligned with the tested workspace version.

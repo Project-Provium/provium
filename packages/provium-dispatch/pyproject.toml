@@ -6,10 +6,19 @@ build-backend = "setuptools.build_meta"
 name = "provium-dispatch"
 version = "0.1.0"
 description = "Durable pipeline execution, queues, and input sets"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "provium-pipeline>=2.1.0", # x-release-please-version
 ]
+
+[project.urls]
+Homepage = "https://github.com/Project-Provium/provium"
+Documentation = "https://provium.dlii.tech"
+Issues = "https://github.com/Project-Provium/provium/issues"
+Repository = "https://github.com/Project-Provium/provium"
 
 [project.entry-points."provium.cli.command_catalogs"]
 dispatch = "provium_dispatch.cli:plugin"
