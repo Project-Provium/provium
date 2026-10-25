@@ -3,6 +3,20 @@ name: Release
 on:
   push:
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      provium_tag:
+        description: 'Existing core release tag (for example provium-v0.12.1); blank to skip'
+        type: string
+        required: false
+      pipeline_tag:
+        description: 'Existing pipeline release tag (for example provium-pipeline-v2.2.0); blank to skip'
+        type: string
+        required: false
+      dispatch_tag:
+        description: 'Existing dispatch release tag (for example provium-dispatch-v0.2.0); blank to skip'
+        type: string
+        required: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -13,7 +27,8 @@ permissions:
 
 jobs:
   release-please:
-    name: Create or update release pull requests
+    name: Select releases or create release pull requests
+    if: github.event_name == 'push' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -21,24 +36,59 @@ jobs:
       issues: write
       pull-requests: write
     outputs:
-      releases_created: ${{ steps.release.outputs.releases_created }}
-      paths_released: ${{ steps.release.outputs.paths_released }}
-      provium_release_created: ${{ steps.release.outputs['packages/provium--release_created'] }}
-      provium_tag: ${{ steps.release.outputs['packages/provium--tag_name'] }}
-      pipeline_release_created: ${{ steps.release.outputs['packages/provium-pipeline--release_created'] }}
-      dispatch_release_created: ${{ steps.release.outputs['packages/provium-dispatch--release_created'] }}
-      dispatch_tag: ${{ steps.release.outputs['packages/provium-dispatch--tag_name'] }}
-      pipeline_tag: ${{ steps.release.outputs['packages/provium-pipeline--tag_name'] }}
+      releases_created: ${{ steps.release.outputs.releases_created || steps.recovery.outputs.releases_created }}
+      paths_released: ${{ steps.release.outputs.paths_released || steps.recovery.outputs.paths_released }}
+      provium_release_created: ${{ steps.release.outputs['packages/provium--release_created'] || steps.recovery.outputs.provium_release_created }}
+      provium_tag: ${{ steps.release.outputs['packages/provium--tag_name'] || steps.recovery.outputs.provium_tag }}
+      pipeline_release_created: ${{ steps.release.outputs['packages/provium-pipeline--release_created'] || steps.recovery.outputs.pipeline_release_created }}
+      dispatch_release_created: ${{ steps.release.outputs['packages/provium-dispatch--release_created'] || steps.recovery.outputs.dispatch_release_created }}
+      dispatch_tag: ${{ steps.release.outputs['packages/provium-dispatch--tag_name'] || steps.recovery.outputs.dispatch_tag }}
+      pipeline_tag: ${{ steps.release.outputs['packages/provium-pipeline--tag_name'] || steps.recovery.outputs.pipeline_tag }}
 
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
+        if: github.event_name == 'push'
         with:
           target-branch: master
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           # A PAT/App token lets release PRs trigger the normal pull_request CI.
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+
+      - name: Select existing releases for recovery
+        id: recovery
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const packages = [
+              ['provium', 'provium'],
+              ['pipeline', 'provium-pipeline'],
+              ['dispatch', 'provium-dispatch'],
+            ];
+            const selected = [];
+            for (const [key, name] of packages) {
+              const tag = (context.payload.inputs[key + '_tag'] || '').trim();
+              if (!tag) continue;
+              const prefix = name + '-v';
+              if (!tag.startsWith(prefix) || !/^\d+\.\d+\.\d+$/.test(tag.slice(prefix.length))) {
+                throw new Error('Invalid release tag for ' + name + ': ' + tag);
+              }
+              const {data: release} = await github.rest.repos.getReleaseByTag({
+                ...context.repo, tag,
+              });
+              if (release.draft) throw new Error('Cannot publish a draft release: ' + tag);
+              selected.push({key, name, tag});
+            }
+            if (!selected.length) throw new Error('At least one release tag is required');
+            for (const [key] of packages) {
+              const entry = selected.find(item => item.key === key);
+              core.setOutput(key + '_release_created', entry ? 'true' : 'false');
+              core.setOutput(key + '_tag', entry ? 'refs/tags/' + entry.tag : '');
+            }
+            core.setOutput('paths_released', JSON.stringify(selected.map(item => 'packages/' + item.name)));
+            core.setOutput('releases_created', 'true');
 
   build:
     name: Test and build ${{ matrix.path }}

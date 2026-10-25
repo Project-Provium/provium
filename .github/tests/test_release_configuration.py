@@ -1,6 +1,7 @@
 """Regression checks for CI coverage and release publication gates."""
 
 import json
+import subprocess
 import tomllib
 import unittest
 from pathlib import Path
@@ -19,6 +20,97 @@ def workflow(name):
 
 
 class ReleaseConfigurationTests(unittest.TestCase):
+    def test_manual_recovery_keeps_normal_release_and_publication_gates(self):
+        release = workflow("release.yml")
+        self.assertEqual(
+            set(release["on"]["workflow_dispatch"]["inputs"]),
+            {"provium_tag", "pipeline_tag", "dispatch_tag"},
+        )
+        job = release["jobs"]["release-please"]
+        automatic = next(step for step in job["steps"] if step.get("id") == "release")
+        self.assertEqual(automatic["if"], "github.event_name == 'push'")
+        recovery = next(step for step in job["steps"] if step.get("id") == "recovery")
+        self.assertIn("github.event_name == 'workflow_dispatch'", recovery["if"])
+        self.assertIn("github.ref == 'refs/heads/master'", job["if"])
+        for key, value in job["outputs"].items():
+            self.assertIn("steps.release.outputs", value)
+            self.assertIn(f"steps.recovery.outputs.{key}", value)
+        for name in ("publish-provium", "publish-pipeline", "publish-dispatch"):
+            publish = release["jobs"][name]
+            self.assertIn("release_created == 'true'", publish["if"])
+            self.assertEqual(publish["environment"]["name"], "pypi")
+
+    def test_manual_recovery_validates_tags_before_selecting_builds(self):
+        steps = workflow("release.yml")["jobs"]["release-please"]["steps"]
+        script = next(step for step in steps if step.get("id") == "recovery")["with"][
+            "script"
+        ]
+        cases = [
+            ({}, {}, "At least one"),
+            ({"pipeline_tag": "master"}, {}, "Invalid"),
+            ({"pipeline_tag": "provium-v0.12.1"}, {}, "Invalid"),
+            ({"pipeline_tag": "provium-pipeline-v2.2.0"}, {}, "not found"),
+            (
+                {"pipeline_tag": "provium-pipeline-v2.2.0"},
+                {"provium-pipeline-v2.2.0": {"draft": True}},
+                "draft",
+            ),
+            (
+                {"pipeline_tag": "provium-pipeline-v2.2.0"},
+                {"provium-pipeline-v2.2.0": {"draft": False}},
+                None,
+            ),
+            (
+                {
+                    "provium_tag": "provium-v0.12.1",
+                    "pipeline_tag": "provium-pipeline-v2.2.0",
+                    "dispatch_tag": "provium-dispatch-v0.2.0",
+                },
+                {
+                    "provium-v0.12.1": {"draft": False},
+                    "provium-pipeline-v2.2.0": {"draft": False},
+                    "provium-dispatch-v0.2.0": {"draft": False},
+                },
+                None,
+            ),
+        ]
+        for inputs, releases, error in cases:
+            with self.subTest(inputs=inputs, releases=releases):
+                harness = (
+                    "const inputs = " + json.dumps(inputs) + ";"
+                    "const releases = " + json.dumps(releases) + ";"
+                    "const outputs = {};"
+                    "const context = {payload: {inputs}, "
+                    "repo: {owner: 'org', repo: 'repo'}};"
+                    "const core = {setOutput: (k,v) => outputs[k] = v};"
+                    "const github = {rest: {repos: {getReleaseByTag: async ({tag}) => {"
+                    "if (!(tag in releases)) throw Error('not found');"
+                    "return {data: releases[tag]};"
+                    "}}}};"
+                    "(async () => {" + script + "})().then(() => "
+                    "console.log(JSON.stringify({outputs}))).catch(error => "
+                    "console.log(JSON.stringify({error: error.message})));"
+                )
+                result = subprocess.run(
+                    ["node", "-e", harness], capture_output=True, text=True, check=True
+                )
+                data = json.loads(result.stdout)
+                if error:
+                    self.assertIn(error, data["error"])
+                else:
+                    outputs = data["outputs"]
+                    self.assertEqual(outputs["releases_created"], "true")
+                    self.assertEqual(
+                        len(json.loads(outputs["paths_released"])), len(inputs)
+                    )
+                    self.assertEqual(
+                        outputs["pipeline_tag"], "refs/tags/provium-pipeline-v2.2.0"
+                    )
+                    self.assertEqual(
+                        outputs["dispatch_release_created"],
+                        "true" if "dispatch_tag" in inputs else "false",
+                    )
+
     def test_pipeline_is_an_independent_python_release(self):
         config = json.loads((ROOT / "release-please-config.json").read_text())
         package = config["packages"]["packages/provium-pipeline"]
