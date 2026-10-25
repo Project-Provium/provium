@@ -1,7 +1,9 @@
 from provium import Procedure
 
-from .contract import TokenizeV1ProcedureContract
-from .definition import TOKENIZE
+from provium_text_pipeline_example.procedure.tokenize.contract import (
+    TokenizeV1ProcedureContract,
+)
+from provium_text_pipeline_example.procedure.tokenize.definition import TOKENIZE
 
 
 class TokenizeV1Procedure(

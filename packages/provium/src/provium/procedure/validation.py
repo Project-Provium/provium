@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 
-from .config import ProcedureConfig
+from provium.procedure.config import ProcedureConfig
 
 
 class ProcedureConfigurationError(ValueError):

@@ -8,15 +8,14 @@ from pathlib import Path
 
 from provium import session
 from provium.artifact import read_artifact_header
+from provium.cli.command import Command
+from provium.cli.errors import EXPECTED_CLI_ERRORS, print_cli_error
 from provium.files import file_exists, normalize_location, writable_file
 from provium.tool.visualization import (
     lineage_to_dot,
     lineage_to_mermaid,
     render_lineage,
 )
-
-from ..command import Command
-from ..errors import EXPECTED_CLI_ERRORS, print_cli_error
 
 
 def _add_force_argument(parser: argparse.ArgumentParser) -> None:

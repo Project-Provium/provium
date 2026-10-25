@@ -7,13 +7,12 @@ import sys
 from collections.abc import Sequence
 
 from provium import __version__
-
-from .catalog import CommandCatalog
-from .completion import enable_completion
-from .configuration import configure_configuration
-from .discovery import discover_command_catalogs
-from .errors import EXPECTED_CLI_ERRORS, print_cli_error
-from .group import COMMAND_DESTINATION, configure_catalog
+from provium.cli.catalog import CommandCatalog
+from provium.cli.completion import enable_completion
+from provium.cli.configuration import configure_configuration
+from provium.cli.discovery import discover_command_catalogs
+from provium.cli.errors import EXPECTED_CLI_ERRORS, print_cli_error
+from provium.cli.group import COMMAND_DESTINATION, configure_catalog
 
 
 def create_parser(catalog: CommandCatalog) -> argparse.ArgumentParser:

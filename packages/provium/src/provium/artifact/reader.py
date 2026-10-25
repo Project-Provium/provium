@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from typing import Self
 
+from provium.artifact.header import ArtifactHeader
+from provium.artifact.region import BodyRegion
 from provium.provenance import ArtifactLineage
-
-from .header import ArtifactHeader
-from .region import BodyRegion
 
 INSPECTION_UNAVAILABLE = object()
 

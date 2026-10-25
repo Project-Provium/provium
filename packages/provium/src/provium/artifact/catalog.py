@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any
 
-from .definition import Artifact, ArtifactDefinition
+from provium.artifact.definition import Artifact, ArtifactDefinition
 
 
 class ArtifactCatalog:

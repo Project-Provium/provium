@@ -11,7 +11,7 @@ from provium.files import local_file
 from provium_pipeline.documents import UniqueLoader
 from provium_pipeline.models import PipelineConfiguration
 
-from .models import ComputeProfile
+from provium_dispatch.models import ComputeProfile
 
 
 def load_documents(

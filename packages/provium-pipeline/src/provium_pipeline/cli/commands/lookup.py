@@ -9,12 +9,16 @@ from typing import TYPE_CHECKING, Any
 
 from provium.cli.command import Command
 
-from ..arguments import apply_configuration, assignments, configure_storage
+from provium_pipeline.cli.arguments import (
+    apply_configuration,
+    assignments,
+    configure_storage,
+)
 
 if TYPE_CHECKING:
-    from ...lookup import ResultReader
-    from ...planning import Plan
-    from ...store import ArtifactStore
+    from provium_pipeline.lookup import ResultReader
+    from provium_pipeline.planning import Plan
+    from provium_pipeline.store import ArtifactStore
 
 
 class LookupCommand(Command):
@@ -37,7 +41,7 @@ class LookupCommand(Command):
     def prepare(
         self, arguments: argparse.Namespace
     ) -> tuple[Plan, ResultReader | None]:
-        from ...preparation import prepare_pipeline
+        from provium_pipeline.preparation import prepare_pipeline
 
         apply_configuration(arguments)
         if not arguments.file:
@@ -57,15 +61,15 @@ class LookupCommand(Command):
     def resolve_inputs(
         self, arguments: argparse.Namespace, store: ArtifactStore
     ) -> dict[str, Any]:
-        from ...input_sets import inspect_inputs
+        from provium_pipeline.input_sets import inspect_inputs
 
         return inspect_inputs(store, assignments(arguments.input))
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
-            from ...input_sets import input_set_hash
-            from ...lookup import lookup_artifact
-            from ...store import ArtifactStore
+            from provium_pipeline.input_sets import input_set_hash
+            from provium_pipeline.lookup import lookup_artifact
+            from provium_pipeline.store import ArtifactStore
 
             plan, backend = self.prepare(arguments)
             with ArtifactStore(

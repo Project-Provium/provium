@@ -7,18 +7,17 @@ from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast, get_args, get_origin
 
+from provium.artifact.reader import ArtifactReader
+from provium.artifact.writer import ArtifactWriter
 from provium.files import normalize_location
 
-from .reader import ArtifactReader
-from .writer import ArtifactWriter
-
 if TYPE_CHECKING:
-    from .definition import Artifact
+    from provium.artifact.definition import Artifact
 
 
 def validate_artifact_class(artifact: object) -> type[Artifact[Any, Any]]:
     """Validate and return one concrete class-based artifact implementation."""
-    from .definition import Artifact, ArtifactDefinition
+    from provium.artifact.definition import Artifact, ArtifactDefinition
 
     if not isinstance(artifact, type) or not issubclass(artifact, Artifact):
         raise TypeError(

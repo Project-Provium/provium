@@ -8,7 +8,7 @@ import sys
 
 from provium.cli.command import Command
 
-from ..arguments import (
+from provium_dispatch.cli.arguments import (
     configure_graph,
     require_database,
     validate_graph_options,
@@ -26,7 +26,7 @@ class UnregisterCommand(Command):
         try:
             self._validate(arguments)
             identities = self._identities(arguments)
-            from ...persistence.factory import open_backend
+            from provium_dispatch.persistence.factory import open_backend
 
             print(json.dumps(open_backend(arguments.database).unregister(identities)))
         except Exception as error:
@@ -45,7 +45,7 @@ class UnregisterCommand(Command):
 
     @staticmethod
     def _identities(arguments: argparse.Namespace) -> list[dict[str, str]]:
-        from ...documents import load_documents
+        from provium_dispatch.documents import load_documents
 
         documents = load_documents(
             arguments.file, scratch_directory=arguments.scratch_directory

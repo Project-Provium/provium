@@ -16,9 +16,13 @@ from provium_pipeline.models import PipelineDefinition as BasicDefinition
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from ...models import ComputeProfile, PipelineDefinition, definition_snapshot
-from ..interface import Lease
-from ..queues import validate_queue_name
+from provium_dispatch.models import (
+    ComputeProfile,
+    PipelineDefinition,
+    definition_snapshot,
+)
+from provium_dispatch.persistence.interface import Lease
+from provium_dispatch.persistence.queues import validate_queue_name
 
 MIGRATIONS = [
     """

@@ -8,7 +8,7 @@ import sys
 
 from provium.cli.command import Command
 
-from ..arguments import (
+from provium_dispatch.cli.arguments import (
     assignments,
     configure_graph,
     configure_queue,
@@ -58,8 +58,8 @@ class EnqueueCommand(Command):
                 ]
             else:
                 requests = [InputSet(assignments(arguments.input))]
-            from ...persistence.factory import open_backend
-            from ...preparation import load_pipeline
+            from provium_dispatch.persistence.factory import open_backend
+            from provium_dispatch.preparation import load_pipeline
 
             backend = open_backend(arguments.database) if arguments.pipeline else None
             graph = load_pipeline(

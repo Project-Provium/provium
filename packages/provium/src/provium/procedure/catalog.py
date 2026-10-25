@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any
 
-from .definition import Procedure, ProcedureDefinition
+from provium.procedure.definition import Procedure, ProcedureDefinition
 
 
 class ProcedureCatalog:

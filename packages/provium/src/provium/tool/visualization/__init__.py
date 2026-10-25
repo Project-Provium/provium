@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ...provenance import ArtifactLineage
-from . import graphviz, mermaid
-from .errors import BackendUnavailableError, UnsupportedFormatError
+from provium.provenance import ArtifactLineage
+from provium.tool.visualization import graphviz, mermaid
+from provium.tool.visualization.errors import (
+    BackendUnavailableError,
+    UnsupportedFormatError,
+)
 
 lineage_to_dot = graphviz.lineage_to_dot
 lineage_to_mermaid = mermaid.lineage_to_mermaid

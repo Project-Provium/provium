@@ -1,3 +1,3 @@
-from . import main
+from provium.cli import main
 
 raise SystemExit(main())

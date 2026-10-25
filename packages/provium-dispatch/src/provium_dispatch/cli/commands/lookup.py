@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from provium_pipeline.cli.commands.lookup import LookupCommand as PipelineLookupCommand
 
-from .input_set import open_index
+from provium_dispatch.cli.commands.input_set import open_index
 
 if TYPE_CHECKING:
     from provium_pipeline.lookup import ResultReader
@@ -19,7 +19,7 @@ class LookupCommand(PipelineLookupCommand):
     group = "dispatch"
 
     def configure_storage(self, parser: argparse.ArgumentParser) -> None:
-        from ..arguments import configure_storage
+        from provium_dispatch.cli.arguments import configure_storage
 
         configure_storage(parser)
 
@@ -28,9 +28,9 @@ class LookupCommand(PipelineLookupCommand):
     ) -> tuple[Plan, ResultReader | None]:
         from provium_pipeline.lookup import split_selector
 
-        from ...persistence.factory import open_backend
-        from ...preparation import prepare_pipeline
-        from ..arguments import apply_configuration
+        from provium_dispatch.cli.arguments import apply_configuration
+        from provium_dispatch.persistence.factory import open_backend
+        from provium_dispatch.preparation import prepare_pipeline
 
         apply_configuration(arguments)
         pipeline, _ = split_selector(arguments.reference)

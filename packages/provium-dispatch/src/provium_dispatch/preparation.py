@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING, Any
 
 from provium_pipeline.models import PipelineConfiguration, PipelineDefinition, Settings
 
-from .documents import load_documents
-from .models import ComputeProfile, definition_snapshot
+from provium_dispatch.documents import load_documents
+from provium_dispatch.models import ComputeProfile, definition_snapshot
 
 if TYPE_CHECKING:
     from provium_pipeline.planning import Plan
 
-    from .persistence.interface import PersistenceBackend
+    from provium_dispatch.persistence.interface import PersistenceBackend
 
 
 def load_pipeline(

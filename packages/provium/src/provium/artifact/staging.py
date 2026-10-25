@@ -10,13 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, cast
 from uuid import uuid4
 
+from provium.artifact.binding import ArtifactWriteBinding
+from provium.artifact.header import ArtifactHeader, encode_header
+from provium.artifact.region import BodyRegion
+from provium.artifact.writer import ArtifactWriter
 from provium.context import current_context
 from provium.files import publish_file
-
-from .binding import ArtifactWriteBinding
-from .header import ArtifactHeader, encode_header
-from .region import BodyRegion
-from .writer import ArtifactWriter
 
 if TYPE_CHECKING:
     from provium.session import Session

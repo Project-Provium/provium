@@ -10,21 +10,21 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, BinaryIO, Protocol, Self, cast
 
-from .artifact.header import (
+from provium.artifact.header import (
     CONTAINER_VERSION,
     MAGIC,
     PREFIX_SIZE,
     ArtifactHeader,
     decode_header,
 )
-from .artifact.reader import ArtifactReader
-from .artifact.region import BodyRegion
-from .context import activate_context, current_context
-from .files import local_file
-from .provenance import ArtifactLineage, ArtifactRecord, ArtifactReference
+from provium.artifact.reader import ArtifactReader
+from provium.artifact.region import BodyRegion
+from provium.context import activate_context, current_context
+from provium.files import local_file
+from provium.provenance import ArtifactLineage, ArtifactRecord, ArtifactReference
 
 if TYPE_CHECKING:
-    from .artifact.binding import ArtifactReadBinding
+    from provium.artifact.binding import ArtifactReadBinding
 
 
 class _Closeable(Protocol):

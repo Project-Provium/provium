@@ -9,12 +9,11 @@ from typing import Any, Self
 from uuid import uuid4
 
 from provium.artifact import ArtifactReadBinding, ArtifactWriteBinding, ArtifactWriter
+from provium.procedure.authorization import authorize_bindings
+from provium.procedure.execution import ProcedureExecutionSession
+from provium.procedure.result import ProcedureExecutionResult
 from provium.provenance import ProcedureRecord
 from provium.session import Session, session
-
-from .authorization import authorize_bindings
-from .execution import ProcedureExecutionSession
-from .result import ProcedureExecutionResult
 
 
 class ImperativeProcedure:

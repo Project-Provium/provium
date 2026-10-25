@@ -6,8 +6,11 @@ from html import escape
 from importlib import import_module
 from typing import Protocol, cast
 
-from ...provenance import ArtifactLineage
-from .errors import BackendUnavailableError, UnsupportedFormatError
+from provium.provenance import ArtifactLineage
+from provium.tool.visualization.errors import (
+    BackendUnavailableError,
+    UnsupportedFormatError,
+)
 
 
 class _GraphvizSource(Protocol):

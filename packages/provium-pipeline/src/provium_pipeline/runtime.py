@@ -18,20 +18,26 @@ from uuid import uuid4
 
 from provium.semantic import canonical_hash, computation_key, output_key
 
-from .coordination import Coordinator, Lease
-from .models import (
+from provium_pipeline.coordination import Coordinator, Lease
+from provium_pipeline.models import (
     ExecutionSettings,
     PipelineConfiguration,
     PipelineDefinition,
     Settings,
 )
-from .planning import Plan, build_plan, matches, resolve_settings, select_targets
-from .publication import FilePublisher, Publisher
-from .requests import InputSet
-from .store import Artifact, ArtifactCache
+from provium_pipeline.planning import (
+    Plan,
+    build_plan,
+    matches,
+    resolve_settings,
+    select_targets,
+)
+from provium_pipeline.publication import FilePublisher, Publisher
+from provium_pipeline.requests import InputSet
+from provium_pipeline.store import Artifact, ArtifactCache
 
 if TYPE_CHECKING:
-    from .workers import Worker
+    from provium_pipeline.workers import Worker
 
 
 @dataclass(frozen=True)
@@ -642,7 +648,7 @@ class ExecutionContext:
                 )
 
     def _run_node(self, first: Job, *, keep_workers: bool = False) -> None:
-        from .workers import Worker
+        from provium_pipeline.workers import Worker
 
         name = first.node
         settings = self._settings[name]

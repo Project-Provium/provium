@@ -20,10 +20,9 @@ from provium import (
     load_yaml_configuration,
     session,
 )
+from provium.cli.command import Command
+from provium.cli.errors import EXPECTED_CLI_ERRORS, print_cli_error
 from provium.files import local_file, normalize_location
-
-from ..command import Command
-from ..errors import EXPECTED_CLI_ERRORS, print_cli_error
 
 
 def _complete_procedure_identifiers(prefix: str, **_: object) -> list[str]:

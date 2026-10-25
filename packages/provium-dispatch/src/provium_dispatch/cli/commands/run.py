@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from provium.cli.command import Command
 
-from ..arguments import (
+from provium_dispatch.cli.arguments import (
     assignments,
     configure_graph,
     configure_queue,
@@ -73,8 +73,8 @@ class RunCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             self._validate(arguments)
-            from ...persistence.factory import open_backend
-            from ...preparation import prepare_pipeline
+            from provium_dispatch.persistence.factory import open_backend
+            from provium_dispatch.preparation import prepare_pipeline
 
             prepared = prepare_pipeline(
                 files=arguments.file,
@@ -97,7 +97,7 @@ class RunCommand(Command):
             from provium_pipeline.requests import CSVSource, ExecutionRequest
             from provium_pipeline.store import ArtifactStore
 
-            from ...runtime import ExecutionContext
+            from provium_dispatch.runtime import ExecutionContext
 
             if arguments.csv:
                 with (

@@ -5,8 +5,8 @@ from importlib.metadata import version
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .models import ComputeProfile, PipelineDefinition
-    from .runtime import ExecutionContext
+    from provium_dispatch.models import ComputeProfile, PipelineDefinition
+    from provium_dispatch.runtime import ExecutionContext
 
 __version__ = version("provium-dispatch")
 __all__ = ["ComputeProfile", "PipelineDefinition", "ExecutionContext", "__version__"]
@@ -14,12 +14,12 @@ __all__ = ["ComputeProfile", "PipelineDefinition", "ExecutionContext", "__versio
 
 def __getattr__(name: str) -> Any:
     modules = {
-        "ComputeProfile": ".models",
-        "PipelineDefinition": ".models",
-        "ExecutionContext": ".runtime",
+        "ComputeProfile": "provium_dispatch.models",
+        "PipelineDefinition": "provium_dispatch.models",
+        "ExecutionContext": "provium_dispatch.runtime",
     }
     if name not in modules:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(import_module(modules[name], __name__), name)
+    value = getattr(import_module(modules[name]), name)
     globals()[name] = value
     return value

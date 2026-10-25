@@ -9,7 +9,7 @@ from provium.procedure.config import ConfigurationSnapshot
 from provium.procedure.discovery import discover_procedure_catalogs
 from provium.provenance import ProcedureRecord
 
-from .models import (
+from provium_pipeline.models import (
     ExecutionSettings,
     PipelineConfiguration,
     PipelineDefinition,

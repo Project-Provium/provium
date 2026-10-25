@@ -101,7 +101,7 @@ def configure_queue(parser: argparse.ArgumentParser) -> None:
 
 def require_queue(arguments: argparse.Namespace) -> None:
     """Resolve a queue before opening persistence; explicit names bypass defaults."""
-    from ..persistence.queues import validate_queue_name
+    from provium_dispatch.persistence.queues import validate_queue_name
 
     apply_configuration(arguments)
     if arguments.queue is not None:

@@ -3,7 +3,7 @@
 from provium.cli.catalog import CommandCatalog
 from provium.cli.plugin import CLI_PLUGIN_API_VERSION, CLIPlugin
 
-from .commands.dispatch import DispatchCommand
+from provium_dispatch.cli.commands.dispatch import DispatchCommand
 
 catalog = CommandCatalog()
 catalog.register(DispatchCommand)

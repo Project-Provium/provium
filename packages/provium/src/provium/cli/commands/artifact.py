@@ -11,10 +11,9 @@ from provium import (
     read_artifact_header,
     session,
 )
+from provium.cli.command import Command
+from provium.cli.errors import EXPECTED_CLI_ERRORS, print_cli_error
 from provium.files import local_file, normalize_location, writable_file
-
-from ..command import Command
-from ..errors import EXPECTED_CLI_ERRORS, print_cli_error
 
 _LOAD_PROCEDURE_IDENTIFIER = "provium.builtin.LoadArtifactV1"
 _LOAD_PROCEDURE_CONTRACT_DIGEST = (

@@ -9,11 +9,10 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
+from provium.artifact.binding import ArtifactReadBinding, ArtifactWriteBinding
+from provium.artifact.reader import ArtifactReader
+from provium.artifact.writer import ArtifactWriter
 from provium.files import normalize_location
-
-from .binding import ArtifactReadBinding, ArtifactWriteBinding
-from .reader import ArtifactReader
-from .writer import ArtifactWriter
 
 
 def _require_text(value: object, field_name: str) -> None:

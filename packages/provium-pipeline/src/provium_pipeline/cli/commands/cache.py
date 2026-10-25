@@ -12,10 +12,10 @@ from provium.cli.catalog import CommandCatalog
 from provium.cli.command import Command
 from provium.cli.group import CommandGroup
 
-from ..arguments import apply_configuration, configure_storage
+from provium_pipeline.cli.arguments import apply_configuration, configure_storage
 
 if TYPE_CHECKING:
-    from ...cache import MaintenanceGuard
+    from provium_pipeline.cache import MaintenanceGuard
 
 
 class ClearCommand(Command):
@@ -38,8 +38,8 @@ class ClearCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             guard = self.prepare(arguments)
-            from ...cache import clear_cache
-            from ...store import ArtifactStore
+            from provium_pipeline.cache import clear_cache
+            from provium_pipeline.store import ArtifactStore
 
             with ArtifactStore(
                 arguments.store, scratch=arguments.scratch_directory

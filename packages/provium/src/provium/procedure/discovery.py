@@ -2,7 +2,7 @@
 
 from importlib import metadata
 
-from .catalog import ProcedureCatalog
+from provium.procedure.catalog import ProcedureCatalog
 
 ENTRY_POINT_GROUP = "provium.procedure_catalogs"
 _discovered_catalog: ProcedureCatalog | None = None

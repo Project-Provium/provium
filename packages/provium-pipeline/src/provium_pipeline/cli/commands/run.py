@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING, Any
 
 from provium.cli.command import Command
 
-from ..arguments import (
+from provium_pipeline.cli.arguments import (
     assignments,
     configure_graph,
     require_pipeline,
 )
 
 if TYPE_CHECKING:
-    from ...runtime import Outcome
+    from provium_pipeline.runtime import Outcome
 
 
 def outcome_json(event: Outcome) -> dict[str, Any]:
@@ -70,7 +70,7 @@ class RunCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             self._validate(arguments)
-            from ...preparation import prepare_pipeline
+            from provium_pipeline.preparation import prepare_pipeline
 
             prepared = prepare_pipeline(
                 files=arguments.file,
@@ -86,9 +86,9 @@ class RunCommand(Command):
             )
             from provium.files import local_file
 
-            from ...requests import CSVSource, ExecutionRequest
-            from ...runtime import ExecutionContext
-            from ...store import ArtifactStore
+            from provium_pipeline.requests import CSVSource, ExecutionRequest
+            from provium_pipeline.runtime import ExecutionContext
+            from provium_pipeline.store import ArtifactStore
 
             if arguments.csv:
                 with (

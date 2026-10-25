@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .catalog import CommandCatalog
+from provium.cli.catalog import CommandCatalog
 
 CLI_PLUGIN_API_VERSION = 1
 """The CLI plugin API version supported by this Provium release."""

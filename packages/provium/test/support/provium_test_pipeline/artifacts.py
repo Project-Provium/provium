@@ -1,9 +1,8 @@
 """Concrete artifact implementation for the integration test pipeline."""
 
 from provium import Artifact, ArtifactReader, ArtifactWriter
-
-from .contracts import TEXT_ARTIFACT
-from .import_probe import record_implementation_import
+from support.provium_test_pipeline.contracts import TEXT_ARTIFACT
+from support.provium_test_pipeline.import_probe import record_implementation_import
 
 record_implementation_import("artifacts")
 

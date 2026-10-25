@@ -20,7 +20,7 @@ class Command(ABC):
 
     def configuration(self, arguments: Namespace) -> dict[str, object]:
         """Load application settings only when this command needs them."""
-        from .configuration import command_configuration
+        from provium.cli.configuration import command_configuration
 
         return command_configuration(arguments)
 

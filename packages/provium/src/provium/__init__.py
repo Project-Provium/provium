@@ -4,7 +4,7 @@ from importlib.metadata import version
 
 __version__ = version("provium")
 
-from .artifact import (
+from provium.artifact import (
     Artifact,
     ArtifactCatalog,
     ArtifactDefinition,
@@ -22,13 +22,13 @@ from .artifact import (
     reset_artifact_discovery,
     stage_artifact,
 )
-from .artifact.inspection import (
+from provium.artifact.inspection import (
     FinalizedArtifactInspection,
     inspect_finalized_artifact,
 )
-from .canonical import canonical_digest, canonical_json, canonical_json_bytes
-from .cli import CLI_PLUGIN_API_VERSION, CLI_PLUGIN_ENTRY_POINT_GROUP, CLIPlugin
-from .procedure import (
+from provium.canonical import canonical_digest, canonical_json, canonical_json_bytes
+from provium.cli import CLI_PLUGIN_API_VERSION, CLI_PLUGIN_ENTRY_POINT_GROUP, CLIPlugin
+from provium.procedure import (
     CancellationToken,
     ConfigurationSnapshot,
     ImperativeProcedure,
@@ -70,15 +70,19 @@ from .procedure import (
     reset_procedure_discovery,
     validate_procedure_configuration,
 )
-from .provenance import (
+from provium.provenance import (
     ArtifactLineage,
     ArtifactRecord,
     ArtifactReference,
     ProcedureExecutionRecord,
     ProcedureRecord,
 )
-from .session import Session, current_session, session
-from .tool.visualization import lineage_to_dot, lineage_to_mermaid, render_lineage
+from provium.session import Session, current_session, session
+from provium.tool.visualization import (
+    lineage_to_dot,
+    lineage_to_mermaid,
+    render_lineage,
+)
 
 # Compatibility version for Provium's public core integration contracts.
 PROVIUM_CORE_API_VERSION = 1

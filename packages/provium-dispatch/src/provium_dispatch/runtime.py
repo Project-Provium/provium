@@ -14,9 +14,9 @@ from provium_pipeline.runtime import ExecutionContext as BasicContext
 from provium_pipeline.runtime import State
 from provium_pipeline.store import Artifact, ArtifactCache
 
-from .models import ComputeProfile, definition_snapshot
-from .persistence.interface import QueueBackend
-from .persistence.queues import validate_queue_name
+from provium_dispatch.models import ComputeProfile, definition_snapshot
+from provium_dispatch.persistence.interface import QueueBackend
+from provium_dispatch.persistence.queues import validate_queue_name
 
 
 class ExecutionContext(BasicContext):

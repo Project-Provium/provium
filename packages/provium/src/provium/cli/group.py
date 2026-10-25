@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 from typing import ClassVar
 
-from .catalog import CommandCatalog
-from .command import Command
+from provium.cli.catalog import CommandCatalog
+from provium.cli.command import Command
 
 COMMAND_DESTINATION = "_provium_command"
 
@@ -23,7 +23,7 @@ def configure_catalog(
         child = subparsers.add_parser(
             command.name, help=command.help, add_help=command.add_help
         )
-        from .configuration import configure_configuration
+        from provium.cli.configuration import configure_configuration
 
         configure_configuration(child)
         command.configure(child)

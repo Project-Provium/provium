@@ -7,7 +7,7 @@ from typing import Any
 
 from provium.semantic import canonical_hash
 
-from .store import ArtifactStore
+from provium_pipeline.store import ArtifactStore
 
 
 def inspect_inputs(store: ArtifactStore, inputs: Mapping[str, str]) -> dict[str, Any]:

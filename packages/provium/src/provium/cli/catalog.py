@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from inspect import isabstract
 from types import MappingProxyType
 
-from .command import Command
+from provium.cli.command import Command
 
 
 def _metadata(command: type[Command], field: str) -> str:
@@ -31,7 +31,7 @@ class CommandCatalog:
         name = _metadata(command, "name")
         _metadata(command, "help")
         if name in self._commands:
-            from .group import CommandGroup
+            from provium.cli.group import CommandGroup
 
             existing = self._commands[name]
             if not (

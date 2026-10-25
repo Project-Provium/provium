@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Protocol, TextIO
 
-from .models import REFERENCE, name_check
-from .store import Artifact
+from provium_pipeline.models import REFERENCE, name_check
+from provium_pipeline.store import Artifact
 
 
 @dataclass(frozen=True)

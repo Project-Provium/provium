@@ -1,7 +1,7 @@
 from provium import ProcedureCatalog
 
-from .count_words.definition import COUNT_WORDS
-from .tokenize.definition import TOKENIZE
+from provium_text_pipeline_example.procedure.count_words.definition import COUNT_WORDS
+from provium_text_pipeline_example.procedure.tokenize.definition import TOKENIZE
 
 catalog = ProcedureCatalog()
 catalog.register(TOKENIZE)

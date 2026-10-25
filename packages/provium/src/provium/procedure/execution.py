@@ -18,6 +18,7 @@ from provium.artifact import (
     stage_artifact,
 )
 from provium.files import local_file, location_identity, publish_file, remove_file
+from provium.procedure.result import ProcedureExecutionResult
 from provium.provenance import (
     ArtifactLineage,
     ArtifactRecord,
@@ -26,8 +27,6 @@ from provium.provenance import (
     ProcedureRecord,
 )
 from provium.session import Session, current_session, session
-
-from .result import ProcedureExecutionResult
 
 _EMPTY_DIGEST = hashlib.sha256(b"").hexdigest()
 

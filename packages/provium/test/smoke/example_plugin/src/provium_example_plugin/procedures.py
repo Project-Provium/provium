@@ -1,8 +1,7 @@
 """Concrete installed-plugin procedure implementations."""
 
 from provium import Procedure, ProcedureProcessContext, ProcedureSetupContext
-
-from .contracts import (
+from provium_example_plugin.contracts import (
     FAILING_PROCEDURE,
     SOURCE_PROCEDURE,
     TRANSFORM_PROCEDURE,
@@ -12,7 +11,7 @@ from .contracts import (
     TransformConfig,
     TransformContract,
 )
-from .import_probe import record_import
+from provium_example_plugin.import_probe import record_import
 
 record_import("procedures")
 

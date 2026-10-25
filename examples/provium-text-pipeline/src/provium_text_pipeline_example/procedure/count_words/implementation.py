@@ -1,7 +1,9 @@
 from provium import Procedure
 
-from .contract import CountWordsV1ProcedureContract
-from .definition import COUNT_WORDS
+from provium_text_pipeline_example.procedure.count_words.contract import (
+    CountWordsV1ProcedureContract,
+)
+from provium_text_pipeline_example.procedure.count_words.definition import COUNT_WORDS
 
 
 class CountWordsV1Procedure(

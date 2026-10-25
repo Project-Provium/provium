@@ -5,19 +5,18 @@ from inspect import signature
 from typing import Any, Never, cast
 
 from provium.artifact import ArtifactReadBinding, ArtifactWriteBinding
-
-from .config import ProcedureConfig, compose_configuration
-from .context import CancellationToken
-from .definition import Procedure, ProcedureDefinition
-from .io import (
+from provium.procedure.config import ProcedureConfig, compose_configuration
+from provium.procedure.context import CancellationToken
+from provium.procedure.definition import Procedure, ProcedureDefinition
+from provium.procedure.io import (
     ProcedureInputs,
     ProcedureOutputs,
     build_procedure_inputs,
     build_procedure_outputs,
 )
-from .prepared import PreparedProcedure
-from .result import ProcedureExecutionResult
-from .validation import validate_procedure_configuration
+from provium.procedure.prepared import PreparedProcedure
+from provium.procedure.result import ProcedureExecutionResult
+from provium.procedure.validation import validate_procedure_configuration
 
 type ReadBindingValue = ArtifactReadBinding[Any] | Sequence[ArtifactReadBinding[Any]]
 

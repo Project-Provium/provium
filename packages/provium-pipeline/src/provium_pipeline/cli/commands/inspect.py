@@ -8,7 +8,7 @@ import sys
 
 from provium.cli.command import Command
 
-from ..arguments import configure_graph, require_pipeline
+from provium_pipeline.cli.arguments import configure_graph, require_pipeline
 
 
 class InspectCommand(Command):
@@ -21,7 +21,7 @@ class InspectCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             require_pipeline(arguments)
-            from ...preparation import prepare_pipeline
+            from provium_pipeline.preparation import prepare_pipeline
 
             print(
                 json.dumps(

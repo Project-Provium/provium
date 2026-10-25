@@ -11,7 +11,7 @@ from provium.cli.catalog import CommandCatalog
 from provium.cli.command import Command
 from provium.cli.group import CommandGroup
 
-from ..arguments import (
+from provium_dispatch.cli.arguments import (
     apply_configuration,
     assignments,
     configure_storage,
@@ -20,15 +20,15 @@ from ..arguments import (
 if TYPE_CHECKING:
     from provium_pipeline.store import ArtifactStore
 
-    from ...input_sets import InputSetIndex
+    from provium_dispatch.input_sets import InputSetIndex
 
 
 def open_index(arguments: argparse.Namespace, store: ArtifactStore) -> InputSetIndex:
     if arguments.database:
-        from ...persistence.factory import open_backend
+        from provium_dispatch.persistence.factory import open_backend
 
         return open_backend(arguments.database)
-    from ...input_sets import LocalInputSetIndex
+    from provium_dispatch.input_sets import LocalInputSetIndex
 
     return LocalInputSetIndex(store.root)
 

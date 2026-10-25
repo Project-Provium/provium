@@ -3,7 +3,7 @@
 import importlib
 from importlib.metadata import entry_points
 
-from .models import PipelineDefinition
+from provium_pipeline.models import PipelineDefinition
 
 
 def load_definition(name: str, reference: str | None) -> PipelineDefinition | None:

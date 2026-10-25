@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 
-from .models import (
+from provium_pipeline.models import (
     ExecutionSettings,
     PipelineConfiguration,
     PipelineDefinition,
@@ -15,7 +15,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
-    from .planning import Plan
+    from provium_pipeline.planning import Plan
 
 
 def load_pipeline(
@@ -53,8 +53,8 @@ def prepare_pipeline(
     only: list[str] | None = None,
     force: list[str] | None = None,
 ) -> PreparedPipeline:
-    from .definitions import load_definition
-    from .planning import build_plan, resolve_settings
+    from provium_pipeline.definitions import load_definition
+    from provium_pipeline.planning import build_plan, resolve_settings
 
     graph = load_pipeline(files=files, scratch_directory=scratch_directory)
     definition = load_definition(graph.name, definition_reference)

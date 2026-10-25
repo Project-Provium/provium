@@ -15,10 +15,9 @@ from typing import Any, ClassVar, Literal, cast, get_args, get_origin
 
 from provium.artifact import ArtifactDefinition
 from provium.artifact.binding import validate_artifact_class
-
-from .config import ProcedureConfig
-from .context import ProcedureProcessContext, ProcedureSetupContext
-from .io import ProcedureInputs, ProcedureIOField, ProcedureOutputs
+from provium.procedure.config import ProcedureConfig
+from provium.procedure.context import ProcedureProcessContext, ProcedureSetupContext
+from provium.procedure.io import ProcedureInputs, ProcedureIOField, ProcedureOutputs
 
 
 def _require_text(value: object, field_name: str) -> None:

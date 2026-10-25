@@ -17,8 +17,8 @@ from provium.files import (
     publish_file,
 )
 
-from .requests import InputSet
-from .store import Artifact, ArtifactCache
+from provium_pipeline.requests import InputSet
+from provium_pipeline.store import Artifact, ArtifactCache
 
 
 class Publisher(Protocol):

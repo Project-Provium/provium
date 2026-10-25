@@ -3,12 +3,12 @@
 from provium.cli.catalog import CommandCatalog
 from provium.cli.group import CommandGroup
 
-from .cache import CacheCommand
-from .inspect import InspectCommand
-from .lookup import LookupCommand
-from .run import RunCommand
-from .status import StatusCommand
-from .validate import ValidateCommand
+from provium_pipeline.cli.commands.cache import CacheCommand
+from provium_pipeline.cli.commands.inspect import InspectCommand
+from provium_pipeline.cli.commands.lookup import LookupCommand
+from provium_pipeline.cli.commands.run import RunCommand
+from provium_pipeline.cli.commands.status import StatusCommand
+from provium_pipeline.cli.commands.validate import ValidateCommand
 
 
 class PipelineCommand(CommandGroup):

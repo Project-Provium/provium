@@ -9,7 +9,7 @@ from typing import Any, cast
 import yaml
 from provium.files import local_file
 
-from .models import PipelineConfiguration
+from provium_pipeline.models import PipelineConfiguration
 
 
 class UniqueLoader(yaml.SafeLoader):

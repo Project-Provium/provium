@@ -3,7 +3,7 @@
 from provium.cli.catalog import CommandCatalog
 from provium.cli.plugin import CLI_PLUGIN_API_VERSION, CLIPlugin
 
-from .commands.pipeline import PipelineCommand
+from provium_pipeline.cli.commands.pipeline import PipelineCommand
 
 catalog = CommandCatalog()
 catalog.register(PipelineCommand)

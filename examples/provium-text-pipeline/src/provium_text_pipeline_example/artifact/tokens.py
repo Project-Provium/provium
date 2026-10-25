@@ -3,7 +3,7 @@ from pathlib import Path
 
 from provium import Artifact, ArtifactReader, ArtifactWriter
 
-from . import TOKENS
+from provium_text_pipeline_example.artifact import TOKENS
 
 
 class TokensV1ArtifactReader(ArtifactReader):

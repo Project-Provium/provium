@@ -8,8 +8,11 @@ from html import escape
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ...provenance import ArtifactLineage
-from .errors import BackendUnavailableError, UnsupportedFormatError
+from provium.provenance import ArtifactLineage
+from provium.tool.visualization.errors import (
+    BackendUnavailableError,
+    UnsupportedFormatError,
+)
 
 
 def _require_lineage(lineage: ArtifactLineage) -> None:

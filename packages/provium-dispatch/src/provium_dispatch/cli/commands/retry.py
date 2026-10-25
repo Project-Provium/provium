@@ -8,7 +8,7 @@ import sys
 
 from provium.cli.command import Command
 
-from ..arguments import (
+from provium_dispatch.cli.arguments import (
     configure_graph,
     configure_queue,
     require_database,
@@ -30,8 +30,8 @@ class RetryCommand(Command):
             require_queue(arguments)
             require_database(arguments)
             require_pipeline(arguments)
-            from ...persistence.factory import open_backend
-            from ...preparation import load_pipeline
+            from provium_dispatch.persistence.factory import open_backend
+            from provium_dispatch.preparation import load_pipeline
 
             backend = open_backend(arguments.database) if arguments.pipeline else None
             graph = load_pipeline(

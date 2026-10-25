@@ -9,7 +9,7 @@ from typing import Any
 
 from provium.cli.command import Command
 
-from ..arguments import (
+from provium_dispatch.cli.arguments import (
     assignments,
     configure_graph,
     configure_queue,
@@ -30,8 +30,8 @@ class StatusCommand(Command):
         try:
             require_pipeline(arguments)
             require_execution_queue(arguments)
-            from ...persistence.factory import open_backend
-            from ...preparation import prepare_pipeline
+            from provium_dispatch.persistence.factory import open_backend
+            from provium_dispatch.preparation import prepare_pipeline
 
             prepared = prepare_pipeline(
                 files=arguments.file,
@@ -53,7 +53,7 @@ class StatusCommand(Command):
             from provium_pipeline.requests import InputSet
             from provium_pipeline.store import ArtifactStore
 
-            from ...runtime import ExecutionContext
+            from provium_dispatch.runtime import ExecutionContext
 
             graph = prepared.plan.configuration
             backend = prepared.backend

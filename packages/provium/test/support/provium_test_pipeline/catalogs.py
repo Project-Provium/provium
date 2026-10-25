@@ -1,8 +1,7 @@
 """Lightweight catalogs for the integration test pipeline."""
 
 from provium import ArtifactCatalog, ProcedureCatalog
-
-from .contracts import (
+from support.provium_test_pipeline.contracts import (
     FAILING_PROCEDURE,
     SOURCE_PROCEDURE,
     TEXT_ARTIFACT,

@@ -8,7 +8,7 @@ import sys
 
 from provium.cli.command import Command
 
-from ..arguments import (
+from provium_pipeline.cli.arguments import (
     assignments,
     configure_graph,
     require_pipeline,
@@ -25,7 +25,7 @@ class StatusCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
             require_pipeline(arguments)
-            from ...preparation import prepare_pipeline
+            from provium_pipeline.preparation import prepare_pipeline
 
             prepared = prepare_pipeline(
                 files=arguments.file,
@@ -39,8 +39,8 @@ class StatusCommand(Command):
                 only=arguments.only,
                 force=arguments.force,
             )
-            from ...runtime import ExecutionContext, InputSet
-            from ...store import ArtifactStore
+            from provium_pipeline.runtime import ExecutionContext, InputSet
+            from provium_pipeline.store import ArtifactStore
 
             store = ArtifactStore(arguments.store, scratch=arguments.scratch_directory)
             with (

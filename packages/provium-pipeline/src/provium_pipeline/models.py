@@ -256,6 +256,6 @@ def load_documents(
     scratch_directory: str | Path | None = None,
 ) -> list[PipelineConfiguration]:
     """Load documents on demand without coupling model imports to file I/O."""
-    from .documents import load_documents as load
+    from provium_pipeline.documents import load_documents as load
 
     return load(paths, scratch_directory=scratch_directory)

@@ -13,10 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from .store import ArtifactStore
+from provium_pipeline.store import ArtifactStore
 
 if TYPE_CHECKING:
-    from .runtime import Outcome
+    from provium_pipeline.runtime import Outcome
 
 
 @dataclass(frozen=True)
