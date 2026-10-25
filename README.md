@@ -67,3 +67,30 @@ make docs
 
 The Provium package owns its `pyproject.toml`, tests, coverage gate, version,
 and build metadata; examples remain separate projects in the monorepo.
+
+## Recover a failed PyPI publication
+
+Release Please can create GitHub releases before a later build or publication
+fails. A subsequent push does not republish those existing releases.
+
+After fixing the workflow on `master`, open **Actions → Release → Run workflow**,
+select `master`, and enter the existing release tags for the packages to publish.
+Leave already-published packages blank. At least one tag is required; tags must
+match the package name and have an existing, non-draft GitHub release.
+
+For example, to recover the three releases created on October 25, 2026:
+
+```bash
+gh workflow run release.yml --repo Project-Provium/provium --ref master \
+  -f provium_tag=provium-v0.12.1 \
+  -f pipeline_tag=provium-pipeline-v2.2.0 \
+  -f dispatch_tag=provium-dispatch-v0.2.0
+```
+
+The current workflow tests and builds source from the selected tags, then
+publishes core, pipeline, and dispatch in dependency order through the existing
+`pypi` environment and Trusted Publisher. Any required environment approvals
+still apply. Ensure omitted dependencies are already available on PyPI.
+Recovery does not create tags, change versions, or run Release Please.
+A new manual run is required to use a workflow fix; rerunning an old failed run
+uses its old workflow.
