@@ -15,6 +15,22 @@ came from. Store a result as an artifact, use that artifact as input to another
 step, and save the new outputs as artifacts of their own. Provium records those
 relationships automatically as your workflow runs.
 
+## Installation
+
+Requires Python 3.12 or newer. Install into your active Python environment:
+
+```bash
+python -m pip install provium
+```
+
+For S3 storage, install the optional dependency:
+
+```bash
+python -m pip install 'provium[s3]'
+```
+
+## Overview
+
 Each processing step is represented by a versioned procedure. When a procedure
 reads existing artifacts and creates new ones, Provium links the outputs to the
 procedure and its inputs. That lineage travels with every result, including its
@@ -34,15 +50,7 @@ artifacts for you.
 - Streaming, body-relative I/O
 - Runtime artifact discovery through Python entry points
 - Optional configuration snapshots, including Pydantic v2 models
-- No required runtime dependencies
-
-## Installation
-
-Provium requires Python 3.12 or newer.
-
-```bash
-python -m pip install provium
-```
+- Optional S3 and visualization dependencies
 
 ## Quick start
 
@@ -114,7 +122,7 @@ import struct
 
 from provium import Artifact, ArtifactReader, ArtifactWriter
 
-from .definitions import INTEGER_ARTIFACT
+from your_package.definitions import INTEGER_ARTIFACT
 
 INTEGER = struct.Struct(">q")
 
