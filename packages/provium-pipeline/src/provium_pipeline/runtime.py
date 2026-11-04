@@ -500,13 +500,6 @@ class ExecutionContext:
             for field_name, value in values.items():
                 if value is None:
                     paths[field_name], fingerprints[field_name] = None, None
-                elif isinstance(value, list):
-                    paths[field_name] = [
-                        state.values[ref].path for ref in cast(list[str], value)
-                    ]
-                    fingerprints[field_name] = [
-                        state.values[ref].fingerprint for ref in cast(list[str], value)
-                    ]
                 else:
                     paths[field_name] = state.values[value].path
                     fingerprints[field_name] = state.values[value].fingerprint
@@ -525,8 +518,8 @@ class ExecutionContext:
         ):
             for field_info in getattr(contract.metadata, scope):
                 if field_info.name not in paths:
-                    paths[field_info.name] = [] if field_info.repeated else None
-                    fingerprints[field_info.name] = [] if field_info.repeated else None
+                    paths[field_info.name] = None
+                    fingerprints[field_info.name] = None
         key = computation_key(
             self.plan.records[name], input_fingerprints, setup_fingerprints
         )
