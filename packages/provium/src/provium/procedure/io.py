@@ -14,6 +14,7 @@ from provium.artifact import (
     ArtifactWriteBinding,
     ArtifactWriter,
 )
+from provium.input_types import InputType, input_type
 
 
 class ProcedureIOField:
@@ -27,18 +28,23 @@ class ProcedureIOField:
         "_minimum",
         "_name",
         "_owner",
+        "_optional",
+        "_value_type",
     )
 
     def __init__(
         self,
-        artifact: ArtifactDefinition[Any],
+        artifact: ArtifactDefinition[Any] | type[Any],
         direction: Literal["input", "output"],
         description: str | None,
         *,
         minimum: int = 1,
         maximum: int | None = 1,
+        optional: bool = False,
     ) -> None:
-        if not isinstance(artifact, ArtifactDefinition):
+        if not isinstance(artifact, ArtifactDefinition) and not (
+            direction == "input" and isinstance(artifact, type)
+        ):
             raise TypeError(
                 "procedure I/O field artifact must be an ArtifactDefinition"
             )
@@ -64,7 +70,9 @@ class ProcedureIOField:
             )
         self._name: str | None = None
         self._owner: type[object] | None = None
-        self._artifact: ArtifactDefinition[Any] = artifact
+        self._artifact = artifact if isinstance(artifact, ArtifactDefinition) else None
+        self._value_type = input_type(artifact) if isinstance(artifact, type) else None
+        self._optional = optional or minimum == 0
         self._direction: Literal["input", "output"] = direction
         self._description: str | None = description
         self._minimum = minimum
@@ -94,7 +102,19 @@ class ProcedureIOField:
     @property
     def artifact(self) -> ArtifactDefinition[Any]:
         """Return the artifact definition required by this field."""
+        if self._artifact is None:
+            raise TypeError("value input has no artifact definition")
         return self._artifact
+
+    @property
+    def value_type(self) -> InputType[Any] | None:
+        """Return the value codec, or None for an artifact field."""
+        return self._value_type
+
+    @property
+    def optional(self) -> bool:
+        """Return whether an empty or omitted field is accepted."""
+        return self._optional
 
     @property
     def direction(self) -> Literal["input", "output"]:
@@ -126,7 +146,7 @@ class ProcedureIOField:
     @property
     def required(self) -> bool:
         """Return whether the field requires a binding."""
-        return self._minimum > 0
+        return not self._optional
 
     @property
     def repeated(self) -> bool:
@@ -383,6 +403,8 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
             if field.required:
                 raise TypeError(f"missing required field: {field.name}")
             return None
+        if field.value_type is not None:
+            return _validate_value(field, supplied, field.name)
         cls._assert_binding_is_valid(field, supplied)
         return supplied
 
@@ -403,12 +425,19 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
                 f"{field.name} must be a sequence of artifact read bindings"
             )
         cls._assert_cardinality_is_valid(field, len(values))
+        if field.value_type is not None:
+            return tuple(
+                _validate_value(field, value, f"{field.name}[{index}]")
+                for index, value in enumerate(values)
+            )
         for value in values:
             cls._assert_binding_is_valid(field, value)
         return values
 
     @staticmethod
     def _assert_cardinality_is_valid(field: ProcedureIOField, count: int) -> None:
+        if count == 0 and field.optional:
+            return
         if count < field.minimum:
             raise ValueError(
                 f"{field.name} requires at least {field.minimum} binding"
@@ -562,27 +591,24 @@ class _ProcedureIORecord(metaclass=_ProcedureIORecordMeta):
         inherited: Sequence[ProcedureIOField],
     ) -> None:
         inherited_artifacts = {
-            (candidate.artifact.identifier, candidate.artifact.target)
-            for candidate in inherited
+            _field_type_identity(candidate) for candidate in inherited
         }
         if (
             inherited_artifacts
-            and (
-                value.artifact.identifier,
-                value.artifact.target,
-            )
-            not in inherited_artifacts
+            and _field_type_identity(value) not in inherited_artifacts
         ):
             raise TypeError(f"{cls.__name__}.{name} cannot change artifact")
 
         inherited_cardinalities = {
-            (candidate.minimum, candidate.maximum) for candidate in inherited
+            (candidate.minimum, candidate.maximum, candidate.optional)
+            for candidate in inherited
         }
         if (
             inherited_cardinalities
             and (
                 value.minimum,
                 value.maximum,
+                value.optional,
             )
             not in inherited_cardinalities
         ):
@@ -696,7 +722,165 @@ def repeated_input[ReaderT: ArtifactReader, WriterT: ArtifactWriter](
     )
 
 
+def _field_type_identity(field: ProcedureIOField) -> object:
+    if field.value_type is not None:
+        return field.value_type.python_type
+    return field.artifact.identifier, field.artifact.target
+
+
+def _validate_value(field: ProcedureIOField, value: object, label: str) -> object:
+    assert field.value_type is not None
+    try:
+        return field.value_type.validate(value)
+    except (TypeError, ValueError) as error:
+        raise type(error)(f"{label}: {error}; received {value!r}") from error
+
+
+class ProcedureValueInputField[T](ProcedureIOField):
+    """A value descriptor preserving the field's complete runtime type."""
+
+    __slots__ = ("_multiple",)
+
+    def __init__(
+        self,
+        declaration: ArtifactDefinition[Any] | type[Any],
+        *,
+        optional: bool = False,
+        multiple: bool = False,
+        minimum: int = 1,
+        maximum: int | None = 1,
+        description: str | None = None,
+    ) -> None:
+        super().__init__(
+            declaration,
+            "input",
+            description,
+            minimum=minimum,
+            maximum=maximum,
+            optional=optional,
+        )
+        self._multiple = multiple
+
+    @property
+    def repeated(self) -> bool:
+        return self._multiple
+
+    @overload
+    def __get__(
+        self, instance: None, owner: type[object]
+    ) -> ProcedureValueInputField[T]: ...
+
+    @overload
+    def __get__(self, instance: object, owner: type[object] | None = None) -> T: ...
+
+    def __get__(
+        self, instance: object | None, owner: type[object] | None = None
+    ) -> Any:
+        return self if instance is None else self._get_value(instance)
+
+
+@overload
+def input_field[R: ArtifactReader, W: ArtifactWriter](
+    declaration: ArtifactDefinition[Artifact[R, W]],
+    *,
+    optional: Literal[False] = False,
+    description: str | None = None,
+) -> ProcedureValueInputField[ArtifactReadBinding[R]]: ...
+
+
+@overload
+def input_field[R: ArtifactReader, W: ArtifactWriter](
+    declaration: ArtifactDefinition[Artifact[R, W]],
+    *,
+    optional: bool,
+    description: str | None = None,
+) -> ProcedureValueInputField[ArtifactReadBinding[R] | None]: ...
+
+
+@overload
+def input_field[T](
+    declaration: type[T],
+    *,
+    optional: Literal[False] = False,
+    description: str | None = None,
+) -> ProcedureValueInputField[T]: ...
+
+
+@overload
+def input_field[T](
+    declaration: type[T],
+    *,
+    optional: bool,
+    description: str | None = None,
+) -> ProcedureValueInputField[T | None]: ...
+
+
+def input_field(
+    declaration: ArtifactDefinition[Any] | type[Any],
+    *,
+    optional: bool = False,
+    description: str | None = None,
+) -> ProcedureValueInputField[Any]:
+    """Declare one artifact or value input, optionally permitting None."""
+    if type(optional) is not bool:
+        raise TypeError("optional must be a boolean")
+    return ProcedureValueInputField(
+        declaration,
+        optional=optional,
+        minimum=0 if optional else 1,
+        description=description,
+    )
+
+
+@overload
+def multi_input_field[R: ArtifactReader, W: ArtifactWriter](
+    declaration: ArtifactDefinition[Artifact[R, W]],
+    *,
+    optional: bool = False,
+    minimum: int = 1,
+    maximum: int | None = None,
+    description: str | None = None,
+) -> ProcedureValueInputField[tuple[ArtifactReadBinding[R], ...]]: ...
+
+
+@overload
+def multi_input_field[T](
+    declaration: type[T],
+    *,
+    optional: bool = False,
+    minimum: int = 1,
+    maximum: int | None = None,
+    description: str | None = None,
+) -> ProcedureValueInputField[tuple[T, ...]]: ...
+
+
+def multi_input_field(
+    declaration: ArtifactDefinition[Any] | type[Any],
+    *,
+    optional: bool = False,
+    minimum: int = 1,
+    maximum: int | None = None,
+    description: str | None = None,
+) -> ProcedureValueInputField[Any]:
+    """Declare ordered inputs; optional permits zero OR the specified bounds."""
+    if type(optional) is not bool:
+        raise TypeError("optional must be a boolean")
+    if type(minimum) is not int or minimum < 1:
+        raise ValueError("multi input minimum must be an integer of at least 1")
+    return ProcedureValueInputField(
+        declaration,
+        optional=optional,
+        multiple=True,
+        minimum=minimum,
+        maximum=maximum,
+        description=description,
+    )
+
+
 __all__ = [
+    "input_field",
+    "multi_input_field",
+    "ProcedureValueInputField",
     "ProcedureIOField",
     "ProcedureInputField",
     "ProcedureInputs",

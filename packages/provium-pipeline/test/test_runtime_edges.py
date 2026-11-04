@@ -178,7 +178,7 @@ def test_node_timer_accumulates_across_switches_and_idle(tmp_path, monkeypatch):
         execution._unload_node()
 
 
-def test_repeated_and_optional_bindings_match_core_provenance(tmp_path):
+def test_shared_and_optional_bindings_match_core_provenance(tmp_path):
     from pipeline_fixtures import COLLECTION
 
     from provium_pipeline import PipelineConfiguration
@@ -186,7 +186,11 @@ def test_repeated_and_optional_bindings_match_core_provenance(tmp_path):
     item = InputSet({"document": str(make_artifact(tmp_path / "source.pa"))})
     for index, bindings in enumerate(
         (
-            {"sources": ["$inputs.document", "$inputs.document"], "optional": None},
+            {
+                "first": "$inputs.document",
+                "second": "$inputs.document",
+                "optional": None,
+            },
             {},
         )
     ):

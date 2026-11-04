@@ -60,18 +60,20 @@ class ProcedureIOFieldMetadata:
     """Immutable inspection metadata for one procedure I/O field."""
 
     name: str
-    artifact_identifier: str
-    artifact_description: str
+    artifact_identifier: str | None
+    artifact_description: str | None
     direction: Literal["input", "output"]
     minimum: int
     maximum: int | None
     repeated: bool
     description: str | None
+    value_type: str | None = None
+    optional: bool = False
 
     @property
     def required(self) -> bool:
         """Return whether the field requires at least one binding."""
-        return self.minimum > 0
+        return self.minimum > 0 and not self.optional
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,13 +113,19 @@ def _compile_field_metadata(
     return tuple(
         ProcedureIOFieldMetadata(
             name=name,
-            artifact_identifier=field.artifact.identifier,
-            artifact_description=field.artifact.description,
+            artifact_identifier=field.artifact.identifier
+            if field.value_type is None
+            else None,
+            artifact_description=field.artifact.description
+            if field.value_type is None
+            else None,
             direction=field.direction,
             minimum=field.minimum,
             maximum=field.maximum,
             repeated=field.repeated,
             description=field.description,
+            value_type=field.value_type.name if field.value_type is not None else None,
+            optional=field.optional,
         )
         for name, field in fields.items()
     )
@@ -136,6 +144,10 @@ def _field_metadata_payload(
             "maximum": field.maximum,
             "repeated": field.repeated,
             "description": field.description,
+            **(
+                {"value_type": field.value_type} if field.value_type is not None else {}
+            ),
+            **({"optional": True} if field.optional and field.minimum > 0 else {}),
         }
         for field in fields
     ]
@@ -195,7 +207,12 @@ def _format_binding_argument(
     flag: str,
     field: ProcedureIOFieldMetadata,
 ) -> str:
-    argument = f"{flag} {field.name}=PATH"
+    placeholder = (
+        "PATH"
+        if field.value_type is None or field.value_type == "file-path"
+        else "VALUE"
+    )
+    argument = f"{flag} {field.name}={placeholder}"
     if field.repeated:
         maximum = "unbounded" if field.maximum is None else str(field.maximum)
         ellipsis = " ..." if field.maximum is None or field.maximum > 1 else ""
@@ -628,6 +645,8 @@ class ProcedureDefinition[ProcedureT: Procedure[Any, Any, Any, Any]]:
             if record is None:
                 continue
             for io_field in record.fields.values():
+                if io_field.value_type is not None:
+                    continue
                 definition = io_field.artifact
                 definitions.setdefault(id(definition), definition)
         return definitions

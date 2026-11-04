@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from provium import (
-    ArtifactReadBinding,
     ArtifactWriteBinding,
     ProcedureDefinition,
     ProcedureExecutor,
@@ -226,7 +225,12 @@ class ExecuteCommand(Command):
                 field.maximum,
             )
             print(f"  {field.name}")
-            print(f"    Artifact: {field.artifact_identifier}")
+            if field.value_type is None:
+                print(f"    Artifact: {field.artifact_identifier}")
+            else:
+                print(f"    Type: {field.value_type}")
+            if field.optional and field.minimum > 0:
+                quantity = f"0 or {quantity}"
             print(f"    {quantity_label:<9} {quantity}")
 
     @staticmethod
@@ -249,13 +253,17 @@ class ExecuteCommand(Command):
         raise ValueError(f"unsupported configuration file type: {path_value}")
 
     @staticmethod
-    def _assignments(values: Sequence[str]) -> dict[str, list[Path | str]]:
+    def _assignments(
+        values: Sequence[str], *, normalize: bool = True
+    ) -> dict[str, list[Path | str]]:
         assignments: dict[str, list[Path | str]] = {}
         for value in values:
             name, separator, path = value.partition("=")
             if not separator or not name or not path:
                 raise ValueError(f"binding must use FIELD=PATH syntax: {value}")
-            assignments.setdefault(name, []).append(normalize_location(path))
+            assignments.setdefault(name, []).append(
+                normalize_location(path) if normalize else path
+            )
         return assignments
 
     @classmethod
@@ -263,14 +271,23 @@ class ExecuteCommand(Command):
         cls,
         fields: Mapping[str, Any],
         values: Sequence[str],
-    ) -> dict[str, ArtifactReadBinding[Any] | list[ArtifactReadBinding[Any]]]:
-        result: dict[
-            str, ArtifactReadBinding[Any] | list[ArtifactReadBinding[Any]]
-        ] = {}
-        for name, paths in cls._assignments(values).items():
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for name, paths in cls._assignments(values, normalize=False).items():
             field = cls._field(fields, name)
-            artifact = field.artifact.resolve()
-            bindings = [artifact.bind_read(path) for path in paths]
+            if field.value_type is not None:
+                bindings: list[Any] = []
+                for index, path in enumerate(paths):
+                    try:
+                        bindings.append(field.value_type.parse(path))
+                    except (TypeError, ValueError) as error:
+                        label = f"{name}[{index}]" if field.repeated else name
+                        raise type(error)(f"{label}: {error}") from error
+            else:
+                artifact = field.artifact.resolve()
+                bindings = [
+                    artifact.bind_read(normalize_location(path)) for path in paths
+                ]
             result[name] = bindings if field.repeated else cls._single(name, bindings)
         return result
 

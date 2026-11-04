@@ -28,6 +28,7 @@ from provium.artifact.inspection import (
 )
 from provium.canonical import canonical_digest, canonical_json, canonical_json_bytes
 from provium.cli import CLI_PLUGIN_API_VERSION, CLI_PLUGIN_ENTRY_POINT_GROUP, CLIPlugin
+from provium.input_types import FilePath, InputType, register_input_type
 from provium.procedure import (
     CancellationToken,
     ConfigurationSnapshot,
@@ -58,11 +59,14 @@ from provium.procedure import (
     ProcedureProcessContext,
     ProcedureRepeatedInputField,
     ProcedureSetupContext,
+    ProcedureValueInputField,
     compose_configuration,
     discover_procedure_catalogs,
     input,
+    input_field,
     load_json_configuration,
     load_yaml_configuration,
+    multi_input_field,
     optional_input,
     optional_output,
     output,
@@ -88,6 +92,12 @@ from provium.tool.visualization import (
 PROVIUM_CORE_API_VERSION = 1
 
 __all__ = [
+    "FilePath",
+    "InputType",
+    "register_input_type",
+    "input_field",
+    "multi_input_field",
+    "ProcedureValueInputField",
     "PROVIUM_CORE_API_VERSION",
     "CLI_PLUGIN_API_VERSION",
     "CLI_PLUGIN_ENTRY_POINT_GROUP",

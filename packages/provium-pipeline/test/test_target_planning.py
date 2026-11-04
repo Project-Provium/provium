@@ -71,7 +71,7 @@ def test_invalid_target_selection_fails_before_execution(tmp_path, targets):
             )
 
 
-def test_dependency_closure_includes_setup_and_repeated_inputs():
+def test_dependency_closure_includes_setup_and_shared_inputs():
     from pipeline_fixtures import COLLECTION
 
     from provium_pipeline.planning import build_plan, select_targets
@@ -79,7 +79,7 @@ def test_dependency_closure_includes_setup_and_repeated_inputs():
     data = graph().model_dump()
     data["nodes"]["join"] = {
         "procedure": COLLECTION.identifier,
-        "inputs": {"sources": ["$nodes.left.result", "$nodes.left.result"]},
+        "inputs": {"first": "$nodes.left.result", "second": "$nodes.left.result"},
         "setup_inputs": {"optional": "$inputs.right"},
     }
     data["outputs"]["joined"] = "$nodes.join.result"

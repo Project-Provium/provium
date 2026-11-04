@@ -89,14 +89,15 @@ def test_cached_chain_does_not_fetch_outputs_and_can_resume(
         )
 
 
-def test_cached_repeated_and_setup_bindings_materialize_once(tmp_path, monkeypatch):
+def test_cached_shared_and_setup_bindings_materialize_once(tmp_path, monkeypatch):
     from pipeline_fixtures import COLLECTION
 
     data = graph().model_dump()
     data["nodes"]["tokenize"] = {
         "procedure": COLLECTION.identifier,
         "inputs": {
-            "sources": ["$nodes.copy.result", "$nodes.copy.result"],
+            "first": "$nodes.copy.result",
+            "second": "$nodes.copy.result",
             "optional": None,
         },
         "setup_inputs": {"optional": "$nodes.copy.result"},

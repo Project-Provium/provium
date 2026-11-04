@@ -41,7 +41,7 @@ targets:
   word_count: $nodes.count_words.word_count
 ```
 
-Each node names a catalog-discovered procedure. Its `inputs` and `setup_inputs` bind procedure ports to `$inputs.NAME` or `$nodes.NODE.PORT`. Repeated ports accept lists of references; optional bindings can be omitted or null. Node `configuration` contains procedure settings, and `tags` provides selector labels.
+Each node names a catalog-discovered procedure. Its `inputs` and `setup_inputs` bind procedure ports to `$inputs.NAME` or `$nodes.NODE.PORT`. Each field accepts a single artifact reference; optional bindings can be omitted or null. Multi-value fields (including legacy repeated fields) and non-artifact value fields are currently supported only by direct core execution and are rejected during pipeline planning. Node `configuration` contains procedure settings, and `tags` provides selector labels.
 
 `targets` gives public names to graph outputs. The older YAML key `outputs` remains accepted. Python models and lookup selectors still use the term `outputs`. Graph validation checks types, ports, cardinality, references, cycles, and whether nodes contribute to declared targets.
 

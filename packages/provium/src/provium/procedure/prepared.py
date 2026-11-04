@@ -1,6 +1,7 @@
 """Reusable prepared procedure instances."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Lock
@@ -25,7 +26,7 @@ from provium.procedure.io import (
     build_procedure_outputs,
 )
 from provium.procedure.result import ProcedureExecutionResult
-from provium.provenance import ProcedureRecord
+from provium.provenance import ProcedureRecord, snapshot_value_inputs
 from provium.session import PersistentSession, Session, session
 
 
@@ -56,6 +57,7 @@ class PreparedProcedure[
         self._state_lock = Lock()
         self._active = False
         self._closed = False
+        self._setup_values = self._value_inputs("setup", setup_inputs)
         self._setup_session = PersistentSession()
         self._setup_temporary_directory = _SetupTemporaryDirectory()
         self._setup_inputs = setup_inputs
@@ -94,10 +96,7 @@ class PreparedProcedure[
     def execute(
         self,
         *,
-        inputs: Mapping[
-            str, ArtifactReadBinding[Any] | Sequence[ArtifactReadBinding[Any]]
-        ]
-        | InputsT = None,
+        inputs: Mapping[str, object] | InputsT = None,
         outputs: Mapping[str, ArtifactWriteBinding[Any]] | OutputsT = None,
         cancellation: CancellationToken | None = None,
     ) -> ProcedureExecutionResult:
@@ -106,27 +105,38 @@ class PreparedProcedure[
         try:
             prepared_inputs = self._prepare_inputs(inputs)
             prepared_outputs = self._prepare_outputs(outputs)
+            value_inputs = {
+                **self._setup_values,
+                **self._value_inputs("inputs", prepared_inputs),
+            }
+            value_inputs_json = snapshot_value_inputs(value_inputs)
             token = cancellation or CancellationToken()
             token.raise_if_cancelled()
             with TemporaryDirectory(prefix="provium-process-") as directory:
                 context = ProcedureProcessContext(token, Path(directory))
                 with self._setup_session:
-                    return self._execute_active(
+                    result = self._execute_active(
                         prepared_inputs,
                         prepared_outputs,
                         context,
+                        value_inputs,
                     )
+                    return replace(result, _value_inputs_json=value_inputs_json)
         finally:
             self._finish_execution()
 
     def _prepare_inputs(
         self,
-        supplied: Mapping[
-            str, ArtifactReadBinding[Any] | Sequence[ArtifactReadBinding[Any]]
-        ]
-        | InputsT,
+        supplied: Mapping[str, object] | InputsT,
     ) -> InputsT:
         if isinstance(supplied, ProcedureInputs):
+            definition = getattr(self._procedure, "definition", None)
+            if isinstance(definition, ProcedureDefinition):
+                expected = definition.resolve_contract().Inputs
+                if expected is None or not isinstance(supplied, expected):
+                    raise TypeError(
+                        "input record does not match the procedure contract"
+                    )
             return cast(InputsT, supplied)
         definition = self._procedure.definition
         record_type = definition.resolve_contract().Inputs
@@ -177,6 +187,7 @@ class PreparedProcedure[
         inputs: InputsT,
         outputs: OutputsT,
         context: ProcedureProcessContext,
+        value_inputs: dict[str, Any],
     ) -> ProcedureExecutionResult:
         input_bindings = self._input_bindings(inputs)
         output_bindings = self._output_bindings(outputs)
@@ -187,6 +198,7 @@ class PreparedProcedure[
                 input_bindings,
                 output_bindings,
                 context,
+                value_inputs,
             )
         if input_bindings:
             return self._execute_without_outputs(
@@ -203,10 +215,12 @@ class PreparedProcedure[
         input_bindings: tuple[ArtifactReadBinding[Any], ...],
         output_bindings: dict[str, ArtifactWriteBinding[Any]],
         context: ProcedureProcessContext,
+        value_inputs: dict[str, Any],
     ) -> ProcedureExecutionResult:
         procedure = self._procedure_record()
         self._assert_output_destinations_are_valid(output_bindings, procedure.name)
         with ProcedureExecutionSession(procedure) as execution:
+            execution.value_inputs = value_inputs
             with authorize_bindings(input_bindings, {}, {}):
                 identities = self._register_inputs(input_bindings)
             execution.bindings = {
@@ -224,8 +238,6 @@ class PreparedProcedure[
                 allow_binding_creation=False,
             ):
                 self._process(inputs, outputs, context)
-        from dataclasses import replace
-
         from provium.artifact.inspection import inspect_finalized_artifact
         from provium.procedure.result import ProcedureOutputResult
 
@@ -296,6 +308,7 @@ class PreparedProcedure[
                 else identities[id(value)]
             )
             for name, value in values.items()
+            if inputs.fields[name].value_type is None
         }
 
     @staticmethod
@@ -306,12 +319,37 @@ class PreparedProcedure[
             return ()
         values = cast(dict[str, object], object.__getattribute__(inputs, "_values"))
         bindings: list[ArtifactReadBinding[Any]] = []
-        for value in values.values():
+        for name, value in values.items():
+            if inputs.fields[name].value_type is not None:
+                continue
             if isinstance(value, tuple):
                 bindings.extend(cast(tuple[ArtifactReadBinding[Any], ...], value))
             elif value is not None:
                 bindings.append(cast(ArtifactReadBinding[Any], value))
         return tuple(bindings)
+
+    @staticmethod
+    def _value_inputs(scope: str, inputs: ProcedureInputs | None) -> dict[str, Any]:
+        if inputs is None:
+            return {}
+        result: dict[str, Any] = {}
+        for name, field in inputs.fields.items():
+            codec = field.value_type
+            if codec is None:
+                continue
+            value = getattr(inputs, name)
+            try:
+                encoded = (
+                    [codec.snapshot(item) for item in value]
+                    if field.repeated
+                    else None
+                    if value is None
+                    else codec.snapshot(value)
+                )
+            except (TypeError, ValueError) as error:
+                raise type(error)(f"{scope}.{name}: {error}") from error
+            result[f"{scope}.{name}"] = {"type": codec.name, "value": encoded}
+        return result
 
     def _output_bindings(
         self,

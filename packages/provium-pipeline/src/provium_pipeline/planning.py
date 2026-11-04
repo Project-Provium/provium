@@ -65,6 +65,20 @@ def build_plan(
         )
         resolved[name] = procedure
         contract: Any = procedure.resolve_contract()
+        for field in (
+            *contract.metadata.setup_inputs,
+            *contract.metadata.inputs,
+            *contract.metadata.outputs,
+        ):
+            if (
+                field.repeated
+                or field.maximum != 1
+                or field.artifact_identifier is None
+            ):
+                raise ValueError(
+                    f"{name}.{field.name}: pipelines currently support "
+                    "only single artifact fields"
+                )
         config_type = contract.configuration
         if config_type is None:
             if node.configuration:
@@ -95,10 +109,10 @@ def build_plan(
             for key, field in fields.items():
                 value = bindings.get(key)
                 sources = refs(value)
-                if field.repeated and value is not None and not isinstance(value, list):
-                    raise ValueError(f"{name}.{key}: expected collection")
-                if not field.repeated and isinstance(value, list):
-                    raise ValueError(f"{name}.{key}: expected single artifact")
+                if isinstance(value, list):
+                    raise ValueError(  # noqa: TRY004 - invalid pipeline configuration
+                        f"{name}.{key}: expected single artifact"
+                    )
                 if len(sources) < field.minimum or (
                     field.maximum is not None and len(sources) > field.maximum
                 ):

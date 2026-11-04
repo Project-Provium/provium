@@ -20,7 +20,8 @@ started and explore the complete guides and API reference.
 ## What Provium provides
 
 - **Provenance-aware artifacts** that retain their production history.
-- **Typed procedures** for defining clear, reusable units of work.
+- **Typed procedures** with artifact, file-location, numeric, and custom inputs;
+  optional and multi-value fields preserve editor and type-checker support.
 - **Reproducible execution** with recorded inputs, outputs, and identities.
 - **Lineage inspection and visualization** through Python and the command line,
   including Graphviz and Mermaid output.

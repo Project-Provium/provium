@@ -9,7 +9,6 @@ from provium import (
     ArtifactDefinition,
     ArtifactReadBinding,
     ArtifactReader,
-    ArtifactWriteBinding,
     ArtifactWriter,
     PreparedProcedure,
     Procedure,
@@ -146,11 +145,8 @@ def reject_mismatched_prepared_types(
 
 def reject_reversed_executor_binding_directions(
     input_binding: ArtifactReadBinding[Reader],
-    output_binding: ArtifactWriteBinding[Writer],
 ) -> None:
     ProcedureExecutor().execute(
         OTHER_PROCEDURE,
-        setup_inputs={"setup": output_binding},  # pyright: ignore[reportArgumentType]
-        inputs={"input": output_binding},  # pyright: ignore[reportArgumentType]
         outputs={"output": input_binding},  # pyright: ignore[reportArgumentType]
     )

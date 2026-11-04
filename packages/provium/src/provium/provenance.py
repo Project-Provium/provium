@@ -32,6 +32,24 @@ def _json_object(value: str) -> Mapping[str, Any]:
     return cast(Mapping[str, Any], decoded)
 
 
+def snapshot_value_inputs(values: Mapping[str, Any] | None) -> str:
+    """Validate and detach encoded value inputs for immutable provenance."""
+    if values is None:
+        return "{}"
+    if not isinstance(values, Mapping):
+        raise TypeError("value inputs must be a mapping")
+    for name, payload in values.items():
+        if not isinstance(name, str):
+            raise TypeError("value input name must be a string")
+        scope, separator, field_name = name.partition(".")
+        if scope not in {"setup", "inputs"} or not separator or not field_name:
+            raise ValueError("invalid value input name")
+        if not isinstance(payload, dict) or payload.keys() != {"type", "value"}:
+            raise ValueError("value input requires type and value")
+        _assert_text_is_valid(cast(dict[str, Any], payload)["type"], "value input type")
+    return json.dumps(dict(values), allow_nan=False, sort_keys=True)
+
+
 class _SerializableRecord:
     _shape_name: ClassVar[str]
 
@@ -156,6 +174,7 @@ class ProcedureExecutionRecord(_SerializableRecord):
     inputs: tuple[ArtifactReference, ...] = ()
     outputs: tuple[ArtifactReference, ...] = ()
     bindings: Mapping[str, str | tuple[str, ...] | None] | None = None
+    _value_inputs_json: str = field(default="{}", repr=False)
     _shape_name: ClassVar[str] = "procedure execution record"
 
     def __init__(
@@ -166,11 +185,15 @@ class ProcedureExecutionRecord(_SerializableRecord):
         outputs: tuple[ArtifactReference, ...] | None = None,
         *,
         bindings: Mapping[str, str | tuple[str, ...] | None] | None = None,
+        value_inputs: Mapping[str, Any] | None = None,
     ) -> None:
         object.__setattr__(
             self,
             "bindings",
             None if bindings is None else MappingProxyType(dict(bindings)),
+        )
+        object.__setattr__(
+            self, "_value_inputs_json", snapshot_value_inputs(value_inputs)
         )
         object.__setattr__(self, "identity", identity)
         object.__setattr__(self, "procedure", procedure)
@@ -192,9 +215,16 @@ class ProcedureExecutionRecord(_SerializableRecord):
         object.__setattr__(self, "outputs", self._normalized(self.outputs))
         self._assert_bindings_are_valid()
 
+    @property
+    def value_inputs(self) -> dict[str, Any]:
+        """Return an isolated copy of the encoded non-artifact inputs."""
+        return json.loads(self._value_inputs_json)
+
     def _assert_bindings_are_valid(self) -> None:
         if self.bindings is None:
             return
+        if self.value_inputs.keys() & self.bindings.keys():
+            raise ValueError("a field cannot have both artifact and value bindings")
         seen_inputs: set[str] = set()
         seen_outputs: set[str] = set()
         for key, value in self.bindings.items():
@@ -249,6 +279,11 @@ class ProcedureExecutionRecord(_SerializableRecord):
     def to_dict(self) -> dict[str, Any]:
         return {
             **(
+                {"value_inputs": self.value_inputs, "value_inputs_version": 1}
+                if self.value_inputs
+                else {}
+            ),
+            **(
                 {
                     "bindings": {
                         key: list(value) if isinstance(value, tuple) else value
@@ -268,6 +303,13 @@ class ProcedureExecutionRecord(_SerializableRecord):
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> Self:
         keys = {"identity", "inputs", "outputs", "procedure"}
+        if "value_inputs" in value:
+            keys |= {"value_inputs", "value_inputs_version"}
+            if (
+                type(value.get("value_inputs_version")) is not int
+                or value["value_inputs_version"] != 1
+            ):
+                raise ValueError("unsupported value inputs version")
         if "bindings" in value:
             keys |= {"bindings", "bindings_version"}
             if value.get("bindings_version") != 1:
@@ -284,6 +326,7 @@ class ProcedureExecutionRecord(_SerializableRecord):
             }
             if "bindings" in value
             else None,
+            value_inputs=value.get("value_inputs"),
         )
 
 

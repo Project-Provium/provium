@@ -134,7 +134,7 @@ def test_pipeline_definition_output_validation():
         )
 
 
-def test_collection_cardinality_validation():
+def test_collection_contracts_are_rejected():
     from provium_text_pipeline_example.procedure.tokenize.definition import TOKENIZE
 
     field = SimpleNamespace(
@@ -154,11 +154,11 @@ def test_collection_cardinality_validation():
         identifier=TOKENIZE.identifier, resolve_contract=lambda: contract
     )
     graph = configuration()
-    with pytest.raises(ValueError, match="collection"):
+    with pytest.raises(ValueError, match="single artifact"):
         build_plan(graph, procedures={TOKENIZE.identifier: procedure})
     for refs in ([], ["$inputs.a", "$inputs.b", "$inputs.c"]):
         node = graph.nodes["tokenize"].model_copy(update={"inputs": {"source": refs}})
-        with pytest.raises(ValueError, match="cardinality"):
+        with pytest.raises(ValueError, match="single artifact"):
             build_plan(
                 graph.model_copy(update={"nodes": {"tokenize": node}}),
                 procedures={TOKENIZE.identifier: procedure},

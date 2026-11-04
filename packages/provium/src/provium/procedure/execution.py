@@ -25,6 +25,7 @@ from provium.provenance import (
     ArtifactReference,
     ProcedureExecutionRecord,
     ProcedureRecord,
+    snapshot_value_inputs,
 )
 from provium.session import Session, current_session, session
 
@@ -40,6 +41,7 @@ class ProcedureExecutionSession:
         self.identity = str(uuid4())
         self.procedure = procedure
         self.bindings: dict[str, str | tuple[str, ...] | None] | None = None
+        self.value_inputs: dict[str, Any] = {}
         self._session: Session | None = None
         self._staged: dict[str, StagedArtifact[Any]] | None = None
         self._references: dict[str, ArtifactReference] = {}
@@ -169,6 +171,7 @@ class ProcedureExecutionSession:
             self.procedure,
             tuple(record.reference for record in child.inputs),
             tuple(references.values()),
+            value_inputs=self.value_inputs,
             bindings=(
                 {
                     **self.bindings,
@@ -227,6 +230,7 @@ class ProcedureExecutionSession:
             execution.inputs,
             {name: self._references[name] for name in self._staged},
             lineage,
+            _value_inputs_json=snapshot_value_inputs(execution.value_inputs),
         )
 
     def _publish_outputs(self, metadata: Mapping[str, ArtifactHeader]) -> None:

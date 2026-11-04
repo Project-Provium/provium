@@ -70,6 +70,9 @@ def artifact_fingerprint(
                 output_names[str(value)] = name
             else:
                 (inputs if scope == "inputs" else setup)[name] = resolve(value)
+        for key, payload in execution.value_inputs.items():
+            scope, _, name = key.partition(".")
+            (inputs if scope == "inputs" else setup)[name] = {"value_input": payload}
         result = {
             "type": ref.artifact_identifier,
             "provenance": output_key(

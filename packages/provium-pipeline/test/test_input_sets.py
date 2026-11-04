@@ -77,7 +77,7 @@ def test_lookup_traverses_only_requested_dependencies(tmp_path, monkeypatch):
     data = graph().model_dump()
     data["nodes"]["tokenize"] = {
         "procedure": COLLECTION.identifier,
-        "inputs": {"sources": ["$nodes.copy.result", "$nodes.copy.result"]},
+        "inputs": {"first": "$nodes.copy.result", "second": "$nodes.copy.result"},
         "setup_inputs": {"optional": "$nodes.copy.result"},
     }
     pipeline = PipelineConfiguration.model_validate(data)
