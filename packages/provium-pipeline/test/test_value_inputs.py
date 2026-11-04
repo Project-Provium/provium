@@ -119,7 +119,8 @@ def test_value_execution_and_cache(tmp_path):
         )
 
 
-def test_custom_value_round_trip_and_optional_bound_value(tmp_path):
+@pytest.mark.parametrize("labels", [Labels(("a", "b")), "https://host/labels"])
+def test_custom_value_round_trip_and_optional_bound_value(tmp_path, labels):
     from provium_pipeline.input_sets import inspect_inputs
     from provium_pipeline.lookup import lookup_artifact
     from provium_pipeline.requests import ExecutionRequest
@@ -132,7 +133,7 @@ def test_custom_value_round_trip_and_optional_bound_value(tmp_path):
         "source": "source.csv",
         "count": "3",
         "scale": "2.5",
-        "labels": Labels(("a", "b")),
+        "labels": labels,
         "maybe": None,
     }
     store = ArtifactStore(str(tmp_path / "store"))
@@ -292,6 +293,37 @@ def test_cli_and_csv_value_inputs(tmp_path, monkeypatch, capsys):
     )
     assert run(["pipeline", "run", *flags, "--csv", str(csv)]) == 0
     assert (tmp_path / "csv.pa").exists()
+
+
+def test_publication_value_snapshots_and_path_collisions(tmp_path):
+    from provium_pipeline.publication import FilePublisher
+    from provium_pipeline.requests import ExecutionRequest
+
+    store = ArtifactStore(str(tmp_path / "cache"))
+    publisher = FilePublisher(store)
+    publisher.assert_requests_are_valid(
+        [
+            ExecutionRequest(
+                {
+                    "number": encode_value({"value_type": "int"}, 3),
+                    "absent": encode_value({"value_type": "file-path"}, None),
+                    "path": encode_value(
+                        {"value_type": "file-path"}, str(tmp_path / "source")
+                    ),
+                },
+                {"result": str(tmp_path / "out")},
+            )
+        ]
+    )
+    publisher = FilePublisher(store, input_types={"path": {"value_type": "file-path"}})
+    with pytest.raises(ValueError, match="overwrites an input"):
+        publisher.assert_requests_are_valid(
+            [
+                ExecutionRequest(
+                    {"path": tmp_path / "source"}, {"result": str(tmp_path / "source")}
+                )
+            ]
+        )
 
 
 def test_worker_decodes_values_and_optional_absence():

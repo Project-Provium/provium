@@ -60,7 +60,7 @@ same rules. See [typed inputs](../guides/procedures.md#value-inputs-and-import-p
 | `assert_requests_are_valid(requests)` | Validate the complete request collection before execution. |
 | `publish(artifact, destination, *, overwrite=False)` | Materialize/publish an artifact and return its destination reference. |
 
-`FilePublisher(store)` supplies local/S3 artifact copying and destination compatibility checks. Custom publishers own destination validation and overwrite semantics. Publication can partially succeed; a failure must not be reported as a successful request.
+`FilePublisher(store, input_types=None)` supplies local/S3 artifact copying and destination compatibility checks. The execution context supplies its input declarations so custom values are not interpreted as paths; explicit `FilePath` inputs are protected from destination overwrites. Custom publishers own destination validation and overwrite semantics. Publication can partially succeed; a failure must not be reported as a successful request.
 
 ::: provium_pipeline.requests.ExecutionRequest
 

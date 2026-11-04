@@ -108,7 +108,11 @@ class ExecutionContext:
         if targets is not None:
             self.plan = select_targets(self.plan, targets)
         self.store = store
-        self.publisher = publisher if publisher is not None else FilePublisher(store)
+        self.publisher = (
+            publisher
+            if publisher is not None
+            else FilePublisher(store, input_types=self.plan.input_types)
+        )
         self.verify_artifacts = verify_artifacts
         self.execution_settings = settings or ExecutionSettings()
         self.only = only or []
