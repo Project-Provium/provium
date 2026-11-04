@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.0](https://github.com/Project-Provium/provium/compare/provium-pipeline-v2.2.0...provium-pipeline-v2.3.0) (2026-11-04)
+
+
+### Features
+
+* support typed value inputs in core procedures ([f1f7576](https://github.com/Project-Provium/provium/commit/f1f7576f0b2549fbd9e3682e428ad0b2a11b10a5))
+* support typed value inputs in core procedures ([393adf9](https://github.com/Project-Provium/provium/commit/393adf9ab8534915ddd175dc93fe9ac54e44fe67))
+
 ## [2.2.0](https://github.com/Project-Provium/provium/compare/provium-pipeline-v2.1.0...provium-pipeline-v2.2.0) (2026-10-25)
 
 
