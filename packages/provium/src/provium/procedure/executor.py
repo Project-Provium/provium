@@ -1,10 +1,10 @@
 """Procedure preparation and execution orchestration."""
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from inspect import signature
 from typing import Any, Never, cast
 
-from provium.artifact import ArtifactReadBinding, ArtifactWriteBinding
+from provium.artifact import ArtifactWriteBinding
 from provium.procedure.config import ProcedureConfig, compose_configuration
 from provium.procedure.context import CancellationToken
 from provium.procedure.definition import Procedure, ProcedureDefinition
@@ -18,7 +18,7 @@ from provium.procedure.prepared import PreparedProcedure
 from provium.procedure.result import ProcedureExecutionResult
 from provium.procedure.validation import validate_procedure_configuration
 
-type ReadBindingValue = ArtifactReadBinding[Any] | Sequence[ArtifactReadBinding[Any]]
+type ReadBindingValue = object
 
 
 class ProcedureExecutor:

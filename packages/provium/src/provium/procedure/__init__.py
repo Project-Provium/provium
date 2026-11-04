@@ -1,5 +1,6 @@
 """Procedure definitions, contracts, catalogs, and discovery."""
 
+from provium.input_types import FilePath, InputType, register_input_type
 from provium.procedure.catalog import ProcedureCatalog
 from provium.procedure.config import (
     ConfigurationSnapshot,
@@ -41,7 +42,10 @@ from provium.procedure.io import (
     ProcedureOutputField,
     ProcedureOutputs,
     ProcedureRepeatedInputField,
+    ProcedureValueInputField,
     input,
+    input_field,
+    multi_input_field,
     optional_input,
     optional_output,
     output,
@@ -55,6 +59,12 @@ from provium.procedure.validation import (
 )
 
 __all__ = [
+    "FilePath",
+    "InputType",
+    "register_input_type",
+    "input_field",
+    "multi_input_field",
+    "ProcedureValueInputField",
     "ConfigurationSnapshot",
     "CancellationToken",
     "JsonValue",

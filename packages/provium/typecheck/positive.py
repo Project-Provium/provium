@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import ClassVar, assert_type
 
 from provium import (
@@ -13,6 +14,7 @@ from provium import (
     ArtifactReader,
     ArtifactWriteBinding,
     ArtifactWriter,
+    FilePath,
     PreparedProcedure,
     Procedure,
     ProcedureCatalog,
@@ -27,9 +29,12 @@ from provium import (
     Session,
     StagedArtifact,
     input,
+    input_field,
+    multi_input_field,
     optional_input,
     optional_output,
     output,
+    register_input_type,
     repeated_input,
     stage_artifact,
     validate_procedure_configuration,
@@ -181,3 +186,49 @@ def assert_executor_mapping_types(
         ),
         ProcedureExecutionResult,
     )
+
+
+class ValueInputs(ProcedureInputs):
+    count = input_field(int)
+    scale = input_field(float)
+    source = input_field(FilePath)
+    optional_count = input_field(int, optional=True)
+    counts = multi_input_field(int, optional=True, minimum=2)
+    artifact = input_field(IMAGE_ARTIFACT)
+    optional_artifact = input_field(IMAGE_ARTIFACT, optional=True)
+    artifacts = multi_input_field(IMAGE_ARTIFACT)
+
+
+def assert_value_input_types(inputs: ValueInputs) -> None:
+    assert_type(inputs.count, int)
+    assert_type(inputs.scale, float)
+    assert_type(inputs.source, FilePath)
+    assert_type(inputs.optional_count, int | None)
+    assert_type(inputs.counts, tuple[int, ...])
+    assert_type(inputs.artifact, ArtifactReadBinding[ImageReader])
+    assert_type(inputs.optional_artifact, ArtifactReadBinding[ImageReader] | None)
+    assert_type(inputs.artifacts, tuple[ArtifactReadBinding[ImageReader], ...])
+
+
+class ImportFormat(Enum):
+    CSV = "csv"
+
+
+register_input_type(
+    ImportFormat,
+    name="typecheck.import-format",
+    decode=ImportFormat,
+    encode=lambda value: value.value,
+)
+
+
+class CustomInputs(ProcedureInputs):
+    format = input_field(ImportFormat)
+    formats = multi_input_field(ImportFormat, optional=True)
+    optional_format = input_field(ImportFormat, optional=True)
+
+
+def assert_custom_input_types(inputs: CustomInputs) -> None:
+    assert_type(inputs.format, ImportFormat)
+    assert_type(inputs.formats, tuple[ImportFormat, ...])
+    assert_type(inputs.optional_format, ImportFormat | None)

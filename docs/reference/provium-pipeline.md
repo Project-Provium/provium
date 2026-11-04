@@ -34,6 +34,11 @@ text-processing = "application:definition"
 
 `provium_pipeline.definitions.load_definition(name, reference)` resolves an explicit reference or discovers the named entry point. No match returns `None`; duplicate matches fail. Basic definitions have no profile allowlist.
 
+Procedure fields must be single artifact inputs or outputs, optionally absent.
+Planning rejects multi-value fields and non-artifact value inputs before starting
+workers. The same restriction applies to dispatch-managed pipelines. Use direct
+core execution for [value and multi-value inputs](../guides/procedures.md#value-inputs-and-import-procedures).
+
 ## Preparation
 
 `provium_pipeline.preparation.prepare_pipeline` accepts keyword-only `files`, `scratch_directory`, `definition_reference`, `workers`, `only`, and `force`. It selects exactly one graph and returns a `PreparedPipeline` with `plan`, `definition`, `overrides`, and resolved `settings`; `summary()` produces JSON-compatible planning information. It does not start workers or open a database.

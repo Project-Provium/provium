@@ -41,9 +41,10 @@ provium execute example.DetectV1 --help
 
 ## Execute a procedure
 
-Bindings use `FIELD=PATH`. Repeat `--input` for a repeated field and repeat
-`--procedure-config` to apply JSON or YAML layers in order (later values override earlier
-ones).
+Artifact and file-location bindings use `FIELD=PATH`; other value inputs use
+`FIELD=VALUE`. Repeat `--input` or `--setup-input` for a multi-value field. Repeat
+`--procedure-config` to apply JSON or YAML layers in order (later values override
+earlier ones).
 
 ```bash
 provium execute example.DetectV1 \
@@ -56,7 +57,15 @@ provium execute example.DetectV1 \
   --output detections=detections.pa
 ```
 
-Optional inputs and outputs may be omitted. Unknown fields, bad cardinality,
+Value inputs declared with `int` or `float` parse numeric text; `3.9` is rejected
+for an integer field, and non-finite floats are rejected. `FilePath` accepts local
+paths, `file://` URLs, and S3 object URIs. Registered custom types use their decoder.
+For example, an import procedure can accept `--input source=s3://bucket/data.csv
+--input skip_rows=3`. See [Value inputs](procedures.md#value-inputs-and-import-procedures)
+for declarations and custom codecs.
+
+Optional inputs and outputs may be omitted. For `multi_input_field(...,
+optional=True, minimum=2)`, omit the field entirely or supply at least two values. Unknown fields, bad cardinality,
 invalid configuration, resolution failures, and processing failures are printed
 to standard error and return exit status 2. Successful execution prints its
 provenance execution identity and returns 0.

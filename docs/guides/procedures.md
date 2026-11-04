@@ -1,7 +1,7 @@
 # Procedures and provenance
 
 Procedures are discoverable, typed classes. A lightweight contract describes
-configuration and artifact ports without importing the implementation; a
+configuration and typed input/output fields without importing the implementation; a
 `ProcedureDefinition` connects that contract to its plugin class.
 
 ## Define a contract
@@ -12,10 +12,9 @@ from provium import (
     ProcedureContract,
     ProcedureInputs,
     ProcedureOutputs,
-    input,
-    optional_input,
+    input_field,
+    multi_input_field,
     output,
-    repeated_input,
 )
 
 
@@ -27,20 +26,93 @@ class DetectContract(ProcedureContract[DetectionConfig]):
     configuration = DetectionConfig
 
     class SetupInputs(ProcedureInputs):
-        model = input(MODEL)
+        model = input_field(MODEL)
 
     class Inputs(ProcedureInputs):
-        image = input(IMAGE)
-        previous = optional_input(DETECTIONS)
-        references = repeated_input(IMAGE, minimum=1)
+        image = input_field(IMAGE)
+        previous = input_field(DETECTIONS, optional=True)
+        references = multi_input_field(IMAGE)
 
     class Outputs(ProcedureOutputs):
         detections = output(DETECTIONS)
 ```
 
 Fields infer their reader or writer binding type from the artifact definition.
-Input/output records are immutable. Optional inputs become `None`; repeated
-inputs become ordered tuples.
+Input/output records are immutable. Optional single inputs become `None`;
+multi-value inputs become ordered tuples. `multi_input_field` defaults to
+`minimum=1, maximum=None`. Its minimum must be an integer of at least one.
+With `optional=True, minimum=2`, zero values are allowed, but a nonempty
+collection must contain at least two values. A maximum limits nonempty collections.
+The legacy `input`, `optional_input`, and `repeated_input` artifact helpers
+remain supported.
+
+## Value inputs and import procedures
+
+Both input helpers accept `int`, `float`, `FilePath`, and registered custom
+types alongside artifact definitions. Setup inputs support the same types.
+
+```python
+from provium import FilePath, ProcedureInputs, input_field, multi_input_field
+
+class ImportInputs(ProcedureInputs):
+    source = input_field(FilePath)
+    skip_rows = input_field(int)
+    scale = input_field(float, optional=True)
+    extra_sources = multi_input_field(FilePath, optional=True, minimum=2)
+```
+
+Editors and type checkers infer `FilePath`, `int`, `float | None`, and
+`tuple[FilePath, ...]` respectively. Python input mappings accept typed values;
+path fields also accept strings and path-like objects. Integer fields reject
+floats (including `3.0`) and booleans. Float fields accept integers and finite
+floats, excluding booleans. Numeric strings are parsed only at external boundaries
+such as the CLI:
+
+```console
+provium execute example.ImportV1 --input source=s3://bucket/data.csv --input skip_rows=3
+```
+
+Supply a multi-value field by repeating its flag, for example
+`--input extra_sources=a.csv --input extra_sources=b.csv`.
+
+`FilePath` accepts bare local paths, `file://` URLs, and `s3://bucket/key`
+locations without accessing them. It implements `os.PathLike[str]` and works
+with `provium.files.local_file`. Relative paths resolve against the execution
+process's working directory. A recorded location does not freeze the file's
+contents; retain a checksum or immutable source version when that is required.
+
+Register custom codecs before declaring their fields:
+
+```python
+from enum import Enum
+from provium import register_input_type
+
+class ImportFormat(Enum):
+    CSV = "csv"
+    TSV = "tsv"
+
+register_input_type(
+    ImportFormat,
+    name="example.import-format.v1",
+    decode=ImportFormat,
+    encode=lambda value: value.value,
+)
+
+class FormatInputs(ProcedureInputs):
+    format = input_field(ImportFormat)
+```
+
+Python calls supply an `ImportFormat` instance. External text uses the decoder.
+Encoders return JSON-compatible values; names must be unique and should change
+when the codec's meaning changes. Registration does not replace existing codecs.
+
+Encoded values are snapshotted before callbacks run, available through
+`result.value_inputs`, and saved in output artifacts' execution provenance.
+They affect semantic fingerprints but do not create artifact dependency edges.
+
+These value and multi-value features are currently for direct core execution.
+Pipelines (including dispatch) accept only single artifact fields, optionally
+absent; unsupported contracts fail during planning.
 
 ## Implement and register a procedure
 

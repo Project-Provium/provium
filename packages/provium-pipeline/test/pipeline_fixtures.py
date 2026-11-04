@@ -10,7 +10,7 @@ from provium import (
     output,
 )
 from provium import input as input_field
-from provium.procedure.io import optional_input, repeated_input
+from provium.procedure.io import optional_input
 from provium_text_pipeline_example.artifact import DOCUMENT
 
 
@@ -142,7 +142,8 @@ class CollectionContract(ProcedureContract[None]):
         optional = optional_input(DOCUMENT)
 
     class Inputs(ProcedureInputs):
-        sources = repeated_input(DOCUMENT)
+        first = optional_input(DOCUMENT)
+        second = optional_input(DOCUMENT)
         optional = optional_input(DOCUMENT)
 
     class Outputs(ProcedureOutputs):
@@ -170,7 +171,9 @@ class Collection(
 
     def process(self, context, configuration, inputs, outputs):
         text = ""
-        for source in inputs.sources:
+        for source in (inputs.first, inputs.second):
+            if source is None:
+                continue
             with source.open() as reader:
                 text += reader.read()
         with outputs.result.open() as writer:

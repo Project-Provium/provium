@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 from provium.artifact.inspection import FinalizedArtifactInspection
 from provium.files import normalize_location
@@ -66,6 +68,13 @@ class ProcedureExecutionResult:
     output_results: Mapping[str, ProcedureOutputResult] = field(
         default_factory=dict[str, ProcedureOutputResult]
     )
+
+    _value_inputs_json: str = field(default="{}", repr=False)
+
+    @property
+    def value_inputs(self) -> dict[str, Any]:
+        """Return an isolated copy of this invocation's encoded value inputs."""
+        return json.loads(self._value_inputs_json)
 
     def __post_init__(self) -> None:
         if not isinstance(self.identity, str):
