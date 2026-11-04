@@ -306,6 +306,7 @@ def test_publication_value_snapshots_and_path_collisions(tmp_path):
             ExecutionRequest(
                 {
                     "number": encode_value({"value_type": "int"}, 3),
+                    "native": 3,
                     "absent": encode_value({"value_type": "file-path"}, None),
                     "path": encode_value(
                         {"value_type": "file-path"}, str(tmp_path / "source")
