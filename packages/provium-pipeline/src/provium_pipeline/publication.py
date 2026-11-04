@@ -8,8 +8,9 @@ import tempfile
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 
+from provium import FilePath
 from provium.files import (
     file_exists,
     location_identity,
@@ -40,10 +41,17 @@ class FilePublisher:
         destinations: set[Path | str] = set()
         for request in requests:
             for value in request.inputs.values():
+                if isinstance(value, dict) and "value_input" in value:
+                    payload = cast(dict[str, Any], value)["value_input"]
+                    if payload["type"] != "file-path" or payload["value"] is None:
+                        continue
+                    value = FilePath(payload["value"])
+                if not isinstance(value, (str, Artifact, FilePath, dict)):
+                    continue
                 location = (
                     value.location
-                    if isinstance(value, Artifact)
-                    else value["location"]
+                    if isinstance(value, (Artifact, FilePath))
+                    else cast(dict[str, Any], value)["location"]
                     if isinstance(value, dict)
                     else value
                 )

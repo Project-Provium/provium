@@ -154,11 +154,11 @@ def test_collection_contracts_are_rejected():
         identifier=TOKENIZE.identifier, resolve_contract=lambda: contract
     )
     graph = configuration()
-    with pytest.raises(ValueError, match="single artifact"):
+    with pytest.raises(ValueError, match="single-value"):
         build_plan(graph, procedures={TOKENIZE.identifier: procedure})
     for refs in ([], ["$inputs.a", "$inputs.b", "$inputs.c"]):
         node = graph.nodes["tokenize"].model_copy(update={"inputs": {"source": refs}})
-        with pytest.raises(ValueError, match="single artifact"):
+        with pytest.raises(ValueError, match="single-value"):
             build_plan(
                 graph.model_copy(update={"nodes": {"tokenize": node}}),
                 procedures={TOKENIZE.identifier: procedure},

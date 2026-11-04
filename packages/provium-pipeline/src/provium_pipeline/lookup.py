@@ -9,6 +9,7 @@ from provium.semantic import computation_key, output_key
 from provium_pipeline.models import refs
 from provium_pipeline.planning import Plan
 from provium_pipeline.store import Artifact, ArtifactStore
+from provium_pipeline.values import encode_value
 
 
 class ResultReader(Protocol):
@@ -42,9 +43,19 @@ def lookup_artifact(
         raise ValueError(f"selector pipeline does not match {plan.configuration.name}")
     if inputs.keys() != plan.input_types.keys():
         raise ValueError("input names do not match pipeline")
+    value_inputs = {
+        f"$inputs.{name}": encode_value(declaration, inputs[name])
+        for name, declaration in plan.input_types.items()
+        if isinstance(declaration, dict)
+    }
+    artifacts = {
+        name: item
+        for name, item in inputs.items()
+        if isinstance(plan.input_types[name], str)
+    }
     values = store.restore(
-        inputs,
-        {name: item["fingerprint"]["provenance"] for name, item in inputs.items()},
+        artifacts,
+        {name: item["fingerprint"]["provenance"] for name, item in artifacts.items()},
     )
     for name, artifact in values.items():
         if artifact.fingerprint["type"] != plan.input_types[name]:
@@ -62,7 +73,7 @@ def lookup_artifact(
     pending = [reference]
     while pending:
         ref = pending.pop()
-        if ref in values:
+        if ref in values or ref in value_inputs:
             continue
         parts = ref.split(".")
         if len(parts) != 3 or parts[0] != "$nodes":
@@ -90,6 +101,18 @@ def lookup_artifact(
                 value = getattr(node, scope).get(
                     field.name, [] if field.repeated else None
                 )
+                if field.value_type is not None:
+                    payload = (
+                        value_inputs[value]
+                        if value is not None
+                        else {"value_input": {"type": field.value_type, "value": None}}
+                    )
+                    if payload["value_input"]["value"] is None and not field.optional:
+                        raise ValueError(
+                            f"{name}.{field.name}: required value is absent"
+                        )
+                    result[field.name] = payload
+                    continue
                 result[field.name] = (
                     None
                     if value is None

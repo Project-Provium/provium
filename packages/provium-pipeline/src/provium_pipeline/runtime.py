@@ -35,6 +35,7 @@ from provium_pipeline.planning import (
 from provium_pipeline.publication import FilePublisher, Publisher
 from provium_pipeline.requests import InputSet
 from provium_pipeline.store import Artifact, ArtifactCache
+from provium_pipeline.values import encode_value
 
 if TYPE_CHECKING:
     from provium_pipeline.workers import Worker
@@ -57,6 +58,9 @@ class State:
     plan: Plan | None = None
     published: dict[str, Artifact] = field(default_factory=dict[str, Artifact])
     values: dict[str, Artifact] = field(default_factory=dict[str, Artifact])
+    value_inputs: dict[str, dict[str, Any]] = field(
+        default_factory=dict[str, dict[str, Any]]
+    )
     steps: set[str] = field(default_factory=set[str])
     failed: bool = False
     error: str | None = None
@@ -391,10 +395,17 @@ class ExecutionContext:
             for name, value in item.inputs.items():
                 if name not in expected_names:
                     continue
+                declaration = self.plan.input_types[name]
+                if isinstance(declaration, dict):
+                    label = f"Input {name!r}"
+                    state.value_inputs[f"$inputs.{name}"] = encode_value(
+                        declaration, value
+                    )
+                    continue
                 location = (
                     value.location
                     if isinstance(value, Artifact)
-                    else value.get("location")
+                    else cast(dict[str, Any], value).get("location")
                     if isinstance(value, dict)
                     else value
                 )
@@ -407,7 +418,9 @@ class ExecutionContext:
                     ):
                         raise ValueError("input artifact changed")  # noqa: TRY301 -- converted to an item outcome
                 elif isinstance(value, dict):
-                    artifact = self.store.inspect(value["location"])
+                    artifact = self.store.inspect(
+                        cast(dict[str, Any], value)["location"]
+                    )
                     if (
                         artifact.fingerprint != value["fingerprint"]
                         or artifact.identity != value["identity"]
@@ -422,7 +435,7 @@ class ExecutionContext:
                         f"expected {expected}, found {artifact.fingerprint['type']}"
                     )
                 state.values[f"$inputs.{name}"] = artifact
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, TypeError) as error:
             state.failed = True
             if isinstance(error, FileNotFoundError):
                 reason = "file not found; check the input path"
@@ -500,6 +513,10 @@ class ExecutionContext:
             for field_name, value in values.items():
                 if value is None:
                     paths[field_name], fingerprints[field_name] = None, None
+                elif value in state.value_inputs:
+                    payload = state.value_inputs[value]
+                    paths[field_name] = payload["value_input"]["value"]
+                    fingerprints[field_name] = payload
                 else:
                     paths[field_name] = state.values[value].path
                     fingerprints[field_name] = state.values[value].fingerprint
@@ -520,6 +537,16 @@ class ExecutionContext:
                 if field_info.name not in paths:
                     paths[field_info.name] = None
                     fingerprints[field_info.name] = None
+                if field_info.value_type is not None and paths[field_info.name] is None:
+                    if not field_info.optional:
+                        state.failed = True
+                        state.error = (
+                            f"{name}.{field_info.name}: required value is absent"
+                        )
+                        return None
+                    fingerprints[field_info.name] = {
+                        "value_input": {"type": field_info.value_type, "value": None}
+                    }
         key = computation_key(
             self.plan.records[name], input_fingerprints, setup_fingerprints
         )
@@ -621,7 +648,9 @@ class ExecutionContext:
     def _materialize(self, job: Job) -> None:
         node = self.plan.configuration.nodes[job.node]
 
-        def resolve(reference: str) -> str:
+        def resolve(reference: str) -> Any:
+            if reference in job.state.value_inputs:
+                return job.state.value_inputs[reference]["value_input"]["value"]
             artifact = self.store.materialize(job.state.values[reference])
             job.state.values[reference] = artifact
             assert artifact.path is not None

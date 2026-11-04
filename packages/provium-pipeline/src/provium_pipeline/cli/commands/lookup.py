@@ -59,11 +59,16 @@ class LookupCommand(Command):
         )
 
     def resolve_inputs(
-        self, arguments: argparse.Namespace, store: ArtifactStore
+        self,
+        arguments: argparse.Namespace,
+        store: ArtifactStore,
+        plan: Plan | None = None,
     ) -> dict[str, Any]:
         from provium_pipeline.input_sets import inspect_inputs
 
-        return inspect_inputs(store, assignments(arguments.input))
+        return inspect_inputs(
+            store, assignments(arguments.input), plan.input_types if plan else None
+        )
 
     def execute(self, arguments: argparse.Namespace) -> int:
         try:
@@ -75,7 +80,7 @@ class LookupCommand(Command):
             with ArtifactStore(
                 arguments.store, scratch=arguments.scratch_directory
             ) as store:
-                inputs = self.resolve_inputs(arguments, store)
+                inputs = self.resolve_inputs(arguments, store, plan)
                 artifact = lookup_artifact(
                     plan, store, inputs, arguments.reference, backend=backend
                 )

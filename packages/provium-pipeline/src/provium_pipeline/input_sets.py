@@ -3,20 +3,41 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
+from provium.input_types import input_type
 from provium.semantic import canonical_hash
 
 from provium_pipeline.store import ArtifactStore
+from provium_pipeline.values import encode_value
 
 
-def inspect_inputs(store: ArtifactStore, inputs: Mapping[str, str]) -> dict[str, Any]:
+def inspect_inputs(
+    store: ArtifactStore,
+    inputs: Mapping[str, Any],
+    declarations: Mapping[str, str | dict[str, str]] | None = None,
+) -> dict[str, Any]:
     if not inputs:
         raise ValueError("at least one named --input is required")
     result: dict[str, Any] = {}
     for name, location in inputs.items():
+        declaration = declarations.get(name) if declarations is not None else None
+        if declaration is None and not isinstance(location, str):
+            declaration = (
+                {"value_type": cast(dict[str, Any], location)["value_input"]["type"]}
+                if isinstance(location, dict)
+                and set(cast(dict[str, Any], location)) == {"value_input"}
+                else {
+                    "value_type": input_type(
+                        cast(type[Any], type(cast(Any, location)))
+                    ).name
+                }
+            )
+        if isinstance(declaration, dict):
+            result[name] = encode_value(declaration, location)
+            continue
         try:
-            artifact = store.inspect(location)
+            artifact = store.inspect(cast(str, location))
         except (OSError, ValueError) as error:
             raise ValueError(f"input {name!r} ({location}): {error}") from error
         result[name] = {
@@ -34,7 +55,10 @@ def input_set_hash(inputs: Mapping[str, Any]) -> str:
     return canonical_hash(
         {
             "version": 1,
-            "inputs": {name: item["fingerprint"] for name, item in inputs.items()},
+            "inputs": {
+                name: item if "value_input" in item else item["fingerprint"]
+                for name, item in inputs.items()
+            },
         }
     )
 

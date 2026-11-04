@@ -62,12 +62,15 @@ class LookupCommand(PipelineLookupCommand):
         )
 
     def resolve_inputs(
-        self, arguments: argparse.Namespace, store: ArtifactStore
+        self,
+        arguments: argparse.Namespace,
+        store: ArtifactStore,
+        plan: Plan | None = None,
     ) -> dict[str, Any]:
         from provium_pipeline.input_sets import input_set_hash
 
         if arguments.input:
-            return super().resolve_inputs(arguments, store)
+            return super().resolve_inputs(arguments, store, plan)
         record = open_index(arguments, store).resolve_input_set(
             name=arguments.input_set, key=arguments.input_set_hash
         )

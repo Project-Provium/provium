@@ -110,9 +110,9 @@ Encoded values are snapshotted before callbacks run, available through
 `result.value_inputs`, and saved in output artifacts' execution provenance.
 They affect semantic fingerprints but do not create artifact dependency edges.
 
-These value and multi-value features are currently for direct core execution.
-Pipelines (including dispatch) accept only single artifact fields, optionally
-absent; unsupported contracts fail during planning.
+Pipelines and dispatch support single artifact and value inputs, including optional
+fields and setup inputs. Only multi-value fields remain limited to direct core
+execution; pipelines reject them during planning.
 
 ## Implement and register a procedure
 

@@ -9,14 +9,13 @@ from types import MappingProxyType
 from typing import Any, Protocol, TextIO
 
 from provium_pipeline.models import REFERENCE, assert_name_is_valid
-from provium_pipeline.store import Artifact
 
 
 @dataclass(frozen=True)
 class InputSet:
     """Legacy input-only request, retained while durable execution is extracted."""
 
-    inputs: Mapping[str, str | Artifact | dict[str, Any]]
+    inputs: Mapping[str, Any]
 
     @property
     def output_destinations(self) -> Mapping[str, str] | None:

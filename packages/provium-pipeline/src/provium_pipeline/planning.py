@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
+from provium.input_types import named_input_type
 from provium.procedure.config import ConfigurationSnapshot
 from provium.procedure.discovery import discover_procedure_catalogs
 from provium.provenance import ProcedureRecord
@@ -27,7 +28,7 @@ class Plan:
     configurations: dict[str, dict[str, Any]]
     output_types: dict[str, dict[str, str]]
     order: list[str]
-    input_types: dict[str, str]
+    input_types: dict[str, str | dict[str, str]]
 
 
 def build_plan(
@@ -51,10 +52,7 @@ def build_plan(
         if configuration.inputs.keys() != definition.inputs.keys():
             raise ValueError("pipeline input names do not match definition")
         for name, expected in definition.inputs.items():
-            expected_type = (
-                expected if isinstance(expected, str) else expected.identifier
-            )
-            if configuration.inputs[name] != expected_type:
+            if configuration.inputs[name] != expected:
                 raise ValueError(f"incompatible pipeline input: {name}")
     for name in order:
         node = configuration.nodes[name]
@@ -70,14 +68,10 @@ def build_plan(
             *contract.metadata.inputs,
             *contract.metadata.outputs,
         ):
-            if (
-                field.repeated
-                or field.maximum != 1
-                or field.artifact_identifier is None
-            ):
+            if field.repeated or field.maximum != 1:
                 raise ValueError(
                     f"{name}.{field.name}: pipelines currently support "
-                    "only single artifact fields"
+                    "only single-value fields"
                 )
         config_type = contract.configuration
         if config_type is None:
@@ -118,7 +112,12 @@ def build_plan(
                 ):
                     raise ValueError(f"{name}.{key}: invalid binding cardinality")
                 for source in sources:
-                    if types.get(source) != field.artifact_identifier:
+                    expected_type = (
+                        {"value_type": field.value_type}
+                        if field.value_type is not None
+                        else field.artifact_identifier
+                    )
+                    if types.get(source) != expected_type:
                         raise ValueError(
                             f"{name}.{key}: incompatible or unknown source {source}"
                         )
@@ -128,6 +127,12 @@ def build_plan(
         types.update(
             {f"$nodes.{name}.{key}": value for key, value in output_types[name].items()}
         )
+    for declaration in configuration.inputs.values():
+        if isinstance(declaration, dict):
+            named_input_type(declaration["value_type"])
+    for source in configuration.outputs.values():
+        if isinstance(types.get(source), dict):
+            raise ValueError("pipeline outputs must be artifacts")  # noqa: TRY004 - invalid graph
     if definition is not None:
         if configuration.outputs.keys() != definition.outputs.keys():
             raise ValueError("pipeline output names do not match definition")
