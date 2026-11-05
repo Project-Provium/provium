@@ -53,7 +53,9 @@ def test_binding_shapes():
         bind_read=lambda value: ("read", value),
         bind_write=lambda value: ("write", value),
     )
-    field = SimpleNamespace(artifact=SimpleNamespace(resolve=lambda: artifact))
+    field = SimpleNamespace(
+        artifact=SimpleNamespace(resolve=lambda: artifact), value_type=None
+    )
     contract = SimpleNamespace(
         SetupInputs=None,
         Inputs=SimpleNamespace(fields={"many": field, "optional": field}),

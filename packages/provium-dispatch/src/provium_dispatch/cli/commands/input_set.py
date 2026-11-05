@@ -42,7 +42,14 @@ class InputSetAction(Command):
             parser.add_argument("name", nargs="?")
         if self.name != "resolve":
             parser.add_argument(
-                "--input", action="append", default=[], metavar="NAME=FILE"
+                "--input", action="append", default=[], metavar="NAME=VALUE"
+            )
+            parser.add_argument(
+                "--input-type",
+                action="append",
+                default=[],
+                metavar="NAME=CODEC",
+                help="Declare a value codec; undeclared inputs are artifact files",
             )
 
     def execute(self, arguments: argparse.Namespace) -> int:
@@ -58,8 +65,17 @@ class InputSetAction(Command):
             with ArtifactStore(
                 arguments.store, scratch=arguments.scratch_directory
             ) as store:
+                declarations = {
+                    name: {"value_type": codec}
+                    for name, codec in assignments(
+                        getattr(arguments, "input_type", [])
+                    ).items()
+                }
+                bindings = assignments(getattr(arguments, "input", []))
+                if declarations.keys() - bindings.keys():
+                    raise ValueError("input-type names must have an input binding")  # noqa: TRY301
                 inputs = (
-                    inspect_inputs(store, assignments(arguments.input))
+                    inspect_inputs(store, bindings, declarations)
                     if self.name in ("register", "find")
                     or (self.name == "unregister" and arguments.input)
                     else None
@@ -85,7 +101,12 @@ class InputSetAction(Command):
             else:
                 print(f"Input set: {result['hash']}")
                 for name, item in result["inputs"].items():
-                    print(f"  {name}: {item['location']}")
+                    value = (
+                        item["value_input"]
+                        if "value_input" in item
+                        else item["location"]
+                    )
+                    print(f"  {name}: {value}")
         except Exception as error:
             print(f"provium dispatch input-set: {error}", file=sys.stderr)
             return 2

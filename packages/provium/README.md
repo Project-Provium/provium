@@ -27,13 +27,17 @@ from provium import (
     multi_input_field,
 )
 
+
 class ImportContract(ProcedureContract[None]):
     class Inputs(ProcedureInputs):
         source = input_field(FilePath)
         skip_rows = input_field(int)
         scale = input_field(float, optional=True)
         extra_sources = multi_input_field(
-            FilePath, optional=True, minimum=2, maximum=5,
+            FilePath,
+            optional=True,
+            minimum=2,
+            maximum=5,
         )
 ```
 
@@ -55,8 +59,8 @@ setup state. Value inputs are snapshotted before callbacks and retained in outpu
 provenance without becoming artifact dependency edges. The existing artifact
 helpers `input`, `optional_input`, and `repeated_input` remain supported.
 
-These value and multi-value features are currently for direct core execution.
-Pipelines and dispatch accept single artifact fields, optionally absent.
+Pipelines and dispatch support single artifact and value inputs, optionally absent.
+Multi-value fields remain limited to direct core execution.
 
 ## Guides and reference
 

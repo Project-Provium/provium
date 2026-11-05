@@ -1,4 +1,4 @@
-"""Spawned procedure workers; only paths and plain outcome messages cross pipes."""
+"""Spawned workers exchange artifact paths, encoded values, and plain outcomes."""
 
 from __future__ import annotations
 
@@ -16,7 +16,11 @@ def bindings(procedure: Any, scope: str, paths: dict[str, Any]) -> dict[str, Any
         return {}
     result: dict[str, Any] = {}
     for name, value in paths.items():
-        artifact = record.fields[name].artifact.resolve()
+        field = record.fields[name]
+        if field.value_type is not None:
+            result[name] = None if value is None else field.value_type.parse(value)
+            continue
+        artifact = field.artifact.resolve()
         bind = artifact.bind_write if scope == "Outputs" else artifact.bind_read
         result[name] = (
             None

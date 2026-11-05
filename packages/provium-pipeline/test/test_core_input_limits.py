@@ -1,4 +1,4 @@
-"""Pipelines deliberately accept only single artifact fields for now."""
+"""Pipelines deliberately reject multi-value fields for now."""
 
 from types import new_class
 
@@ -7,7 +7,6 @@ from provium import (
     ProcedureContract,
     ProcedureDefinition,
     ProcedureInputs,
-    input_field,
     multi_input_field,
     repeated_input,
 )
@@ -24,7 +23,6 @@ from provium_pipeline.planning import build_plan
         lambda: multi_input_field(DOCUMENT),
         lambda: multi_input_field(DOCUMENT, maximum=1, optional=True),
         lambda: repeated_input(DOCUMENT),
-        lambda: input_field(int, optional=True),
     ],
 )
 def test_pipeline_rejects_unsupported_core_fields(scope, declaration):
@@ -47,5 +45,5 @@ def test_pipeline_rejects_unsupported_core_fields(scope, declaration):
         outputs={"result": "$nodes.step.result"},
         nodes={"step": {"procedure": definition.identifier}},
     )
-    with pytest.raises(ValueError, match="single artifact"):
+    with pytest.raises(ValueError, match="single-value"):
         build_plan(graph, procedures={definition.identifier: definition})

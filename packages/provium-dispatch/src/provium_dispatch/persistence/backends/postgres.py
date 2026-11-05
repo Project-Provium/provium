@@ -418,12 +418,20 @@ class PostgresBackend:
     ) -> int:
         assert_queue_name_is_valid(queue_group)
         from provium_pipeline.store import ArtifactStore, local_path
+        from provium_pipeline.values import encode_value
 
         snapshot = self.get("PipelineConfiguration", pipeline)
         definition = self.definition(pipeline)
         definition_payload = definition.snapshot() if definition else None
         declared_inputs = PipelineConfiguration.model_validate(snapshot).inputs
         expected_inputs = declared_inputs
+        if any(
+            isinstance(declaration, dict) for declaration in declared_inputs.values()
+        ):
+            from provium_pipeline.planning import build_plan
+
+            # Contract imports register custom codecs in fresh enqueue processes.
+            build_plan(PipelineConfiguration.model_validate(snapshot), definition)
         if destinations is not None:
             from provium_pipeline.planning import build_plan, select_targets
             from provium_pipeline.requests import ExecutionRequest
@@ -447,6 +455,10 @@ class PostgresBackend:
         with tempfile.TemporaryDirectory(prefix="provium-enqueue-") as directory:
             reader = ArtifactStore(directory, scratch=directory)
             for name, location in inputs.items():
+                declaration = expected_inputs[name]
+                if isinstance(declaration, dict):
+                    pinned[name] = encode_value(declaration, location)
+                    continue
                 artifact = reader.inspect(location)
                 pinned[name] = {
                     "location": artifact.location,
@@ -455,14 +467,19 @@ class PostgresBackend:
                 }
         inputs = pinned
         for name, artifact in inputs.items():
-            if artifact["fingerprint"]["type"] != expected_inputs[name]:
+            if (
+                "value_input" not in artifact
+                and artifact["fingerprint"]["type"] != expected_inputs[name]
+            ):
                 raise ValueError(f"incompatible pipeline input: {name}")
         key = canonical_hash(
             {
                 "pipeline": snapshot,
                 "definition": definition_payload,
                 "inputs": {
-                    name: {
+                    name: item
+                    if "value_input" in item
+                    else {
                         "identity": item["identity"],
                         "fingerprint": item["fingerprint"],
                     }

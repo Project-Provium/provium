@@ -25,7 +25,7 @@ definition = PipelineDefinition(
 )
 ```
 
-Contracts accept artifact identifiers or definitions. Select one with `--definition application:definition`, or publish a graph-named entry point:
+Input contracts accept artifact identifiers or definitions, Python value types, or registered `InputType` codecs. Value declarations serialize as `{"value_type": "int"}` (or another registered codec name); artifact declarations retain their identifier strings. Output contracts accept artifact identifiers or definitions. Select one with `--definition application:definition`, or publish a graph-named entry point:
 
 ```toml
 [project.entry-points."provium.pipeline.definitions"]
@@ -34,10 +34,10 @@ text-processing = "application:definition"
 
 `provium_pipeline.definitions.load_definition(name, reference)` resolves an explicit reference or discovers the named entry point. No match returns `None`; duplicate matches fail. Basic definitions have no profile allowlist.
 
-Procedure fields must be single artifact inputs or outputs, optionally absent.
-Planning rejects multi-value fields and non-artifact value inputs before starting
-workers. The same restriction applies to dispatch-managed pipelines. Use direct
-core execution for [value and multi-value inputs](../guides/procedures.md#value-inputs-and-import-procedures).
+Procedure inputs support single artifacts, `int`, `float`, `FilePath`, and
+registered custom types, including optional fields. Outputs remain artifacts.
+Planning rejects multi-value fields before starting workers. Dispatch has the
+same rules. See [typed inputs](../guides/procedures.md#value-inputs-and-import-procedures).
 
 ## Preparation
 
@@ -60,7 +60,7 @@ core execution for [value and multi-value inputs](../guides/procedures.md#value-
 | `assert_requests_are_valid(requests)` | Validate the complete request collection before execution. |
 | `publish(artifact, destination, *, overwrite=False)` | Materialize/publish an artifact and return its destination reference. |
 
-`FilePublisher(store)` supplies local/S3 artifact copying and destination compatibility checks. Custom publishers own destination validation and overwrite semantics. Publication can partially succeed; a failure must not be reported as a successful request.
+`FilePublisher(store, input_types=None)` supplies local/S3 artifact copying and destination compatibility checks. The execution context supplies its input declarations so custom values are not interpreted as paths; explicit `FilePath` inputs are protected from destination overwrites. Custom publishers own destination validation and overwrite semantics. Publication can partially succeed; a failure must not be reported as a successful request.
 
 ::: provium_pipeline.requests.ExecutionRequest
 
@@ -130,7 +130,7 @@ A `Lease` identifies namespace, key, owner, generation, and run. Implementations
 
 ## Input fingerprints and lookup
 
-`provium_pipeline.input_sets.inspect_inputs(store, bindings)` returns verified named location/identity/fingerprint records. `input_set_hash(records)` hashes logical names and fingerprints only.
+`provium_pipeline.input_sets.inspect_inputs(store, bindings, declarations=None)` returns verified artifact records and tagged value snapshots. Pass the plan's `input_types` to decode text bindings; without declarations, strings are artifact paths and typed Python values use their registered codecs. `input_set_hash(records)` includes logical names, artifact fingerprints, and encoded value types/content.
 
 `provium_pipeline.lookup.lookup_artifact(plan, store, inputs, selector, *, backend=None)` resolves `pipeline.nodes.node.port` or `pipeline.outputs.alias`. The optional `ResultReader` backend supplies `result(namespace, key)`; otherwise lookup reads store manifests. It returns an artifact reference without materializing its body and raises when a required result is unavailable. Persistent input-set indexes belong to dispatch.
 

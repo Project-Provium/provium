@@ -41,7 +41,32 @@ targets:
   word_count: $nodes.count_words.word_count
 ```
 
-Each node names a catalog-discovered procedure. Its `inputs` and `setup_inputs` bind procedure ports to `$inputs.NAME` or `$nodes.NODE.PORT`. Each field accepts a single artifact reference; optional bindings can be omitted or null. Multi-value fields (including legacy repeated fields) and non-artifact value fields are currently supported only by direct core execution and are rejected during pipeline planning. Node `configuration` contains procedure settings, and `tags` provides selector labels.
+Each node names a catalog-discovered procedure. Its `inputs` and `setup_inputs` bind procedure ports to `$inputs.NAME` or `$nodes.NODE.PORT`. Each input field accepts a single artifact or typed value reference; optional bindings can be omitted or null. Multi-value fields (including legacy repeated fields) are supported only by direct core execution and are rejected during pipeline planning. Node `configuration` contains procedure settings, and `tags` provides selector labels.
+
+For import procedures, declare value inputs explicitly:
+
+```yaml
+inputs:
+  source: {value_type: file-path}
+  skip_rows: {value_type: int}
+  scale: {value_type: float}
+```
+
+Bind them to procedure fields with the same `$inputs.NAME` syntax. CLI
+`--input skip_rows=3` and CSV input cells are decoded using the declared codec.
+Python requests can supply typed values directly. Integers reject fractional
+values and booleans; floats must be finite. Custom codecs must be registered
+when the procedure contract is imported, and their stable names are used in YAML.
+
+Local execution, cache lookup, and dispatch queues preserve the codec name and
+JSON-encoded value. Values affect cache identity and execution provenance, while
+artifact inputs retain their existing verification and lineage. Dispatch stores
+value snapshots in PostgreSQL JSONB and decodes them in the worker.
+For pipeline-independent input-set registration, declare text values with `provium dispatch input-set register NAME --input count=3 --input-type count=int`. The `--input-type NAME=CODEC` option also applies to `find` and `unregister`; undeclared inputs remain artifact paths.
+
+A `FilePath` identifies a location; its contents are not pinned or hashed.
+Use immutable/versioned source locations or force recomputation when external
+contents change. Outputs remain artifacts, and multi-value fields remain core-only.
 
 `targets` gives public names to graph outputs. The older YAML key `outputs` remains accepted. Python models and lookup selectors still use the term `outputs`. Graph validation checks types, ports, cardinality, references, cycles, and whether nodes contribute to declared targets.
 

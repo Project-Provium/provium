@@ -5,11 +5,12 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 
+from provium import FilePath
 from provium.files import (
     file_exists,
     location_identity,
@@ -19,6 +20,7 @@ from provium.files import (
 
 from provium_pipeline.requests import InputSet
 from provium_pipeline.store import Artifact, ArtifactCache
+from provium_pipeline.values import encode_value
 
 
 class Publisher(Protocol):
@@ -32,18 +34,36 @@ class Publisher(Protocol):
 class FilePublisher:
     """Copy through the core file protocols; local installation is atomic."""
 
-    def __init__(self, store: ArtifactCache) -> None:
+    def __init__(
+        self,
+        store: ArtifactCache,
+        *,
+        input_types: Mapping[str, str | dict[str, str]] | None = None,
+    ) -> None:
         self.store = store
+        self.input_types = input_types or {}
 
     def assert_requests_are_valid(self, requests: Sequence[InputSet]) -> None:
         inputs: set[Path | str] = set()
         destinations: set[Path | str] = set()
         for request in requests:
-            for value in request.inputs.values():
+            for name, value in request.inputs.items():
+                declaration = self.input_types.get(name)
+                if isinstance(declaration, dict):
+                    if declaration["value_type"] != "file-path":
+                        continue
+                    value = encode_value(declaration, value)
+                if isinstance(value, dict) and "value_input" in value:
+                    payload = cast(dict[str, Any], value)["value_input"]
+                    if payload["type"] != "file-path" or payload["value"] is None:
+                        continue
+                    value = FilePath(payload["value"])
+                if not isinstance(value, (str, Artifact, FilePath, dict)):
+                    continue
                 location = (
                     value.location
-                    if isinstance(value, Artifact)
-                    else value["location"]
+                    if isinstance(value, (Artifact, FilePath))
+                    else cast(dict[str, Any], value)["location"]
                     if isinstance(value, dict)
                     else value
                 )

@@ -106,6 +106,14 @@ def input_type[T](python_type: type[T]) -> InputType[T]:
         ) from None
 
 
+def named_input_type(name: str) -> InputType[Any]:
+    """Resolve a stable codec name from an external declaration."""
+    for codec in _INPUT_TYPES.values():
+        if codec.name == name:
+            return codec
+    raise ValueError(f"unregistered input type: {name!r}")
+
+
 def _decode_integer(value: object) -> int:
     if isinstance(value, str):
         return int(value)

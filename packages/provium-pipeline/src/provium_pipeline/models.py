@@ -65,7 +65,7 @@ class Node(BaseModel):
 
 class PipelineConfiguration(Document):
     kind: Literal["PipelineConfiguration"] = "PipelineConfiguration"
-    inputs: dict[str, str]
+    inputs: dict[str, str | dict[str, str]]
     nodes: dict[str, Node]
     outputs: dict[str, str] = Field(validation_alias=AliasChoices("targets", "outputs"))
 
@@ -76,10 +76,18 @@ class PipelineConfiguration(Document):
 
     @field_validator("inputs")
     @classmethod
-    def assert_inputs_are_valid(cls, value: dict[str, str]) -> dict[str, str]:
-        for name, artifact in value.items():
+    def assert_inputs_are_valid(
+        cls, value: dict[str, str | dict[str, str]]
+    ) -> dict[str, str | dict[str, str]]:
+        for name, declaration in value.items():
             assert_name_is_valid(name)
-            if not artifact.strip():
+            if isinstance(declaration, dict):
+                if (
+                    set(declaration) != {"value_type"}
+                    or not declaration["value_type"].strip()
+                ):
+                    raise ValueError(f"input {name} requires a value_type name")
+            elif not declaration.strip():
                 raise ValueError(f"input {name} requires an artifact identifier")
         return value
 
@@ -145,10 +153,11 @@ class PipelineDefinition:
     outputs: Mapping[str, Any]
 
     def snapshot(self) -> dict[str, Any]:
+        from provium_pipeline.values import value_declaration
+
         return {
             "inputs": {
-                name: value if isinstance(value, str) else value.identifier
-                for name, value in self.inputs.items()
+                name: value_declaration(value) for name, value in self.inputs.items()
             },
             "outputs": {
                 name: value if isinstance(value, str) else value.identifier
