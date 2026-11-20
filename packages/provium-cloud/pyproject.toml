@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "provium-cloud"
+version = "0.1.0"
+description = "Cloud execution orchestration for Provium procedures and pipelines"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "provium>=0.13.0", # x-release-please-version
+    "pydantic>=2.10,<3",
+    "PyYAML>=6",
+]
+
+[project.entry-points."provium.cli.command_catalogs"]
+cloud = "provium_cloud.cli:plugin"
+
+[project.urls]
+Homepage = "https://github.com/Project-Provium/provium"
+Documentation = "https://provium.dlii.tech"
+Issues = "https://github.com/Project-Provium/provium/issues"
+Repository = "https://github.com/Project-Provium/provium"
+
+[project.optional-dependencies]
+test = ["pytest>=8.3", "pytest-cov>=6", "ruff>=0.16", "pyright>=1.1.411", "build>=1.2", "types-PyYAML>=6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+provium_cloud = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+pythonpath = ["src"]
+addopts = ["--strict-config", "--strict-markers"]
+
+[tool.pyright]
+include = ["src"]
+extraPaths = ["src", "../provium/src"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "TRY", "UP"]
+ignore = ["TRY003"]

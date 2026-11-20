@@ -8,6 +8,10 @@
         {
           "type": "generic",
           "path": "/packages/provium-pipeline/pyproject.toml"
+        },
+        {
+          "type": "generic",
+          "path": "/packages/provium-cloud/pyproject.toml"
         }
       ]
     },
