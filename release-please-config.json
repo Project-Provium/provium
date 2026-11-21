@@ -30,6 +30,11 @@
       "package-name": "provium-dispatch",
       "release-type": "python",
       "initial-version": "0.1.0"
+    },
+    "packages/provium-cloud": {
+      "package-name": "provium-cloud",
+      "release-type": "python",
+      "initial-version": "0.1.0"
     }
   }
 }

@@ -17,6 +17,10 @@ on:
         description: 'Existing dispatch release tag (for example provium-dispatch-v0.2.0); blank to skip'
         type: string
         required: false
+      cloud_tag:
+        description: 'Existing cloud release tag (for example provium-cloud-v0.1.0); blank to skip'
+        type: string
+        required: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -44,6 +48,8 @@ jobs:
       dispatch_release_created: ${{ steps.release.outputs['packages/provium-dispatch--release_created'] || steps.recovery.outputs.dispatch_release_created }}
       dispatch_tag: ${{ steps.release.outputs['packages/provium-dispatch--tag_name'] || steps.recovery.outputs.dispatch_tag }}
       pipeline_tag: ${{ steps.release.outputs['packages/provium-pipeline--tag_name'] || steps.recovery.outputs.pipeline_tag }}
+      cloud_release_created: ${{ steps.release.outputs['packages/provium-cloud--release_created'] || steps.recovery.outputs.cloud_release_created }}
+      cloud_tag: ${{ steps.release.outputs['packages/provium-cloud--tag_name'] || steps.recovery.outputs.cloud_tag }}
 
     steps:
       - uses: googleapis/release-please-action@v4
@@ -66,6 +72,7 @@ jobs:
               ['provium', 'provium'],
               ['pipeline', 'provium-pipeline'],
               ['dispatch', 'provium-dispatch'],
+              ['cloud', 'provium-cloud'],
             ];
             const selected = [];
             for (const [key, name] of packages) {
@@ -104,13 +111,13 @@ jobs:
       run:
         working-directory: ${{ matrix.path }}
     env:
-      PACKAGE_NAME: ${{ matrix.path == 'packages/provium' && 'provium' || matrix.path == 'packages/provium-pipeline' && 'provium-pipeline' || 'provium-dispatch' }}
-      PACKAGE_IMPORT: ${{ matrix.path == 'packages/provium' && 'provium' || matrix.path == 'packages/provium-pipeline' && 'provium_pipeline' || 'provium_dispatch' }}
+      PACKAGE_NAME: ${{ matrix.path == 'packages/provium' && 'provium' || matrix.path == 'packages/provium-pipeline' && 'provium-pipeline' || matrix.path == 'packages/provium-cloud' && 'provium-cloud' || 'provium-dispatch' }}
+      PACKAGE_IMPORT: ${{ matrix.path == 'packages/provium' && 'provium' || matrix.path == 'packages/provium-pipeline' && 'provium_pipeline' || matrix.path == 'packages/provium-cloud' && 'provium_cloud' || 'provium_dispatch' }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.path == 'packages/provium' && needs.release-please.outputs.provium_tag || matrix.path == 'packages/provium-pipeline' && needs.release-please.outputs.pipeline_tag || needs.release-please.outputs.dispatch_tag }}
+          ref: ${{ matrix.path == 'packages/provium' && needs.release-please.outputs.provium_tag || matrix.path == 'packages/provium-pipeline' && needs.release-please.outputs.pipeline_tag || matrix.path == 'packages/provium-cloud' && needs.release-please.outputs.cloud_tag || needs.release-please.outputs.dispatch_tag }}
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -124,15 +131,19 @@ jobs:
       - name: Check lint, formatting, and types
         run: |
           ruff check .
-          ruff format --check .
+          # Match CI's Python formatting scope, including on older recovery tags.
+          ruff format --check --extend-exclude '*.md' .
           python -m pyright
       - name: Test the released core code
         if: matrix.path == 'packages/provium'
         run: python -m pytest --cov="$PACKAGE_IMPORT" --cov-branch --cov-fail-under=100
       - name: Test pipeline and dispatch integration
-        if: matrix.path != 'packages/provium'
+        if: matrix.path == 'packages/provium-pipeline' || matrix.path == 'packages/provium-dispatch'
         working-directory: packages/provium-dispatch
         run: python -m pytest test ../provium-pipeline/test --cov=provium_pipeline --cov=provium_dispatch --cov-branch --cov-fail-under=100
+      - name: Test cloud package
+        if: matrix.path == 'packages/provium-cloud'
+        run: python -m pytest --cov=provium_cloud --cov-branch --cov-fail-under=100
       - name: Build and validate distributions
         run: |
           python -m build
@@ -209,6 +220,31 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: provium-dispatch-distributions
+          path: dist
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-cloud:
+    name: Publish Provium Cloud to PyPI
+    needs: [release-please, build, publish-provium, publish-pipeline]
+    if: >-
+      always() && !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.release-please.outputs.cloud_release_created == 'true' &&
+      (needs.publish-provium.result == 'success' || needs.publish-provium.result == 'skipped') &&
+      (needs.publish-pipeline.result == 'success' || needs.publish-pipeline.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/provium-cloud
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: provium-cloud-distributions
           path: dist
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
