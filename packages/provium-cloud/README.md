@@ -13,7 +13,13 @@ it down.
 
 ## Install and use
 
-Python 3.12+ is required. From the repository root:
+Python 3.12+ is required. Install from PyPI with the AWS and PostgreSQL backends:
+
+```bash
+python -m pip install 'provium-cloud[aws,postgres]'
+```
+
+For development, install the workspace packages from the repository root:
 
 ```bash
 python -m pip install -e ./packages/provium \
