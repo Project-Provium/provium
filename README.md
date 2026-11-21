@@ -35,13 +35,15 @@ started and explore the complete guides and API reference.
   caching, CSV requests, and artifact publication.
 - [`packages/provium-dispatch/`](packages/provium-dispatch/) — durable queues,
   profiles, registry, and input-set indexing.
+- [`packages/provium-cloud/`](packages/provium-cloud/) — cloud deployment
+  execution, shared computation coordination, and run progress, independent of dispatch.
 - [`examples/`](examples/) — installable projects demonstrating Provium in use.
 - [`docs/`](docs/) — guides, concepts, and reference documentation.
 
 ## Development
 
-Create or activate the repository-level virtual environment, then install the core and example
-packages in editable mode:
+Create or activate the repository-level virtual environment, then install the
+core, cloud, and example packages in editable mode:
 
 ```bash
 python3 -m venv .venv
@@ -49,7 +51,7 @@ source .venv/bin/activate
 make install
 ```
 
-Run the core and example checks from the repository root:
+Run the core, cloud, and example checks from the repository root:
 
 ```bash
 make check
@@ -59,6 +61,10 @@ For pipeline and dispatch installation, Ruff/Pyright checks, and the combined
 Testcontainers integration suite, see the
 [pipeline development instructions](packages/provium-pipeline/README.md#development).
 Docker must be running for PostgreSQL and LocalStack tests.
+
+For cloud deployment, CLI/Python usage, and backend contracts, see the
+[cloud guide](docs/guides/cloud.md). For real AWS tests, credentials, dotenv layers,
+CI configuration, and cleanup recovery, see [AWS testing](docs/guides/cloud-testing.md).
 
 Build the shared documentation site into `site/`:
 

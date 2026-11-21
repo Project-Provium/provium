@@ -2,6 +2,7 @@
 
 from importlib.metadata import version
 
+from provium_cloud.client import CloudClient
 from provium_cloud.deployment import (
     BackendConfiguration,
     CloudDeployment,
@@ -13,6 +14,7 @@ from provium_cloud.deployment import (
 
 __version__ = version("provium-cloud")
 __all__ = [
+    "CloudClient",
     "BackendConfiguration",
     "CloudDeployment",
     "JobSettings",

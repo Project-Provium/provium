@@ -1,1 +1,2 @@
 recursive-include test *.py
+recursive-include infrastructure *.py *.yaml *.json requirements.txt Dockerfile

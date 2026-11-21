@@ -97,7 +97,9 @@ def test_cloud_plugin_import_does_not_load_dispatch_or_aws_sdk():
             sys.executable,
             "-c",
             "import provium_cloud.cli, sys; "
-            "assert not {'provium_dispatch', 'boto3', 'botocore'} & sys.modules.keys()",
+            "assert not {'provium_dispatch', 'boto3', 'botocore', "
+            "'provium_pipeline.runtime', 'provium_pipeline.workers', "
+            "'provium_pipeline.store'} & sys.modules.keys()",
         ],
         check=True,
     )

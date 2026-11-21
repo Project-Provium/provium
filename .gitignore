@@ -157,6 +157,8 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
 .env.test
 .envrc
 .venv/
@@ -226,3 +228,7 @@ __marimo__/
 
 # Keep all .gitkeep files regardless if the folder is ignored.
 !**/*/.gitkeep
+
+# Disposable AWS test journals and reports
+.cloud-live/
+cloud-live-results/

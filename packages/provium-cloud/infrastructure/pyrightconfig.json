@@ -1,0 +1,6 @@
+{
+  "include": ["aws"],
+  "extraPaths": ["../src", "../../provium/src", "../../provium-pipeline/src", "../../../examples/provium-text-pipeline/src"],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic"
+}
