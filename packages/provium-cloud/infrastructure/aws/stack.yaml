@@ -1,0 +1,323 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Disposable provium-cloud live tests; private PostgreSQL and public-subnet Fargate, with no NAT gateway. Delete all test data on teardown.
+Metadata:
+  AWSToolsMetrics:
+    AWSAgentToolkit: aws-cloudformation@3
+Parameters:
+  TestTimeout:
+    Type: Number
+    Default: 1800
+    MinValue: 60
+    MaxValue: 3600
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.91.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+  Gateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: {Ref: VPC}
+      InternetGatewayId: {Ref: Gateway}
+  Routes:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: {Ref: VPC}
+  InternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: {Ref: Routes}
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: {Ref: Gateway}
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: {Ref: VPC}
+      CidrBlock: 10.91.0.0/24
+      AvailabilityZone: {Fn::Select: [0, {Fn::GetAZs: ''}]}
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: {Ref: VPC}
+      CidrBlock: 10.91.1.0/24
+      AvailabilityZone: {Fn::Select: [1, {Fn::GetAZs: ''}]}
+  RoutesA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: {Ref: Routes}
+      SubnetId: {Ref: SubnetA}
+  RoutesB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: {Ref: Routes}
+      SubnetId: {Ref: SubnetB}
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: No inbound access; HTTPS and private PostgreSQL egress
+      VpcId: {Ref: VPC}
+      SecurityGroupEgress:
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 5432, ToPort: 5432, CidrIp: 10.91.0.0/16}
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL from test tasks only
+      VpcId: {Ref: VPC}
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: {Ref: TaskSecurityGroup}
+  DatabaseSubnets:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Disposable test database subnets
+      SubnetIds: [{Ref: SubnetA}, {Ref: SubnetB}]
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Metadata:
+      com.aws.cloudformation.Context: Test data is disposable. Keep the database private and encrypted; Delete avoids retaining billable snapshots after tests.
+    Properties:
+      Engine: postgres
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: '20'
+      StorageType: gp3
+      StorageEncrypted: true
+      PubliclyAccessible: false
+      DBName: proviumcloud
+      MasterUsername: cloudtest
+      ManageMasterUserPassword: true
+      BackupRetentionPeriod: 0
+      DeleteAutomatedBackups: true
+      DeletionProtection: false
+      DBSubnetGroupName: {Ref: DatabaseSubnets}
+      VPCSecurityGroups: [{Ref: DatabaseSecurityGroup}]
+  Artifacts:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Metadata:
+      com.aws.cloudformation.Context: Only ephemeral artifacts and test reports. Harness empties all versions before deleting this stack.
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration: {Status: Enabled}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+  ArtifactsPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: {Ref: Artifacts}
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - {Fn::GetAtt: [Artifacts, Arn]}
+              - {Fn::Sub: '${Artifacts.Arn}/*'}
+            Condition: {Bool: {'aws:SecureTransport': 'false'}}
+  Repository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      EmptyOnDelete: true
+      ImageTagMutability: IMMUTABLE
+      EncryptionConfiguration: {EncryptionType: AES256}
+      ImageScanningConfiguration: {ScanOnPush: true}
+  Logs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      RetentionInDays: 1
+  BatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: batch.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns: [{Fn::Sub: 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSBatchServiceRole'}]
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ecs-tasks.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PullImageAndWriteLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage]
+                Resource: {Fn::GetAtt: [Repository, Arn]}
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: {Fn::GetAtt: [Logs, Arn]}
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ecs-tasks.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TestStorage
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: {Fn::Sub: '${Artifacts.Arn}/*'}
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: {Fn::GetAtt: [Artifacts, Arn]}
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: {Fn::GetAtt: [Database, MasterUserSecret.SecretArn]}
+  DriverRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ecs-tasks.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TestController
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: {Fn::Sub: '${Artifacts.Arn}/*'}
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: {Fn::GetAtt: [Artifacts, Arn]}
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: {Fn::GetAtt: [Database, MasterUserSecret.SecretArn]}
+              - Effect: Allow
+                Action: batch:SubmitJob
+                Resource: [{Ref: Queue}, {Ref: Worker}]
+              - Effect: Allow
+                Action: [batch:ListJobs, batch:DescribeJobs, batch:CancelJob, batch:TerminateJob, batch:TagResource]
+                Resource: '*'
+                Condition: {StringEquals: {'aws:RequestedRegion': {Ref: 'AWS::Region'}}}
+  Compute:
+    Type: AWS::Batch::ComputeEnvironment
+    DependsOn: [InternetRoute, RoutesA, RoutesB]
+    Metadata:
+      com.aws.cloudformation.Context: Fargate has no idle instances. Public IPs provide image/API access without an always-on NAT gateway. Tasks have no inbound rules.
+    Properties:
+      ComputeEnvironmentName: {Fn::Sub: '${AWS::StackName}-compute'}
+      Type: MANAGED
+      State: ENABLED
+      ServiceRole: {Fn::GetAtt: [BatchRole, Arn]}
+      ComputeResources:
+        Type: FARGATE
+        MaxvCpus: 4
+        Subnets: [{Ref: SubnetA}, {Ref: SubnetB}]
+        SecurityGroupIds: [{Ref: TaskSecurityGroup}]
+  Queue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      JobQueueName: {Fn::Sub: '${AWS::StackName}-queue'}
+      State: ENABLED
+      Priority: 1
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: {Ref: Compute}
+  Worker:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: {Fn::Sub: '${AWS::StackName}-worker'}
+      Type: container
+      PlatformCapabilities: [FARGATE]
+      RetryStrategy: {Attempts: 1}
+      Timeout: {AttemptDurationSeconds: 300}
+      ContainerProperties:
+        Image: {Fn::Sub: '${Repository.RepositoryUri}:test'}
+        ExecutionRoleArn: {Fn::GetAtt: [ExecutionRole, Arn]}
+        JobRoleArn: {Fn::GetAtt: [WorkerRole, Arn]}
+        ResourceRequirements:
+          - {Type: VCPU, Value: '0.25'}
+          - {Type: MEMORY, Value: '1024'}
+        RuntimePlatform: {CpuArchitecture: X86_64, OperatingSystemFamily: LINUX}
+        NetworkConfiguration: {AssignPublicIp: ENABLED}
+        FargatePlatformConfiguration: {PlatformVersion: LATEST}
+        Environment:
+          - {Name: AWS_DEFAULT_REGION, Value: {Ref: 'AWS::Region'}}
+          - {Name: DB_HOST, Value: {Fn::GetAtt: [Database, Endpoint.Address]}}
+          - {Name: DB_SECRET_ARN, Value: {Fn::GetAtt: [Database, MasterUserSecret.SecretArn]}}
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: {Ref: Logs}
+            awslogs-region: {Ref: 'AWS::Region'}
+            awslogs-stream-prefix: worker
+  Driver:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: {Fn::Sub: '${AWS::StackName}-driver'}
+      Type: container
+      PlatformCapabilities: [FARGATE]
+      RetryStrategy: {Attempts: 1}
+      Timeout: {AttemptDurationSeconds: {Ref: TestTimeout}}
+      ContainerProperties:
+        Image: {Fn::Sub: '${Repository.RepositoryUri}:test'}
+        ExecutionRoleArn: {Fn::GetAtt: [ExecutionRole, Arn]}
+        JobRoleArn: {Fn::GetAtt: [DriverRole, Arn]}
+        Command: [python, /opt/cloud-tests/driver.py]
+        ResourceRequirements:
+          - {Type: VCPU, Value: '0.5'}
+          - {Type: MEMORY, Value: '1024'}
+        RuntimePlatform: {CpuArchitecture: X86_64, OperatingSystemFamily: LINUX}
+        NetworkConfiguration: {AssignPublicIp: ENABLED}
+        FargatePlatformConfiguration: {PlatformVersion: LATEST}
+        Environment:
+          - {Name: AWS_DEFAULT_REGION, Value: {Ref: 'AWS::Region'}}
+          - {Name: DB_HOST, Value: {Fn::GetAtt: [Database, Endpoint.Address]}}
+          - {Name: DB_SECRET_ARN, Value: {Fn::GetAtt: [Database, MasterUserSecret.SecretArn]}}
+          - {Name: TEST_BUCKET, Value: {Ref: Artifacts}}
+          - {Name: TEST_QUEUE, Value: {Ref: Queue}}
+          - {Name: TEST_WORKER, Value: {Ref: Worker}}
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: {Ref: Logs}
+            awslogs-region: {Ref: 'AWS::Region'}
+            awslogs-stream-prefix: driver
+Outputs:
+  RepositoryUri: {Value: {Fn::GetAtt: [Repository, RepositoryUri]}}
+  Bucket: {Value: {Ref: Artifacts}}
+  Queue: {Value: {Ref: Queue}}
+  Driver: {Value: {Ref: Driver}}
+  Logs: {Value: {Ref: Logs}}

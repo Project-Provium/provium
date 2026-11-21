@@ -34,6 +34,8 @@ flowchart LR
 - Optional configuration snapshots, including Pydantic v2 models
 - [Pipeline execution](guides/pipelines.md) with cached reuse, CSV batches, and target publication
 - [Durable dispatch](guides/dispatch.md) with PostgreSQL queues, profiles, and named input sets
+- [Cloud execution](guides/cloud.md) with AWS Batch, shared computation reuse, and run progress
+- [Disposable AWS tests](guides/cloud-testing.md) with local and opt-in GitHub workflows
 - Optional S3 storage
 
 [Get started](getting-started.md){ .md-button .md-button--primary }

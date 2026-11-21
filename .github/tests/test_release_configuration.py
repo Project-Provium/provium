@@ -24,7 +24,7 @@ class ReleaseConfigurationTests(unittest.TestCase):
         release = workflow("release.yml")
         self.assertEqual(
             set(release["on"]["workflow_dispatch"]["inputs"]),
-            {"provium_tag", "pipeline_tag", "dispatch_tag"},
+            {"provium_tag", "pipeline_tag", "dispatch_tag", "cloud_tag"},
         )
         job = release["jobs"]["release-please"]
         automatic = next(step for step in job["steps"] if step.get("id") == "release")
@@ -35,7 +35,12 @@ class ReleaseConfigurationTests(unittest.TestCase):
         for key, value in job["outputs"].items():
             self.assertIn("steps.release.outputs", value)
             self.assertIn(f"steps.recovery.outputs.{key}", value)
-        for name in ("publish-provium", "publish-pipeline", "publish-dispatch"):
+        for name in (
+            "publish-provium",
+            "publish-pipeline",
+            "publish-dispatch",
+            "publish-cloud",
+        ):
             publish = release["jobs"][name]
             self.assertIn("release_created == 'true'", publish["if"])
             self.assertEqual(publish["environment"]["name"], "pypi")
@@ -47,6 +52,18 @@ class ReleaseConfigurationTests(unittest.TestCase):
         ]
         cases = [
             ({}, {}, "At least one"),
+            ({"cloud_tag": "provium-v0.13.0"}, {}, "Invalid"),
+            ({"cloud_tag": "provium-cloud-v0.1.0"}, {}, "not found"),
+            (
+                {"cloud_tag": "provium-cloud-v0.1.0"},
+                {"provium-cloud-v0.1.0": {"draft": True}},
+                "draft",
+            ),
+            (
+                {"cloud_tag": "provium-cloud-v0.1.0"},
+                {"provium-cloud-v0.1.0": {"draft": False}},
+                None,
+            ),
             ({"pipeline_tag": "master"}, {}, "Invalid"),
             ({"pipeline_tag": "provium-v0.12.1"}, {}, "Invalid"),
             ({"pipeline_tag": "provium-pipeline-v2.2.0"}, {}, "not found"),
@@ -65,11 +82,13 @@ class ReleaseConfigurationTests(unittest.TestCase):
                     "provium_tag": "provium-v0.12.1",
                     "pipeline_tag": "provium-pipeline-v2.2.0",
                     "dispatch_tag": "provium-dispatch-v0.2.0",
+                    "cloud_tag": "provium-cloud-v0.1.0",
                 },
                 {
                     "provium-v0.12.1": {"draft": False},
                     "provium-pipeline-v2.2.0": {"draft": False},
                     "provium-dispatch-v0.2.0": {"draft": False},
+                    "provium-cloud-v0.1.0": {"draft": False},
                 },
                 None,
             ),
@@ -104,12 +123,21 @@ class ReleaseConfigurationTests(unittest.TestCase):
                         len(json.loads(outputs["paths_released"])), len(inputs)
                     )
                     self.assertEqual(
-                        outputs["pipeline_tag"], "refs/tags/provium-pipeline-v2.2.0"
+                        json.loads(outputs["paths_released"]),
+                        [
+                            "packages/" + tag.rsplit("-v", 1)[0]
+                            for tag in inputs.values()
+                        ],
                     )
-                    self.assertEqual(
-                        outputs["dispatch_release_created"],
-                        "true" if "dispatch_tag" in inputs else "false",
-                    )
+                    for key in ("provium", "pipeline", "dispatch", "cloud"):
+                        tag = inputs.get(key + "_tag")
+                        self.assertEqual(
+                            outputs[key + "_tag"], "refs/tags/" + tag if tag else ""
+                        )
+                        self.assertEqual(
+                            outputs[key + "_release_created"],
+                            "true" if tag else "false",
+                        )
 
     def test_pipeline_is_an_independent_python_release(self):
         config = json.loads((ROOT / "release-please-config.json").read_text())
@@ -227,20 +255,45 @@ class ReleaseConfigurationTests(unittest.TestCase):
     def test_extension_releases_use_the_ci_integration_suite(self):
         build = workflow("release.yml")["jobs"]["build"]
         tests = [step for step in build["steps"] if "pytest" in step.get("run", "")]
-        self.assertEqual(len(tests), 2)
-        core = next(step for step in tests if "!=" not in step.get("if", ""))
+        self.assertEqual(len(tests), 3)
+        core = next(
+            step
+            for step in tests
+            if step.get("if") == "matrix.path == 'packages/provium'"
+        )
         self.assertIn("matrix.path == 'packages/provium'", core["if"])
         self.assertIn('--cov="$PACKAGE_IMPORT"', core["run"])
-        extensions = next(step for step in tests if "!=" in step.get("if", ""))
-        self.assertIn("matrix.path != 'packages/provium'", extensions["if"])
+        extensions = next(
+            step for step in tests if "provium-pipeline" in step.get("if", "")
+        )
+        self.assertEqual(
+            extensions["if"],
+            "matrix.path == 'packages/provium-pipeline' || "
+            "matrix.path == 'packages/provium-dispatch'",
+        )
         ci_steps = workflow("test.yml")["jobs"]["pipeline-test"]["steps"]
         ci = next(step for step in ci_steps if "pytest" in step.get("run", ""))
         self.assertEqual(extensions["working-directory"], ci["working-directory"])
         self.assertEqual(extensions["run"], ci["run"])
 
+    def test_release_formatting_does_not_add_a_markdown_gate_absent_from_ci(self):
+        steps = workflow("release.yml")["jobs"]["build"]["steps"]
+        command = next(
+            line
+            for step in steps
+            for line in step.get("run", "").splitlines()
+            if "ruff format" in line
+        )
+        self.assertIn("--extend-exclude '*.md'", command)
+
     def test_publication_is_separate_from_build_and_uses_oidc(self):
         jobs = workflow("release.yml")["jobs"]
-        for name in ("publish-provium", "publish-pipeline"):
+        for name in (
+            "publish-provium",
+            "publish-pipeline",
+            "publish-dispatch",
+            "publish-cloud",
+        ):
             with self.subTest(job=name):
                 job = jobs[name]
                 self.assertIn("build", job["needs"])
@@ -307,6 +360,71 @@ class ReleaseConfigurationTests(unittest.TestCase):
         ]
         self.assertTrue(any("--cov=provium_dispatch" in run for run in tests))
         self.assertTrue(any("--cov-fail-under=100" in run for run in tests))
+
+    def test_cloud_starts_an_independent_release_at_its_package_version(self):
+        config = json.loads((ROOT / "release-please-config.json").read_text())
+        package = config["packages"]["packages/provium-cloud"]
+        project = tomllib.loads(
+            (ROOT / "packages/provium-cloud/pyproject.toml").read_text()
+        )["project"]
+        self.assertEqual(package["package-name"], project["name"])
+        self.assertEqual(package["release-type"], "python")
+        self.assertEqual(package["initial-version"], "0.1.0")
+        manifest = json.loads((ROOT / ".release-please-manifest.json").read_text())
+        if "packages/provium-cloud" not in manifest:
+            self.assertEqual(package["initial-version"], project["version"])
+
+    def test_cloud_build_uses_its_tag_artifact_and_ci_test_suite(self):
+        jobs = workflow("release.yml")["jobs"]
+        outputs = jobs["release-please"]["outputs"]
+        self.assertIn(
+            "packages/provium-cloud--release_created", outputs["cloud_release_created"]
+        )
+        self.assertIn("packages/provium-cloud--tag_name", outputs["cloud_tag"])
+        build = jobs["build"]
+        self.assertIn("cloud_tag", build["steps"][0]["with"]["ref"])
+        self.assertIn("provium-cloud", build["env"]["PACKAGE_NAME"])
+        self.assertIn("provium_cloud", build["env"]["PACKAGE_IMPORT"])
+        cloud = next(
+            step
+            for step in build["steps"]
+            if step.get("if") == "matrix.path == 'packages/provium-cloud'"
+            and "pytest" in step.get("run", "")
+        )
+        ci = next(
+            step
+            for step in workflow("test.yml")["jobs"]["test"]["steps"]
+            if step.get("working-directory") == "packages/provium-cloud"
+        )
+        self.assertEqual(cloud["run"], "python -m " + ci["run"])
+        self.assertLess(
+            build["steps"].index(cloud),
+            next(
+                i
+                for i, step in enumerate(build["steps"])
+                if "upload-artifact" in step.get("uses", "")
+            ),
+        )
+
+    def test_cloud_publication_waits_for_dependencies_but_not_dispatch(self):
+        job = workflow("release.yml")["jobs"]["publish-cloud"]
+        self.assertEqual(
+            set(job["needs"]),
+            {"release-please", "build", "publish-provium", "publish-pipeline"},
+        )
+        for condition in (
+            "always()",
+            "!cancelled()",
+            "needs.build.result == 'success'",
+            "needs.release-please.outputs.cloud_release_created == 'true'",
+            "needs.publish-provium.result == 'success'",
+            "needs.publish-provium.result == 'skipped'",
+            "needs.publish-pipeline.result == 'success'",
+            "needs.publish-pipeline.result == 'skipped'",
+        ):
+            self.assertIn(condition, job["if"])
+        self.assertEqual(job["environment"]["url"], "https://pypi.org/p/provium-cloud")
+        self.assertEqual(job["steps"][0]["with"]["name"], "provium-cloud-distributions")
 
 
 if __name__ == "__main__":

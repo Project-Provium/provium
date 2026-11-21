@@ -1,8 +1,9 @@
 # Releasing the workspace packages
 
-`release-please-config.json` tracks `packages/provium` and
-`packages/provium-pipeline` independently. Conventional commits affecting each
-package generate its release notes and version changes. The pipeline package's
+`release-please-config.json` tracks `packages/provium`, `packages/provium-pipeline`,
+`packages/provium-dispatch`, and `packages/provium-cloud` independently.
+Conventional commits affecting each package generate its release notes and version
+changes. The cloud package's
 first release is configured as `0.1.0`; release-please will add its version to
 `.release-please-manifest.json` when creating that release PR. It is intentionally
 not recorded as already released in the initial manifest.
@@ -13,13 +14,13 @@ On PyPI, configure a GitHub Trusted Publisher for **each** project:
 
 | Field | Value |
 | --- | --- |
-| PyPI project | `provium` or `provium-pipeline` |
+| PyPI project | One publisher each for `provium`, `provium-pipeline`, `provium-dispatch`, and `provium-cloud` |
 | Repository owner | `Project-Provium` |
 | Repository name | `provium` |
 | Workflow filename | `release.yml` |
 | Environment | `pypi` |
 
-For the new `provium-pipeline` project, register a **pending publisher** at
+For the new `provium-cloud` project, register a **pending publisher** at
 <https://pypi.org/manage/account/publishing/>. For an existing project, use its
 Publishing settings. The GitHub repository should have a `pypi` environment with
 any desired branch restrictions or approval requirements.
@@ -38,7 +39,11 @@ settings if it is currently disabled.
 
 ## Release sequence
 
-1. Merge conventional commits into `master`.
+1. Merge conventional commits into `master`. For the initial cloud release,
+   squash-merge with a title such as `feat: add Provium Cloud`. A title such as
+   `Create Provium Cloud` does not qualify as a conventional feature commit.
+   Merging the feature branch prepares a release PR; it does not itself upload
+   the new package to PyPI.
 2. Review and merge the release-please PR, including the version and changelog.
 3. The `Release` workflow creates the corresponding GitHub releases. It uses the
    action's per-package outputs directly; it does not rely on bot-generated tag or
@@ -47,22 +52,45 @@ settings if it is currently disabled.
    installs workspace dependencies, checks Ruff and Pyright, runs tests with 100%
    coverage required, and builds/checks the wheel and source distribution.
 5. Separate publishing jobs download those distributions and upload to PyPI.
-   When both packages are released together, core publishes first. The pipeline
-   can also release independently when core has no release in that run.
+   When dependencies are released together, core publishes before pipeline,
+   and pipeline before dispatch and cloud. Packages can also release independently
+   when their dependencies have no release in that run.
 
 Pull-request/push CI tests the pipeline package on Python 3.12 and 3.13; release
 builds repeat validation on Python 3.12 before uploading anything.
 
-A compatible core version must already be available on PyPI for users to install
-`provium-pipeline`. Its current dependency is `provium>=0.7,<0.9`. Publishing the
-pipeline alone does not publish an unreleased core version automatically. Check
-that requirement when reviewing release PRs, especially across core minor versions.
+Compatible dependency versions must be available on PyPI for users to install
+the released package. Cloud initially requires `provium>=0.13.0` and
+`provium-pipeline>=2.3.0`. Publishing cloud alone does not publish missing core or
+pipeline versions automatically. Check the package's `pyproject.toml` dependencies
+when reviewing release PRs. The November 4, 2026 release run created these GitHub
+releases but failed its README code-block formatting check before publication.
+The workflow now excludes Markdown from formatting, matching CI's Python scope.
+
+If those dependency releases exist on GitHub but are missing from PyPI, recover
+their publication before releasing cloud:
+
+```bash
+gh workflow run release.yml --repo Project-Provium/provium --ref master \
+  -f provium_tag=provium-v0.13.0 \
+  -f pipeline_tag=provium-pipeline-v2.3.0
+```
+
+Run recovery after merging this workflow fix to `master`; rerunning the old run
+would use its old workflow. Fix any further failed build checks before retrying.
+Recovery checks out the selected
+release tags, so source fixes require a new release. Confirm both dependency
+versions are on PyPI before merging the cloud release PR.
 
 If an upload fails after the GitHub release was created, fix the publisher settings
 or transient failure and use **Re-run failed jobs** on that workflow run. This
 preserves the release outputs and built artifacts. Re-running all jobs may produce
 no new release, so there would be nothing selected for publication. Existing PyPI
 versions cannot be overwritten.
+
+To recover cloud using the current workflow, run it manually on `master` with
+`cloud_tag=provium-cloud-v0.1.0` (or the existing cloud release tag). Leave packages
+that are already on PyPI blank. See the root README for the full recovery flow.
 
 ## Local workflow checks
 

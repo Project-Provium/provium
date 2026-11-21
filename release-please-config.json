@@ -8,6 +8,10 @@
         {
           "type": "generic",
           "path": "/packages/provium-pipeline/pyproject.toml"
+        },
+        {
+          "type": "generic",
+          "path": "/packages/provium-cloud/pyproject.toml"
         }
       ]
     },
@@ -24,6 +28,11 @@
     },
     "packages/provium-dispatch": {
       "package-name": "provium-dispatch",
+      "release-type": "python",
+      "initial-version": "0.1.0"
+    },
+    "packages/provium-cloud": {
+      "package-name": "provium-cloud",
       "release-type": "python",
       "initial-version": "0.1.0"
     }

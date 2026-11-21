@@ -35,13 +35,15 @@ started and explore the complete guides and API reference.
   caching, CSV requests, and artifact publication.
 - [`packages/provium-dispatch/`](packages/provium-dispatch/) — durable queues,
   profiles, registry, and input-set indexing.
+- [`packages/provium-cloud/`](packages/provium-cloud/) — cloud deployment
+  execution, shared computation coordination, and run progress, independent of dispatch.
 - [`examples/`](examples/) — installable projects demonstrating Provium in use.
 - [`docs/`](docs/) — guides, concepts, and reference documentation.
 
 ## Development
 
-Create or activate the repository-level virtual environment, then install the core and example
-packages in editable mode:
+Create or activate the repository-level virtual environment, then install the
+core, cloud, and example packages in editable mode:
 
 ```bash
 python3 -m venv .venv
@@ -49,7 +51,7 @@ source .venv/bin/activate
 make install
 ```
 
-Run the core and example checks from the repository root:
+Run the core, cloud, and example checks from the repository root:
 
 ```bash
 make check
@@ -60,6 +62,10 @@ Testcontainers integration suite, see the
 [pipeline development instructions](packages/provium-pipeline/README.md#development).
 Docker must be running for PostgreSQL and LocalStack tests.
 
+For cloud deployment, CLI/Python usage, and backend contracts, see the
+[cloud guide](docs/guides/cloud.md). For real AWS tests, credentials, dotenv layers,
+CI configuration, and cleanup recovery, see [AWS testing](docs/guides/cloud-testing.md).
+
 Build the shared documentation site into `site/`:
 
 ```bash
@@ -68,30 +74,3 @@ make docs
 
 The Provium package owns its `pyproject.toml`, tests, coverage gate, version,
 and build metadata; examples remain separate projects in the monorepo.
-
-## Recover a failed PyPI publication
-
-Release Please can create GitHub releases before a later build or publication
-fails. A subsequent push does not republish those existing releases.
-
-After fixing the workflow on `master`, open **Actions → Release → Run workflow**,
-select `master`, and enter the existing release tags for the packages to publish.
-Leave already-published packages blank. At least one tag is required; tags must
-match the package name and have an existing, non-draft GitHub release.
-
-For example, to recover the three releases created on October 25, 2026:
-
-```bash
-gh workflow run release.yml --repo Project-Provium/provium --ref master \
-  -f provium_tag=provium-v0.12.1 \
-  -f pipeline_tag=provium-pipeline-v2.2.0 \
-  -f dispatch_tag=provium-dispatch-v0.2.0
-```
-
-The current workflow tests and builds source from the selected tags, then
-publishes core, pipeline, and dispatch in dependency order through the existing
-`pypi` environment and Trusted Publisher. Any required environment approvals
-still apply. Ensure omitted dependencies are already available on PyPI.
-Recovery does not create tags, change versions, or run Release Please.
-A new manual run is required to use a workflow fix; rerunning an old failed run
-uses its old workflow.
